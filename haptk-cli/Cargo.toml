@@ -1,10 +1,12 @@
 [package]
 name = "haptk-cli"
-version = "1.0.0"
-authors = ["xosxos"]
+version = "0.1.0"
+authors = ["Osma S. Rautila"]
 edition = "2021"
-description = "Haplotype analysis toolkit CLI"
+description = "HAPTK CLI - Haplotype analysis toolkit CLI"
 license = "GPL v3"
+readme = "README.md"
+homepage = "https://github.com/xosxos/haptk"
 
 [[bin]]
 name = "haptk"
