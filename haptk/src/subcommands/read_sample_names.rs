@@ -9,11 +9,11 @@ fn return_double_extension_filetype(path: &Path, e1: &str) -> Result<String> {
     let stem = path
         .file_stem()
         .and_then(OsStr::to_str)
-        .ok_or_else(|| eyre::eyre!("file has no stem"))?;
+        .ok_or_else(|| eyre!("file has no stem"))?;
     let e2 = Path::new(&stem)
         .extension()
         .and_then(OsStr::to_str)
-        .ok_or_else(|| eyre::eyre!("file has no other filetype"))?;
+        .ok_or_else(|| eyre!("file has no other filetype"))?;
     Ok(format!("{e2}.{e1}"))
 }
 

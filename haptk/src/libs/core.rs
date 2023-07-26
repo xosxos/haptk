@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use std::thread::{self, JoinHandle};
 
 use bgzip::tabix::Tabix;
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::eyre::{eyre, WrapErr};
+use color_eyre::Result;
 use csv::{QuoteStyle, Reader, ReaderBuilder, Writer, WriterBuilder};
-use eyre::Context;
 use rust_htslib::bcf::{header::HeaderRecord, IndexedReader, Read};
 use std::sync::mpsc::Receiver;
 
