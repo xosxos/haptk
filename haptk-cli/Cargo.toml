@@ -5,7 +5,7 @@ authors = ["Osma S. Rautila"]
 edition = "2021"
 description = "HAPTK CLI - Haplotype analysis toolkit CLI"
 license = "GPL v3"
-readme = "README.md"
+readme = "https://github.com/xosxos/haptk/blob/main/README.md"
 homepage = "https://github.com/xosxos/haptk"
 
 [[bin]]
@@ -13,6 +13,6 @@ name = "haptk"
 path = "src/main.rs"
 
 [dependencies]
-haptk = { path = "../haptk", features = ["clap"] }
+haptk = { version = "0.1", path = "../haptk", features = ["clap"] }
 color-eyre = "*"
 clap = { version = "4.1", features = ["derive"] }
