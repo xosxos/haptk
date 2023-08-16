@@ -19,6 +19,9 @@ pub mod list_markers;
 /// Bidirectional haplotype sharing tree algorithm
 pub mod bhst;
 
+/// Bidirectional haplotype sharing tree biobank scale algorithm
+pub mod bhst_bb;
+
 /// Unidirectional haplotype sharing tree algorithm
 pub mod uhst;
 
