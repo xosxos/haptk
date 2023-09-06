@@ -432,7 +432,6 @@ impl SubCommand {
             | SubCommand::CompareToHst { threads, .. }
             | SubCommand::Coverage { threads, .. }
             | SubCommand::Bhst { threads, .. }
-            | SubCommand::BhstBB { threads, .. }
             | SubCommand::Uhst { threads, .. } => *threads,
             _ => 1,
         }
@@ -449,7 +448,6 @@ impl SubCommand {
             | SubCommand::Coverage { log_and_verbosity, .. }
             | SubCommand::Mrca { log_and_verbosity, .. }
             | SubCommand::Bhst { log_and_verbosity, .. }
-            | SubCommand::BhstBB { log_and_verbosity, .. }
             | SubCommand::Uhst { log_and_verbosity, .. }
             | SubCommand::Samples { log_and_verbosity, .. }
             | SubCommand::Markers { log_and_verbosity, .. }
@@ -469,7 +467,6 @@ impl SubCommand {
             | SubCommand::Mrca { args: ClapStandardArgs { outdir, .. }, ..}
             | SubCommand::Uhst { args: ClapStandardArgs { outdir, .. }, ..}
             | SubCommand::Bhst { args: ClapStandardArgs { outdir, .. }, ..}
-            | SubCommand::BhstBB { args: ClapStandardArgs { outdir, .. }, ..}
             | SubCommand::ToVcf { outdir, .. }
             => Some(outdir.clone()),
             SubCommand::Samples { .. }
