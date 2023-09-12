@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::{
+    eyre::{ensure, eyre},
+    Result,
+};
 use tracing::Level;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::fmt::time::OffsetTime;
@@ -257,6 +260,10 @@ pub enum SubCommand {
         #[arg(long)]
         publish: bool,
     },
+    /// bHST scan
+    BhstScan {
+        #[command(flatten)]
+        args: ClapStandardArgs,
 
     /// Analyze the MRCA based on the Gamma method at a coordinate
     Mrca {
@@ -431,8 +438,12 @@ impl SubCommand {
             SubCommand::CompareToHaplotype { threads, .. }
             | SubCommand::CompareToHst { threads, .. }
             | SubCommand::Coverage { threads, .. }
+            | SubCommand::MrcaScan { threads, .. }
             | SubCommand::Bhst { threads, .. }
-            | SubCommand::Uhst { threads, .. } => *threads,
+            | SubCommand::Uhst { threads, .. }
+            | SubCommand::BhstGwas { threads, .. }
+            | SubCommand::BhstQtGwas { threads, .. }
+            | SubCommand::BhstMrcaGwas { threads, .. } => *threads,
             _ => 1,
         }
     }
@@ -447,13 +458,39 @@ impl SubCommand {
             | SubCommand::CompareHaplotypes { log_and_verbosity, .. }
             | SubCommand::Coverage { log_and_verbosity, .. }
             | SubCommand::Mrca { log_and_verbosity, .. }
-            | SubCommand::Bhst { log_and_verbosity, .. }
+            | SubCommand::MrcaScan { log_and_verbosity, .. }
             | SubCommand::Uhst { log_and_verbosity, .. }
+            | SubCommand::Bhst { log_and_verbosity, .. }
+            | SubCommand::BhstScan { log_and_verbosity,  .. }
+            | SubCommand::BhstMrcaGwas { log_and_verbosity,  .. }
+            | SubCommand::BhstQtGwas { log_and_verbosity,  .. }
+            | SubCommand::BhstGwas { log_and_verbosity,  .. }
             | SubCommand::Samples { log_and_verbosity, .. }
             | SubCommand::Markers { log_and_verbosity, .. }
             | SubCommand::ToVcf { log_and_verbosity, .. }
             => (log_and_verbosity.verbosity, &log_and_verbosity.log_file, log_and_verbosity.silent),
         }
+    }
+
+    pub fn check_sample_size(&self) -> Result<()> {
+        match self {
+            SubCommand::BhstGwas {
+                min_sample_size, ..
+            }
+            | SubCommand::BhstQtGwas {
+                min_sample_size, ..
+            }
+            | SubCommand::BhstMrcaGwas {
+                min_sample_size, ..
+            } => {
+                ensure!(
+                    *min_sample_size >= 1,
+                    "Min sample size needs to be atleast one"
+                )
+            }
+            _ => return Ok(()),
+        };
+        Ok(())
     }
 
     #[rustfmt::skip]
@@ -465,8 +502,13 @@ impl SubCommand {
             | SubCommand::CompareToHst { args: ClapStandardArgs { outdir, .. }, ..}
             | SubCommand::CompareHaplotypes { outdir, .. }
             | SubCommand::Mrca { args: ClapStandardArgs { outdir, .. }, ..}
+            | SubCommand::MrcaScan { args: ClapStandardArgs { outdir, .. }, ..}
             | SubCommand::Uhst { args: ClapStandardArgs { outdir, .. }, ..}
             | SubCommand::Bhst { args: ClapStandardArgs { outdir, .. }, ..}
+            | SubCommand::BhstScan { args: ClapStandardArgs { outdir, .. }, ..}
+            | SubCommand::BhstMrcaGwas { args: ClapConciseArgs { outdir, .. }, ..}
+            | SubCommand::BhstQtGwas { args: ClapConciseArgs { outdir, .. }, ..}
+            | SubCommand::BhstGwas { args: ClapConciseArgs { outdir, .. }, ..}
             | SubCommand::ToVcf { outdir, .. }
             => Some(outdir.clone()),
             SubCommand::Samples { .. }
