@@ -14,13 +14,11 @@ use crate::io::read_variable_data_file;
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::PhasedMatrix;
 use crate::subcommands::hst_gwas::{
-    get_marker_id, get_sender, read_tree_file, return_assoc, write_assoc, Assoc,
+    self, find_homozygosity_no_ctrl, get_marker_id, get_sender, read_tree_file, return_assoc,
+    write_assoc, Assoc,
 };
-use crate::subcommands::hst_scan::Trees;
+use crate::subcommands::hst_scan::{Node, Trees};
 use crate::utils::push_to_output;
-
-use super::hst_gwas;
-use super::{bhst::Node, hst_gwas::find_homozygosity_no_ctrl};
 
 #[doc(hidden)]
 pub fn run(

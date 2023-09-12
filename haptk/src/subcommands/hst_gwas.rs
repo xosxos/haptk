@@ -26,8 +26,8 @@ use crate::read_vcf::{
     read_vcf_to_ctrl_matrix, read_vcf_to_haploid_ctrl_matrix, read_vcf_to_matrix,
 };
 use crate::structs::{HapVariant, PhasedMatrix, Ploidy};
-use crate::subcommands::bhst::{find_majority_nodes, Node};
-use crate::subcommands::hst_scan::{TreeRow, Trees};
+use crate::subcommands::bhst::find_majority_nodes;
+use crate::subcommands::hst_scan::{Node, TreeRow, Trees};
 use crate::utils::push_to_output;
 
 #[doc(hidden)]
