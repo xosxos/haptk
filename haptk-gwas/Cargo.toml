@@ -1,0 +1,24 @@
+[package]
+name = "haptk-gwas"
+version = "1.0.0"
+authors = ["xosxos"]
+edition = "2021"
+description = "Haplotype analysis toolkit GWAS GUI"
+license = "GPL v3"
+
+[dependencies]
+haptk = { path = "../haptk", features = ["clap"]}
+clap = { version = "4.1", features = ["derive"] }
+eframe = {version = "0.21.0"}
+egui = {version = "0.21.0"}
+egui_file = {version = "0.8"}
+tracing = "*"
+tracing-subscriber = "*"
+rayon = "*"
+ndarray = "*"
+petgraph = "*"
+itertools = "*"
+color-eyre = "*"
+fishers_exact = "*"
+
+
