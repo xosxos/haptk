@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use color_eyre::{eyre::eyre, Result};
@@ -10,8 +11,8 @@ use crate::core::{centromeres_hg38, open_csv_writer, parse_coords};
 use crate::io::read_recombination_file;
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::PhasedMatrix;
-use crate::subcommands::mrca::mrca_only_independent;
-use crate::utils::{push_to_output, select_only_longest_alleles, shared_lengths_by_majority};
+use crate::subcommands::mrca::mrca_gamma_method;
+use crate::utils::push_to_output;
 
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)]
@@ -34,18 +35,17 @@ pub fn run(
         _ => (),
     };
 
-    let coords = args.coords.clone();
+    let (contig, start, stop) = parse_coords(&args.coords)?;
 
-    let (contig, start, stop) = parse_coords(&coords)?;
+    let range = match (start, stop) {
+        (Some(start), Some(stop)) => Some((start, stop)),
+        (None, None) => None,
+        _ => panic!("Open ended ranges are not supported for now"),
+    };
+
+    let vcf = read_vcf_to_matrix(&args, contig, 0, range, None)?;
 
     let rates = read_recombination_file(rec_rates)?;
-
-    let vcf = match (start, stop) {
-        (Some(start), Some(stop)) => {
-            read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None)?
-        }
-        _ => read_vcf_to_matrix(&args, contig, 0, None, None)?,
-    };
 
     let ages = find_ages(&vcf, &args, rates, step_size)?;
 
@@ -87,7 +87,7 @@ fn write_ages_to_csv(
 fn find_ages(
     vcf: &PhasedMatrix,
     args: &StandardArgs,
-    rates: std::collections::BTreeMap<u64, f32>,
+    rates: BTreeMap<u64, f32>,
     step_size: usize,
 ) -> Result<Vec<(usize, f64)>> {
     // Create a Vec because par_iter cannot be used with pure ranges and par_bridge does not
@@ -99,10 +99,9 @@ fn find_ages(
             .par_iter()
             .filter(|n| *n % step_size == 0)
             .map(|i| -> Result<(usize, f64)> {
-                let shared_lengths = shared_lengths_by_majority(vcf, *i);
-                let only_longest_lengths = select_only_longest_alleles(&shared_lengths);
-                let (i_tau_hat, _, _) =
-                    mrca_only_independent(only_longest_lengths, vcf.get_pos(*i), &rates)?;
+                let only_longest_lengths = vcf.only_longest_lengths();
+                let ((i_tau_hat, _, _), _) =
+                    mrca_gamma_method(vcf, only_longest_lengths, vcf.get_pos(*i), &rates)?;
                 Ok((*i, i_tau_hat.log10()))
             })
             .collect(),
@@ -110,9 +109,9 @@ fn find_ages(
             .par_iter()
             .filter(|n| *n % step_size == 0)
             .map(|i| -> Result<(usize, f64)> {
-                let shared_lengths = shared_lengths_by_majority(vcf, *i);
-                let (i_tau_hat, _, _) =
-                    mrca_only_independent(shared_lengths, vcf.get_pos(*i), &rates)?;
+                let shared_lengths = vcf.get_lengths_from_uhst();
+                let ((i_tau_hat, _, _), _) =
+                    mrca_gamma_method(vcf, shared_lengths, vcf.get_pos(*i), &rates)?;
                 Ok((*i, i_tau_hat.log10()))
             })
             .collect(),
@@ -130,8 +129,8 @@ fn draw_plot(
 ) -> Result<()> {
     push_to_output(args, &mut output, "mrca_scan", "png");
 
-    let root =
-        BitMapBackend::new(&output, (graph_args.width, graph_args.height)).into_drawing_area();
+    let root = BitMapBackend::new(&output, (graph_args.width as u32, graph_args.height as u32))
+        .into_drawing_area();
 
     let y_start = data.iter().min_by(|a, b| a.1.total_cmp(&b.1)).unwrap().1;
     let y_stop = data.iter().max_by(|a, b| a.1.total_cmp(&b.1)).unwrap().1;

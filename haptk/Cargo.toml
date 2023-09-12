@@ -54,6 +54,8 @@ plotters = { version = "0.3", default-features = false, features = ['bitmap_back
 statrs = { version = "0.16", default-features = false }
 chrono = { version = "=0.4.31" }
 
+fishers_exact = "1.0.1"
+
 # Optional
 clap = { version = "=4.5.7", optional = true, features = ["derive"] }
 anstyle = { version = "1.0.7", optional = true }

@@ -449,6 +449,46 @@ impl PhasedMatrix {
             .collect::<Vec<usize>>()
     }
 
+    pub fn only_longest_lengths(&self) -> Vec<(Node, Node)> {
+        let lengths = self.get_lengths_from_uhst();
+
+        let calculate_len = |(lnode, rnode): &(Node, Node)| {
+            if lnode.start_idx == rnode.stop_idx {
+                0
+            } else {
+                self.get_pos(rnode.stop_idx - 1) - self.get_pos(lnode.start_idx + 1) + 1
+            }
+        };
+
+        (0..self.nsamples())
+            .map(|i| {
+                let lengths = lengths
+                    .iter()
+                    .enumerate()
+                    .skip(i * *self.ploidy)
+                    .take(*self.ploidy);
+
+                let (_, max_nodes) = lengths
+                    .clone()
+                    .max_by_key(|(_, l)| calculate_len(*l))
+                    .unwrap();
+
+                let max_len = calculate_len(max_nodes);
+                if lengths
+                    .filter(|(_, l)| calculate_len(*l) == max_len)
+                    .count()
+                    > 1
+                {
+                    tracing::warn!(
+                        "Sample {} has two equally long haplotypes.",
+                        self.get_sample_name(i)
+                    );
+                }
+                max_nodes.clone()
+            })
+            .collect::<Vec<(Node, Node)>>()
+    }
+
     // Sort inside select_rows to avoid bugs down the line
     pub fn select_rows(&mut self, mut to_keep: Vec<usize>) {
         to_keep.sort();
