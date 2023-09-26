@@ -5,10 +5,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
-use color_eyre::{
-    eyre::{ensure, eyre, WrapErr},
-    Result,
-};
+use color_eyre::{eyre::ensure, Result};
 use fishers_exact::fishers_exact;
 use ndarray::s;
 use petgraph::graph::NodeIndex;
@@ -27,7 +24,7 @@ use crate::read_vcf::{
 };
 use crate::structs::{HapVariant, PhasedMatrix, Ploidy};
 use crate::subcommands::bhst::find_majority_nodes;
-use crate::subcommands::hst_scan::{Node, TreeRow, Trees};
+use crate::subcommands::hst_scan::{read_tree_file, Node, TreeRow, Trees};
 use crate::utils::push_to_output;
 
 #[doc(hidden)]
@@ -50,7 +47,7 @@ pub fn run(
     };
 
     let mut output = args.output.clone();
-    push_to_output(&args, &mut output, "hst_scan", "csv");
+    push_to_output(&args, &mut output, "hst_gwas", "csv");
     let writer = open_csv_writer(output)?;
 
     let samples = metadata.samples;
@@ -96,6 +93,7 @@ pub fn return_binary_assoc(
         minimize_groups(node_idx, min_value, tree, vcfr.clone(), ctrl_vcf)
     };
 
+    let start_value = f64::MAX;
     return_assoc(
         trees,
         (nmin_samples, nmax_samples, nmin_variants, nmax_variants),
@@ -103,6 +101,7 @@ pub fn return_binary_assoc(
         minimizer,
         tx,
         rower,
+        start_value,
     )
 }
 
@@ -183,6 +182,7 @@ pub fn return_assoc<'a, F, U>(
     optimizer: F,
     tx: Option<std::sync::mpsc::Sender<(Node, f64)>>,
     rower: U,
+    start_value: f64,
 ) -> Vec<Box<dyn Assoc + Send>>
 where
     F: Fn(NodeIndex, f64, &'a Graph<Node, u8>) -> Option<f64> + Sync + Send + Clone,
@@ -196,6 +196,7 @@ where
                 (nmin_samples, nmax_samples, nmin_variants, nmax_variants),
                 vcf.clone(),
                 optimizer.clone(),
+                start_value,
             )
         })
         .map_with(tx, |tx, tuple| {
@@ -216,11 +217,12 @@ pub fn optimize_tree<'a, F: Fn(NodeIndex, f64, &'a Graph<Node, u8>) -> Option<f6
     (nmin_samples, nmax_samples, nmin_variants, nmax_variants): (usize, usize, usize, usize),
     vcf: Arc<PhasedMatrix>,
     optimizer: F,
+    start_value: f64,
 ) -> Option<(&'a Node, f64, NodeIndex, usize)> {
     let mut top_node = tree_row.tree.node_weight(NodeIndex::new(0)).unwrap();
     let mut top_node_idx = NodeIndex::new(0);
 
-    let mut minimized_value = f64::MAX;
+    let mut optimized_value = start_value;
 
     let mut iterator = tree_row.tree.node_indices();
 
@@ -237,18 +239,19 @@ pub fn optimize_tree<'a, F: Fn(NodeIndex, f64, &'a Graph<Node, u8>) -> Option<f6
                 .slice(s![index, node.start_idx..node.stop_idx + 1]);
 
             if ht.len() >= nmin_variants && ht.len() <= nmax_variants {
-                if let Some(value) = optimizer(idx, minimized_value, &tree_row.tree) {
-                    minimized_value = value;
+                if let Some(value) = optimizer(idx, optimized_value, &tree_row.tree) {
+                    optimized_value = value;
                     top_node_idx = idx;
                     top_node = node;
                 }
             }
         }
     }
-    if minimized_value == f64::MAX {
+    if optimized_value == start_value {
+        println!("found none at {}", vcf.get_pos(vcf.variant_idx()));
         return None;
     }
-    Some((top_node, minimized_value, top_node_idx, tree_row.idx))
+    Some((top_node, optimized_value, top_node_idx, tree_row.idx))
 }
 
 pub fn minimize_groups<T: Borrow<PhasedMatrix>>(
@@ -305,14 +308,6 @@ pub fn compare_groups<T: Borrow<PhasedMatrix>>(
 
 pub fn return_mbah_lengths(trees: &Vec<TreeRow>) -> Vec<(usize, Node)> {
     trees.par_iter().map(find_mbah_node).collect()
-}
-
-pub fn read_tree_file(path: PathBuf) -> Result<Trees> {
-    let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
-    let reader = bgzip::BGZFReader::new(file)?;
-    let rows = serde_json::from_reader(reader)?;
-
-    Ok(rows)
 }
 
 pub trait Assoc {

@@ -417,7 +417,7 @@ impl PhasedMatrix {
     }
 
     pub fn only_longest_indexes(&self) -> Vec<usize> {
-        let lengths = self.get_lengths_from_uhst();
+        let lengths = self.get_lengths_from_uhst(self.variant_idx());
         let lengths = lengths
             .iter()
             .map(|(lnode, rnode)| {
@@ -449,8 +449,8 @@ impl PhasedMatrix {
             .collect::<Vec<usize>>()
     }
 
-    pub fn only_longest_lengths(&self) -> Vec<(Node, Node)> {
-        let lengths = self.get_lengths_from_uhst();
+    pub fn only_longest_lengths(&self, variant_idx: usize) -> Vec<(Node, Node)> {
+        let lengths = self.get_lengths_from_uhst(variant_idx);
 
         let calculate_len = |(lnode, rnode): &(Node, Node)| {
             if lnode.start_idx == rnode.stop_idx {

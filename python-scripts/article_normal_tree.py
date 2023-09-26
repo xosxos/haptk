@@ -105,8 +105,9 @@ def draw_tree(t, output, samples_to_tag):
 ### Script logic
 parser = argparse.ArgumentParser()
 parser.add_argument('file', type=str)
-parser.add_argument('--min-size', type=int)
+parser.add_argument('--min-size', type=int, default=1)
 parser.add_argument('--ids', type=str)
+parser.add_argument('--output', type=str)
 args = parser.parse_args()
 
 G = nx.DiGraph(pgv.AGraph(args.file, strict=True, directed=True))
@@ -134,5 +135,9 @@ if args.ids:
     for line in file.readlines():
         samples_to_tag.append(line.strip())
     
-draw_tree(t, "mytree.png", samples_to_tag)
+if args.output:
+    draw_tree(t, args.output, samples_to_tag)
+else:
+    draw_tree(t, "mytree.png", samples_to_tag)
+    
 

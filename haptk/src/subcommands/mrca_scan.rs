@@ -77,7 +77,7 @@ fn write_ages_to_csv(
     push_to_output(args, &mut output, "mrca_scan", "csv");
 
     let mut writer = open_csv_writer(output)?;
-    writer.write_record(vec!["pos", "mrca"])?;
+    writer.write_record(vec!["POS", "mrca"])?;
     for (idx, age) in ages {
         writer.write_record(vec![format!("{}", vcf.get_pos(*idx)), format!("{age:.5}")])?;
     }
@@ -99,20 +99,20 @@ fn find_ages(
             .par_iter()
             .filter(|n| *n % step_size == 0)
             .map(|i| -> Result<(usize, f64)> {
-                let only_longest_lengths = vcf.only_longest_lengths();
+                let only_longest_lengths = vcf.only_longest_lengths(*i);
                 let ((i_tau_hat, _, _), _) =
                     mrca_gamma_method(vcf, only_longest_lengths, vcf.get_pos(*i), &rates)?;
-                Ok((*i, i_tau_hat.log10()))
+                Ok((*i, i_tau_hat))
             })
             .collect(),
         false => range
             .par_iter()
             .filter(|n| *n % step_size == 0)
             .map(|i| -> Result<(usize, f64)> {
-                let shared_lengths = vcf.get_lengths_from_uhst();
+                let shared_lengths = vcf.get_lengths_from_uhst(*i);
                 let ((i_tau_hat, _, _), _) =
                     mrca_gamma_method(vcf, shared_lengths, vcf.get_pos(*i), &rates)?;
-                Ok((*i, i_tau_hat.log10()))
+                Ok((*i, i_tau_hat))
             })
             .collect(),
     }

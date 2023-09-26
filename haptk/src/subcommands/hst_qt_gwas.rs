@@ -14,10 +14,9 @@ use crate::io::read_variable_data_file;
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::PhasedMatrix;
 use crate::subcommands::hst_gwas::{
-    self, find_homozygosity_no_ctrl, get_marker_id, get_sender, read_tree_file, return_assoc,
-    write_assoc, Assoc,
+    self, find_homozygosity_no_ctrl, get_marker_id, get_sender, return_assoc, write_assoc, Assoc,
 };
-use crate::subcommands::hst_scan::{Node, Trees};
+use crate::subcommands::hst_scan::{read_tree_file, Node, Trees};
 use crate::utils::push_to_output;
 
 #[doc(hidden)]
@@ -84,6 +83,7 @@ pub fn run(
         minimize_traits(node_idx, min_value, tree, &hm, vcfr.clone())
     };
 
+    let start_value = f64::MAX;
     let assoc = return_assoc(
         &trees,
         (nmin_samples, nmax_samples, nmin_variants, nmax_variants),
@@ -91,6 +91,7 @@ pub fn run(
         minimizer,
         tx,
         rower,
+        start_value,
     );
 
     write_assoc(QtAssocRow::header(), assoc, writer)?;

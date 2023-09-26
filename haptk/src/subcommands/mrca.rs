@@ -43,7 +43,7 @@ pub fn run(
         vcf.select_only_longest();
     };
 
-    let lengths = vcf.get_lengths_from_uhst();
+    let lengths = vcf.get_lengths_from_uhst(vcf.variant_idx());
     let ((i_tau_hat, i_l, i_u), (c_tau_hat, c_l, c_u)) =
         mrca_gamma_method(&vcf, lengths, variant_pos, &rates)?;
 
@@ -60,24 +60,31 @@ pub fn get_sums(
     variant_pos: u64,
     rec_rates: &BTreeMap<u64, f32>,
 ) -> (Vec<f64>, Vec<f64>) {
-    let l_sum = shared_lengths
-        .iter()
-        .map(|(lnode, _)| vcf.get_pos(lnode.stop_idx) - vcf.get_pos(lnode.start_idx))
-        .sum::<u64>();
-    let r_sum = shared_lengths
-        .iter()
-        .map(|(_, rnode)| vcf.get_pos(rnode.stop_idx) - vcf.get_pos(rnode.start_idx))
-        .sum::<u64>();
-    tracing::debug!("Sums bp: left {l_sum:.3}, right {r_sum:.3})",);
+    // let l_sum = shared_lengths
+    //     .iter()
+    //     .map(|(lnode, _)| vcf.get_pos(lnode.stop_idx) - vcf.get_pos(lnode.start_idx))
+    //     .sum::<u64>();
+    // let r_sum = shared_lengths
+    //     .iter()
+    //     .map(|(_, rnode)| vcf.get_pos(rnode.stop_idx) - vcf.get_pos(rnode.start_idx))
+    //     .sum::<u64>();
+    // tracing::debug!("Sums bp: left {l_sum:.3}, right {r_sum:.3})",);
 
-    let l_lengths = shared_lengths
+    let variant_cm = match rec_rates.range(variant_pos..).next() {
+        None => {
+            let last_rate = rec_rates.range(..variant_pos).next_back().unwrap();
+            tracing::warn!("Recombination rate data ends at {}, but a marker has position {}. No centimorgans are added after the end of recombination rate data.", last_rate.0, variant_pos);
+            last_rate
+        }
+        Some(variant_cm) => variant_cm,
+    };
+
+    let mut l_lengths = shared_lengths
         .iter()
-        // .map(|(lnode, _)| vcf.get_pos(lnode.start_idx + 1))
         .map(|(lnode, _)| vcf.get_pos(lnode.start_idx))
         .map(|start| {
             // Transform from pos to centimorgans by selecting nearest value to the left in the
             // BTreeMap
-            let variant_cm = rec_rates.range(variant_pos..).next().unwrap();
             let break_cm = if let Some(cm) = rec_rates.range(..start).next_back() {
                 cm
             } else {
@@ -90,9 +97,14 @@ pub fn get_sums(
 
     let r_lengths = shared_lengths
         .iter()
-        .map(|(_, rnode)| vcf.get_pos(rnode.stop_idx))
+        .map(|(_, rnode)| {
+            if rnode.stop_idx == vcf.ncoords() {
+                vcf.get_pos(rnode.stop_idx - 1)
+            } else {
+                vcf.get_pos(rnode.stop_idx)
+            }
+        })
         .map(|stop| {
-            let variant_cm = rec_rates.range(variant_pos..).next().unwrap();
             let break_cm = if let Some(cm) = rec_rates.range(stop..).next() {
                 cm
             } else {

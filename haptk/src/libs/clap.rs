@@ -439,8 +439,10 @@ impl SubCommand {
             | SubCommand::CompareToHst { threads, .. }
             | SubCommand::Coverage { threads, .. }
             | SubCommand::MrcaScan { threads, .. }
-            | SubCommand::Bhst { threads, .. }
             | SubCommand::Uhst { threads, .. }
+            | SubCommand::Bhst { threads, .. }
+            | SubCommand::BhstSegregation { threads, .. }
+            | SubCommand::BhstScan { threads, .. }
             | SubCommand::BhstGwas { threads, .. }
             | SubCommand::BhstQtGwas { threads, .. }
             | SubCommand::BhstMrcaGwas { threads, .. } => *threads,
@@ -462,6 +464,7 @@ impl SubCommand {
             | SubCommand::Uhst { log_and_verbosity, .. }
             | SubCommand::Bhst { log_and_verbosity, .. }
             | SubCommand::BhstScan { log_and_verbosity,  .. }
+            | SubCommand::BhstSegregation { log_and_verbosity,  .. }
             | SubCommand::BhstMrcaGwas { log_and_verbosity,  .. }
             | SubCommand::BhstQtGwas { log_and_verbosity,  .. }
             | SubCommand::BhstGwas { log_and_verbosity,  .. }
@@ -506,6 +509,7 @@ impl SubCommand {
             | SubCommand::Uhst { args: ClapStandardArgs { outdir, .. }, ..}
             | SubCommand::Bhst { args: ClapStandardArgs { outdir, .. }, ..}
             | SubCommand::BhstScan { args: ClapStandardArgs { outdir, .. }, ..}
+            | SubCommand::BhstSegregation { args: ClapConciseArgs { outdir, .. }, ..}
             | SubCommand::BhstMrcaGwas { args: ClapConciseArgs { outdir, .. }, ..}
             | SubCommand::BhstQtGwas { args: ClapConciseArgs { outdir, .. }, ..}
             | SubCommand::BhstGwas { args: ClapConciseArgs { outdir, .. }, ..}

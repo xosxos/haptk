@@ -2,10 +2,7 @@ use std::borrow::Borrow;
 use std::path::PathBuf;
 use std::{collections::BTreeMap, sync::Arc};
 
-use color_eyre::{
-    eyre::{eyre, WrapErr},
-    Result,
-};
+use color_eyre::Result;
 use petgraph::graph::NodeIndex;
 use petgraph::{Direction, Graph};
 
@@ -17,7 +14,7 @@ use crate::structs::PhasedMatrix;
 use crate::subcommands::hst_gwas::{
     self, find_homozygosity_no_ctrl, get_marker_id, get_sender, return_assoc, write_assoc, Assoc,
 };
-use crate::subcommands::hst_scan::{Node, Trees};
+use crate::subcommands::hst_scan::{read_tree_file, Node, Trees};
 use crate::utils::push_to_output;
 
 #[doc(hidden)]
@@ -69,6 +66,7 @@ pub fn run(
         minimize_mrca(node_idx, min_value, tree, &rec_rates, vcfr.clone())
     };
 
+    let start_value = f64::MAX;
     let assoc = return_assoc(
         &trees,
         (nmin_samples, nmax_samples, nmin_variants, nmax_variants),
@@ -76,6 +74,7 @@ pub fn run(
         minimizer,
         tx,
         rower,
+        start_value,
     );
 
     write_assoc(MrcaAssocRow::header(), assoc, writer)?;
@@ -93,14 +92,6 @@ pub fn read_vcfs(args: &mut StandardArgs, samples: Vec<String>) -> Result<Phased
     };
 
     Ok(vcf)
-}
-
-pub fn read_tree_file(path: PathBuf) -> Result<Trees> {
-    let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
-    let reader = bgzip::BGZFReader::new(file)?;
-    let rows = serde_json::from_reader(reader)?;
-
-    Ok(rows)
 }
 
 #[derive(Clone, Debug)]
@@ -162,12 +153,10 @@ impl MrcaAssocRow {
             "MarkerID",
             "bp_len",
             "marker_len",
-            "AF_case",
             "N_case",
             "N_case_hom",
             "N_case_het",
             "mrca",
-            "SampleID",
         ]
     }
 }
@@ -233,6 +222,7 @@ pub fn calculate_mrca<T: Borrow<PhasedMatrix>>(
     let vcf = vcf.borrow();
     let mut idxs = vec![idx];
 
+    // Find the majority branch down from the given starting node
     loop {
         let children = tree.neighbors_directed(*idxs.last().unwrap(), Direction::Outgoing);
 
@@ -240,6 +230,8 @@ pub fn calculate_mrca<T: Borrow<PhasedMatrix>>(
             break;
         }
 
+        // Choose the child node with most samples
+        // NOTE: Does not take into account if an equal amount of samples are present
         let new_idx = children
             .max_by_key(|i| tree.node_weight(*i).unwrap().indexes.len())
             .unwrap();
@@ -250,7 +242,13 @@ pub fn calculate_mrca<T: Borrow<PhasedMatrix>>(
     let mut breakpoints = vec![];
     let mut used_indexes = vec![];
 
+    // Iterate nodes from the leaf towards the root
     let mut nodes_iter = idxs.iter().rev();
+
+    // Initialize the leaf node for comparison
+    // Also, no majority exists for leaf nodes of 1 sample
+    // NOTE: Sometimes genotyping data runs out and leaf nodes have more than 1 sample
+    // NOTE: We don't account for it, because I suppose in this context the Gamma method makes no sense anyways
     let mut prev_idx = nodes_iter.next().unwrap();
 
     for idx in nodes_iter {
@@ -275,7 +273,7 @@ pub fn calculate_mrca<T: Borrow<PhasedMatrix>>(
 }
 
 ///
-/// The original R algorithm by Gandolfo et al translated to Rust.
+/// The original R algorithm by Gandolfo et al translated to Rust without confidence intervals
 /// <https://github.com/bahlolab/DatingRareMutations>
 ///
 // fn bhst_mrca_independent(

@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use color_eyre::{eyre::ensure, Result};
+use color_eyre::{
+    eyre::{ensure, eyre, WrapErr},
+    Result,
+};
 use ndarray::s;
 use petgraph::prelude::NodeIndex;
 use petgraph::{Direction, Graph};
@@ -43,7 +46,7 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
         .filter(|idx| *idx % step_size == 0)
         .map(|idx| {
             if idx % (vcf.ncoords() / 10) == 0 {
-                tracing::info!("A tenth has passed");
+                tracing::info!("Finished constructing 10% of the trees...");
             }
 
             TreeRow {
@@ -119,8 +122,18 @@ fn write_trees(trees: Trees, path: PathBuf) -> Result<()> {
     writer.close()?;
     // writer.flush()?;
 
+    tracing::info!("Finished writing trees to file.");
     tracing::debug!("Wrote trees file in {:?}", now.elapsed());
     Ok(())
+}
+
+pub fn read_tree_file(path: PathBuf) -> Result<Trees> {
+    let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
+    let reader = bgzip::BGZFReader::new(file)?;
+    let trees: Trees = serde_json::from_reader(reader)?;
+    tracing::info!("Read HSTs with the following metadata: \ncoords: {},\nselection: {:?},\nnsamples:{},\ninfo_limit: {:?}", trees.metadata.coords, trees.metadata.selection, trees.metadata.samples.len(), trees.metadata.info_limit);
+
+    Ok(trees)
 }
 
 impl std::fmt::Display for Node {
