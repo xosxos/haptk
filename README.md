@@ -144,8 +144,7 @@ haptk bhst $biallelic \
 # To visualize graphs for publication, using ETE3 is recommended
 # Install ETE from http://etetoolkit.org/download/ and the required python dependencies
 
-# For my environment, this was succesfully done
-# by adding `conda-forge` and `bioconda` channels to `mamba` and running:
+# Try adding `conda-forge` and `bioconda` channels to `mamba` and running:
 # mamba install ete3 rustworkx
 
 # Example scripts for ETE3 visualization
