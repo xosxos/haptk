@@ -11,8 +11,8 @@ homepage = "https://github.com/xosxos/haptk"
 [dependencies]
 haptk = { version = "0.1", path = "../haptk", features = ["clap"] }
 clap = { version = "=4.1.14", features = ["derive"] }
-eframe = {version = "0.21.0"}
-egui = {version = "0.21.0"}
+eframe = {version = "0.23.0"}
+egui = {version = "0.23.0"}
 egui_file = {version = "0.8"}
 tracing = "0.1"
 tracing-subscriber = "0.3"
