@@ -118,7 +118,7 @@ haptk compare-to-haplotype $biallelic \
   --coords chr9:27573534 \
   --samples results/finnish_als_core_ht_carriers.ids \
   --mark-samples over_20_repeats.ids \
-  --haplotype examples/data/finnish_als_bhst_mbah.csv \
+  --haplotype examples/data/finnish_als_uhst_mbah.csv \
   -vvv \
   -o results \
   --prefix finnish_als
