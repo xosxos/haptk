@@ -1,0 +1,3 @@
+seqname	 source	 feature 	 start	 stop	 score	 strand	 frame	 attribute
+chr9	test	test	2	10	1	-	1	test
+chr9	test	test	28	35	1	-	1	core

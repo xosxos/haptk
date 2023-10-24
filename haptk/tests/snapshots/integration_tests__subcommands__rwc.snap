@@ -1,0 +1,6 @@
+---
+source: tests/integration_tests.rs
+expression: res
+---
+"chr,pos,snp_count,bp_length\nchr9,4,57,57\n"
+

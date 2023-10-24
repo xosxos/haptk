@@ -1,0 +1,6 @@
+---
+source: haptk/tests/test_compare_to_haplotype.rs
+expression: res
+---
+"id,start,stop,length,markers,is_decoy,is_longest\nSAMPLE1,32,32,0,0,na,false\nSAMPLE1,17,47,30,30,na,true\nSAMPLE2,32,32,0,0,na,false\nSAMPLE2,17,47,30,30,na,true\nSAMPLE3,32,32,0,0,na,false\nSAMPLE3,17,47,30,30,na,true\nSAMPLE4,32,32,0,0,na,false\nSAMPLE4,17,47,30,30,na,true\nSAMPLE5,32,32,0,0,na,false\nSAMPLE5,17,47,30,30,na,true\nSAMPLE6,32,32,0,0,na,false\nSAMPLE6,17,47,30,30,na,true\nSAMPLE7,32,32,0,0,na,false\nSAMPLE7,17,47,30,30,na,true\nSAMPLE8,32,32,0,0,na,false\nSAMPLE8,17,47,30,30,na,true\nSAMPLE9,32,32,0,0,na,false\nSAMPLE9,17,47,30,30,na,true\nSAMPLE10,32,32,0,0,na,false\nSAMPLE10,17,47,30,30,na,true\nSAMPLE11,32,32,0,0,na,false\nSAMPLE11,17,47,30,30,na,true\nSAMPLE12,32,32,0,0,na,false\nSAMPLE12,17,47,30,30,na,true\nSAMPLE13,32,32,0,0,na,false\nSAMPLE13,17,47,30,30,na,true\nSAMPLE14,18,46,28,28,na,false\nSAMPLE14,17,47,30,30,na,true\n"
+

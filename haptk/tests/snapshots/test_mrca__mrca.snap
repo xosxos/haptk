@@ -1,0 +1,6 @@
+---
+source: haptk/tests/test_mrca.rs
+expression: res
+---
+"Independent genealogy:\nage: 16.141 CI (12.414, 21.010)\nCorrelated genealogy:\nage: 20.521 CI (3.985, 37.537)"
+

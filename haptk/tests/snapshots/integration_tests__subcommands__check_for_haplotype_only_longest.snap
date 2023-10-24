@@ -1,0 +1,6 @@
+---
+source: tests/integration_tests.rs
+expression: res
+---
+"id,match\nSAMPLE1_1,true\nSAMPLE2_1,true\nSAMPLE3_1,true\nSAMPLE4_1,true\nSAMPLE5_1,true\nSAMPLE6_1,true\nSAMPLE7_1,true\nSAMPLE8_2,true\nSAMPLE9_2,true\nSAMPLE10_2,true\nSAMPLE11_2,true\nSAMPLE12_2,true\nSAMPLE13_2,true\nSAMPLE14_2,true\n"
+

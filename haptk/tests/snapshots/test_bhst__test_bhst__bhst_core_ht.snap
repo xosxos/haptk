@@ -1,0 +1,6 @@
+---
+source: haptk/tests/test_bhst.rs
+expression: res
+---
+"contig,pos,ref,alt,gt\n"
+

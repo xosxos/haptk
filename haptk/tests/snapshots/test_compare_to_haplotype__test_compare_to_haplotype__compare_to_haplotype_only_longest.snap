@@ -1,0 +1,6 @@
+---
+source: haptk/tests/test_compare_to_haplotype.rs
+expression: res
+---
+"id,start,stop,length,markers,is_decoy,is_longest\nSAMPLE1,17,47,30,30,na,na\nSAMPLE2,17,47,30,30,na,na\nSAMPLE3,17,47,30,30,na,na\nSAMPLE4,17,47,30,30,na,na\nSAMPLE5,17,47,30,30,na,na\nSAMPLE6,17,47,30,30,na,na\nSAMPLE7,17,47,30,30,na,na\nSAMPLE8,17,47,30,30,na,na\nSAMPLE9,17,47,30,30,na,na\nSAMPLE10,17,47,30,30,na,na\nSAMPLE11,17,47,30,30,na,na\nSAMPLE12,17,47,30,30,na,na\nSAMPLE13,17,47,30,30,na,na\nSAMPLE14,17,47,30,30,na,na\n"
+

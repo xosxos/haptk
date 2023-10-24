@@ -1,0 +1,6 @@
+---
+source: tests/integration_tests.rs
+expression: res
+---
+"contig,pos,ref,alt,gt\nchr9,17,A,C,0\nchr9,18,G,T,0\nchr9,19,A,C,0\nchr9,20,G,T,0\nchr9,21,A,C,0\nchr9,22,G,T,0\nchr9,23,A,C,0\nchr9,24,G,T,0\nchr9,25,A,C,0\nchr9,26,G,T,0\nchr9,27,A,C,0\nchr9,28,G,T,0\nchr9,29,A,C,0\nchr9,30,G,T,0\nchr9,31,A,C,0\nchr9,32,G,T,1\nchr9,33,A,C,0\nchr9,34,G,T,0\nchr9,35,A,C,0\nchr9,36,G,T,0\nchr9,37,A,C,0\nchr9,38,G,T,0\nchr9,39,A,C,0\nchr9,40,G,T,0\nchr9,41,A,C,0\nchr9,42,G,T,0\nchr9,43,A,C,0\nchr9,44,G,T,0\nchr9,45,A,C,0\nchr9,46,G,T,0\nchr9,47,A,C,0\n"
+

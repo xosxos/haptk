@@ -1,0 +1,36 @@
+##fileformat=VCFv4.2
+##fileDate=2023-10-24 13:49:31.718878385 UTC
+##source=HAPTK
+##FILTER=<ID=PASS,Description="All filters passed">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##contig=<ID=chr9>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	TEST1
+chr9	18	chr9_18_G_T	G	T	.	PASS	.	GT	0
+chr9	19	chr9_19_A_C	A	C	.	PASS	.	GT	0
+chr9	20	chr9_20_G_T	G	T	.	PASS	.	GT	0
+chr9	21	chr9_21_A_C	A	C	.	PASS	.	GT	0
+chr9	22	chr9_22_G_T	G	T	.	PASS	.	GT	0
+chr9	23	chr9_23_A_C	A	C	.	PASS	.	GT	0
+chr9	24	chr9_24_G_T	G	T	.	PASS	.	GT	0
+chr9	25	chr9_25_A_C	A	C	.	PASS	.	GT	0
+chr9	26	chr9_26_G_T	G	T	.	PASS	.	GT	0
+chr9	27	chr9_27_A_C	A	C	.	PASS	.	GT	0
+chr9	28	chr9_28_G_T	G	T	.	PASS	.	GT	0
+chr9	29	chr9_29_A_C	A	C	.	PASS	.	GT	0
+chr9	30	chr9_30_G_T	G	T	.	PASS	.	GT	0
+chr9	31	chr9_31_A_C	A	C	.	PASS	.	GT	0
+chr9	32	chr9_32_G_T	G	T	.	PASS	.	GT	1
+chr9	33	chr9_33_A_C	A	C	.	PASS	.	GT	0
+chr9	34	chr9_34_G_T	G	T	.	PASS	.	GT	0
+chr9	35	chr9_35_A_C	A	C	.	PASS	.	GT	0
+chr9	36	chr9_36_G_T	G	T	.	PASS	.	GT	0
+chr9	37	chr9_37_A_C	A	C	.	PASS	.	GT	0
+chr9	38	chr9_38_G_T	G	T	.	PASS	.	GT	0
+chr9	39	chr9_39_A_C	A	C	.	PASS	.	GT	0
+chr9	40	chr9_40_G_T	G	T	.	PASS	.	GT	0
+chr9	41	chr9_41_A_C	A	C	.	PASS	.	GT	0
+chr9	42	chr9_42_G_T	G	T	.	PASS	.	GT	0
+chr9	43	chr9_43_A_C	A	C	.	PASS	.	GT	0
+chr9	44	chr9_44_G_T	G	T	.	PASS	.	GT	0
+chr9	45	chr9_45_A_C	A	C	.	PASS	.	GT	0
+chr9	46	chr9_46_G_T	G	T	.	PASS	.	GT	0

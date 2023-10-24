@@ -1,0 +1,6 @@
+---
+source: haptk/tests/test_compare_haplotypes.rs
+expression: res
+---
+"pos,tests/results/uhst_mbah.csv,tests/results/uhst_shared_core_haplotype_only_longest.csv\n5,A,-\n6,G,-\n7,A,-\n8,G,-\n9,A,-\n10,G,-\n11,A,-\n12,G,-\n13,A,-\n14,G,-\n15,A,-\n16,G,-\n17,A,A\n18,G,G\n19,A,A\n20,G,G\n21,A,A\n22,G,G\n23,A,A\n24,G,G\n25,A,A\n26,G,G\n27,A,A\n28,G,G\n29,A,A\n30,G,G\n31,A,A\n32,T,T\n33,A,A\n34,G,G\n35,A,A\n36,G,G\n37,A,A\n38,G,G\n39,A,A\n40,G,G\n41,A,A\n42,G,G\n43,A,A\n44,G,G\n45,A,A\n46,G,G\n47,A,A\n48,G,-\n49,A,-\n50,G,-\n51,A,-\n52,G,-\n53,A,-\n54,G,-\n55,A,-\n56,G,-\n57,A,-\n58,G,-\n59,A,-\n"
+

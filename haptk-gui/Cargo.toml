@@ -1,0 +1,18 @@
+[package]
+name = "haptk-gui"
+version = "0.1.0"
+authors = ["Osma S. Rautila"]
+edition = "2021"
+description = "HAPTK GUI - Haplotype analysis toolkit GUI"
+license = "GPL-3.0-only"
+readme = "README.md"
+homepage = "https://github.com/xosxos/haptk"
+
+
+[dependencies]
+haptk = { version = "0.1", path = "../haptk", features = ["clap"] }
+color-eyre = "0.6.2"
+klask = { git = "https://github.com/xosxos/klask" }
+
+
+

@@ -1,0 +1,6 @@
+---
+source: haptk/tests/test_annotate_haplotype.rs
+expression: res
+---
+"chr9\t18\tG\tT\t0\t\nchr9\t19\tA\tC\t0\t\nchr9\t20\tG\tT\t0\t\nchr9\t21\tA\tC\t0\t\nchr9\t22\tG\tT\t0\t\nchr9\t23\tA\tC\t0\t\nchr9\t24\tG\tT\t0\t\nchr9\t25\tA\tC\t0\t\nchr9\t26\tG\tT\t0\t\nchr9\t27\tA\tC\t0\t\nchr9\t28\tG\tT\t0\tcore\nchr9\t29\tA\tC\t0\tcore\nchr9\t30\tG\tT\t0\tcore\nchr9\t31\tA\tC\t0\tcore\nchr9\t32\tG\tT\t1\tcore\nchr9\t33\tA\tC\t0\tcore\nchr9\t34\tG\tT\t0\tcore\nchr9\t35\tA\tC\t0\tcore\nchr9\t36\tG\tT\t0\t\nchr9\t37\tA\tC\t0\t\nchr9\t38\tG\tT\t0\t\nchr9\t39\tA\tC\t0\t\nchr9\t40\tG\tT\t0\t\nchr9\t41\tA\tC\t0\t\nchr9\t42\tG\tT\t0\t\nchr9\t43\tA\tC\t0\t\nchr9\t44\tG\tT\t0\t\nchr9\t45\tA\tC\t0\t\nchr9\t46\tG\tT\t0\t\n"
+

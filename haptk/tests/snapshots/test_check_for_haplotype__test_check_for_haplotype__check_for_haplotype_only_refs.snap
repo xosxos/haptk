@@ -1,0 +1,6 @@
+---
+source: haptk/tests/test_check_for_haplotype.rs
+expression: res
+---
+"id,match\nSAMPLE1,false\nSAMPLE2,false\nSAMPLE3,false\nSAMPLE4,false\nSAMPLE5,false\nSAMPLE6,false\nSAMPLE7,false\nSAMPLE8,false\nSAMPLE9,false\nSAMPLE10,false\nSAMPLE11,false\nSAMPLE12,false\nSAMPLE13,false\n"
+

@@ -1,0 +1,6 @@
+---
+source: haptk/tests/test_uhst.rs
+expression: res
+---
+"contig,pos,ref,alt,gt\nchr9,31,A,C,0\nchr9,32,G,T,0\nchr9,33,A,C,0\n"
+

@@ -1,0 +1,6 @@
+---
+source: tests/integration_tests.rs
+expression: res
+---
+"Independent genealogy:\nage: 7.850 CI (5.410, 11.422)\nCorrelated genealogy:\nage: 8.432 CI (5.410, 11.422)"
+

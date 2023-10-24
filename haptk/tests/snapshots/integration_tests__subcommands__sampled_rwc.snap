@@ -1,0 +1,6 @@
+---
+source: tests/integration_tests.rs
+expression: res
+---
+"chr,pos,count,snp_count_avg,bp_length_avg,samples\nchr9,1,100,62,62,SAMPLE1&SAMPLE10&SAMPLE11&SAMPLE12&SAMPLE13&SAMPLE14&SAMPLE2&SAMPLE3&SAMPLE4&SAMPLE5&SAMPLE6&SAMPLE7&SAMPLE8&SAMPLE9\n"
+

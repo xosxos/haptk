@@ -1,0 +1,58 @@
+[package]
+name = "haptk"
+version = "0.1.4"
+authors = ["Osma S. Rautila"]
+edition = "2021"
+description = "HAPTK - Haplotype analysis toolkit"
+license = "GPL-3.0-only"
+readme = "README.md"
+homepage = "https://github.com/xosxos/haptk"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+doctest = false
+
+[[bin]]
+name = "haptk"
+path = "src/bin.rs"
+
+[features]
+default = ["clap"]
+clap = ["dep:clap"]
+
+[dependencies]
+alphanumeric-sort = "1.5"
+bgzip = "0.3.1"
+bio = "1.3"
+niffler = "2.5"
+ndarray = { version = "0.15", features = ["rayon", "blas", "serde"] }
+ndarray-npy = { version = "0.8", default-features = false }
+termion = "2.0"
+color-eyre = "0.6.2"
+rayon = "1.7"
+serde = { version = "1.0", features = ["derive"] }
+rand = "0.8.5"
+svg = "0.13"
+csv = "1.2"
+itertools = "0.11"
+serde_json = "1.0"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "time"] }
+time = { version = "0.3", default-features = false, features = ["local-offset"] }
+petgraph = { version = "0.6", default-features = false, features = ["serde-1"] }
+rust-htslib = { version = "0.44", default-features = false, features = ['bzip2'] }
+polars = { version = "=0.33.2", default-features = false, features = ["lazy", "is_in", "csv", "fmt", "serde"]}
+image = { version = "0.24.5", default-features = false, features = ['png'] }
+plotters = { version = "0.3", default-features = false, features = ['bitmap_backend', 'line_series', 'bitmap_encoder'] }
+statrs = { version = "0.16", default-features = false }
+chrono = { version = "=0.4.31" }
+
+# Optional
+clap = { version = "=4.1.14", optional = true, features = ["derive"] }
+
+[dev-dependencies]
+insta = { version = "1.26.0", default-features = false, features = ["yaml"] }
+
+

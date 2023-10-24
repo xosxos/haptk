@@ -1,0 +1,6 @@
+---
+source: tests/integration_tests.rs
+expression: res
+---
+"id,start,stop,length,markers,is_decoy,is_longest\nSAMPLE1_1,17,47,30,30,na,false\nSAMPLE2_1,17,47,30,30,na,false\nSAMPLE3_1,17,47,30,30,na,false\nSAMPLE4_1,17,47,30,30,na,false\nSAMPLE5_1,17,47,30,30,na,false\nSAMPLE6_1,17,47,30,30,na,false\nSAMPLE7_1,17,47,30,30,na,false\nSAMPLE8_2,17,47,30,30,na,false\nSAMPLE9_2,17,47,30,30,na,false\nSAMPLE10_2,17,47,30,30,na,false\nSAMPLE11_2,17,47,30,30,na,false\nSAMPLE12_2,17,47,30,30,na,false\nSAMPLE13_2,17,47,30,30,na,false\nSAMPLE14_2,17,47,30,30,na,false\n"
+
