@@ -67,8 +67,10 @@ def load_df(name):
     sorted_start = df['start'].sort_values().tolist()
     sorted_stop = df['stop'].sort_values().tolist()
 
-    start_last = sorted_start[40]
-    stop_last = sorted_stop[-40]
+    cutoff = int(len(sorted_start) * 0.2)
+
+    start_last = sorted_start[cutoff]
+    stop_last = sorted_stop[-cutoff]
 
     df['start'] = df['start'].apply(lambda x: start_last if x < start_last else x)
     df['stop'] = df['stop'].apply(lambda x: stop_last if x > stop_last else x)
@@ -100,8 +102,8 @@ pd.set_option('display.max_rows', 1000)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('data', type=str)
-parser.add_argument('--rec-rates', type=str, required=True)
-parser.add_argument('--coords', type=str, required=True)
+parser.add_argument('-r', '--rec-rates', type=str, required=True)
+parser.add_argument('-c', '--coords', type=str, required=True)
 parser.add_argument('--gene', type=str, required=True)
 parser.add_argument('--width', type=int, default=1440)
 parser.add_argument('--height', type=int, default=2560)

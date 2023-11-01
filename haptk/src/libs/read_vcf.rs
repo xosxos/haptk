@@ -231,7 +231,8 @@ fn construct_phased_matrix(
 
     let mut vcf = PhasedMatrix::new(0, matrix, samples, coords, &selection);
 
-    vcf.variant_idx = vcf.get_first_idx_on_right_by_pos(variant_pos);
+    // vcf.variant_idx = vcf.get_first_idx_on_right_by_pos(variant_pos);
+    vcf.variant_idx = vcf.get_nearest_idx_by_pos(variant_pos);
 
     if selection == &Selection::OnlyAlts || selection == &Selection::OnlyRefs {
         vcf.idx_by_pos(variant_pos).ok_or_else(|| {

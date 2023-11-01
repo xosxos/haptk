@@ -20,13 +20,13 @@ def draw_tree(hst, t, output, samples, samples_to_tag):
     lstyle = NodeStyle()
     lstyle["fgcolor"] = lnode_color
     lstyle["shape"] = "square"
-    lstyle["size"] = 2
+    lstyle["size"] = 5
     lstyle["hz_line_type"] = 0
     lstyle["vt_line_type"] = 0
 
     nstyle = NodeStyle()
     nstyle["fgcolor"] = nnode_color
-    nstyle["size"] = 2
+    nstyle["size"] = 5
     nstyle["hz_line_type"] = 0
     nstyle["vt_line_type"] = 0
     nstyle["shape"] = "square"
@@ -38,7 +38,7 @@ def draw_tree(hst, t, output, samples, samples_to_tag):
         label = len(node_data["indexes"])
 
         if not n.is_leaf():
-            F = TextFace(label, tight_text=True, penwidth=30)
+            F = TextFace(label, tight_text=True, penwidth=30, fsize=8)
             F.rotation = 270
             n.add_face(F, column=0)
 
@@ -57,12 +57,10 @@ def draw_tree(hst, t, output, samples, samples_to_tag):
     ts.branch_vertical_margin = 10
     ts.show_leaf_name = False
     ts.show_scale = False
-    # ts.orientation = 1
-    # ts.rotation = 90
 
     ts.mode = "c"
     ts.arc_start = 0 # 0 degrees = 15:00 o'clock
-    ts.arc_span = 345
+    ts.arc_span = 350
     ts.min_leaf_separation = 0
     ts.root_opening_factor = 1
     ts.optimal_scale_level = "full"

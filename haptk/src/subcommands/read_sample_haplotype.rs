@@ -4,7 +4,7 @@ use crate::{
     args::StandardArgs,
     core::{open_csv_writer, parse_coords},
     read_vcf::read_vcf_to_matrix,
-    structs::HapVariant,
+    structs::{HapVariant, Ploidy},
     utils::push_to_output,
 };
 
@@ -24,10 +24,6 @@ pub fn run(args: StandardArgs) -> Result<()> {
         vcf.nsamples() == 1,
         "Input should only be a single sample id"
     );
-
-    let ht1 = vcf.find_haplotype_for_sample(contig, 0..vcf.ncoords(), 0);
-    let ht2 = vcf.find_haplotype_for_sample(contig, 0..vcf.ncoords(), 1);
-
     let sample_name = vcf.samples()[0].clone();
     let mut sh_output = args.output.clone();
     push_to_output(
@@ -37,17 +33,29 @@ pub fn run(args: StandardArgs) -> Result<()> {
         "csv",
     );
     let mut writer = open_csv_writer(sh_output)?;
-    write_haplotype(&mut writer, ht1)?;
 
-    let mut sh_output = args.output.clone();
-    push_to_output(
-        &args,
-        &mut sh_output,
-        &format!("{sample_name}_haplotype_2"),
-        "csv",
-    );
-    let mut writer = open_csv_writer(sh_output)?;
-    write_haplotype(&mut writer, ht2)?;
+    match vcf.ploidy {
+        Ploidy::Haploid => {
+            let ht1 = vcf.find_haplotype_for_sample(contig, 0..vcf.ncoords(), 0);
+            write_haplotype(&mut writer, ht1)?;
+        }
+        Ploidy::Diploid => {
+            let ht1 = vcf.find_haplotype_for_sample(contig, 0..vcf.ncoords(), 0);
+            let ht2 = vcf.find_haplotype_for_sample(contig, 0..vcf.ncoords(), 1);
+            write_haplotype(&mut writer, ht1)?;
+
+            let mut sh_output = args.output.clone();
+            push_to_output(
+                &args,
+                &mut sh_output,
+                &format!("{sample_name}_haplotype_2"),
+                "csv",
+            );
+            let mut writer = open_csv_writer(sh_output)?;
+            write_haplotype(&mut writer, ht2)?;
+        }
+        Ploidy::Mixed => panic!("Mixed ploidy is not supported."),
+    };
 
     Ok(())
 }

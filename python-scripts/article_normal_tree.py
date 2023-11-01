@@ -6,7 +6,7 @@ import gzip
 
 import hst_utils
 
-def draw_tree(hst, t, output, samples, samples_to_tag):
+def draw_tree(hst, t, output, samples, samples_to_tag, proportions):
     ts = TreeStyle()
     style = NodeStyle()
     style["size"] = 0
@@ -36,6 +36,12 @@ def draw_tree(hst, t, output, samples, samples_to_tag):
 
         node_data = hst.get_node_data(int(n.name))
         label = len(node_data["indexes"])
+
+        if proportions:
+            top_data = hst.get_node_data(int('0'))
+            samplen = len(top_data["indexes"])
+            prc = label / samplen
+            label = f"{label} ({prc:.2f})"
 
         F = TextFace(label, tight_text=True, penwidth=30)
         F.rotation = 270
@@ -67,6 +73,7 @@ parser.add_argument('hst', type=str)
 parser.add_argument('--min-size', type=int)    
 parser.add_argument('--hard-cut', action="store_true")    
 parser.add_argument('--ids', type=str)
+parser.add_argument('--proportions', action="store_true")
 parser.add_argument('-o', '--output', type=str)
 
 args = parser.parse_args()
@@ -89,9 +96,9 @@ if args.ids:
         samples_to_tag.append(line.strip())
 
 if args.output:
-    draw_tree(HST, ete3_tree, args.output, samples, samples_to_tag)
+    draw_tree(HST, ete3_tree, args.output, samples, samples_to_tag, args.proportions)
 else:
-    draw_tree(HST, ete3_tree,  "mytree.png", samples, samples_to_tag)
+    draw_tree(HST, ete3_tree,  "mytree.png", samples, samples_to_tag, args.proportions)
 
 
 

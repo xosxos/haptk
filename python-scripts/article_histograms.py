@@ -15,8 +15,8 @@ args = parser.parse_args()
 illu = pd.read_csv(args.illu)
 affy = pd.read_csv(args.affy)
 
-illu['cohort'] = 'Illumina'
-affy['cohort'] = 'Affymetrix'
+illu['cohort'] = 'Tampere ALS-FTD and CTRL cohorts'
+affy['cohort'] = 'Helsinki ALS'
 
 df = pd.concat([illu, affy], ignore_index = True)
 print(df)
@@ -27,8 +27,8 @@ p = sns.color_palette("Set2")
 cols=[p[0], p[5]]
 cols=["#74e3e3", "#dc6ca6"]
 
-sns.barplot(y=df.uhst_avg_all, x=df.group, hue=df.cohort, ax=axs[0], palette=cols).set(title="")
-sns.barplot(y=df.mrca_corr, x=df.group, hue=df.cohort, ax=axs[1], palette=cols).set(title="")
+sns.barplot(y=df.avg_markers, x=df.group, hue=df.cohort, ax=axs[0], palette=cols).set(title="")
+sns.barplot(y=df.mrca, x=df.group, hue=df.cohort, ax=axs[1], palette=cols).set(title="")
 
 axs[0].set_ylabel('Avg. segment length (markers)', fontsize=20)
 axs[1].set_ylabel('MRCA estimate (generations)', fontsize=20)
@@ -53,7 +53,7 @@ axs[1].get_legend().remove()
 # axs[1].set_xlabel('Group', fontsize=25)
 
 
-plt.tight_layout()
+# plt.tight_layout()
 
 if args.output:
     plt.savefig(args.output)

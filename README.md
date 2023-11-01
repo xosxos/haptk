@@ -141,18 +141,39 @@ haptk bhst $biallelic \
   --prefix 20kb_tagged
 
 
+
+# Compare 1kg samples to the Finnish ALS HST
+wget https://zenodo.org/records/10060940/files/pub_bhst_only_longest.hst.gz
+
+haptk compare-to-hst $biallelic \
+  -s all \
+  -c chr9:27573534 \
+  -o results \
+  --hst pub_bhst_only_longest.hst.gz
+  
+
 # To visualize graphs for publication, using ETE3 is recommended
 # Install ETE from http://etetoolkit.org/download/ and the required python dependencies
 
 # Try adding `conda-forge` and `bioconda` channels to `mamba` and running:
-# mamba install ete3 rustworkx
+# mamba install ete3 rustworkx pandas matplotlib seaborn
 
 # Example scripts for ETE3 visualization
+
+# Compare to HST visualization
+python ./python-scripts/article_compare_hsts.py \
+  --hst pub_bhst_only_longest.hst.gz \
+  --match-hst results/match_hst_only_longest.hst.gz \
+  --min-size 1 \
+  --output results
+
+# Circular HST visualization
 python python-scripts/article_tagged_tree.py results/20kb_tagged_bhst_only_longest.hst.gz \
   --min-size 1 \
   --ids results/over_20kb_sharing_samples.ids \
   --output 20kb_tagged_bhst_only_longest.png
 
+# Normal HST visualization
 python python-scripts/article_normal_tree.py results/20_repeat_tagged_uhst_left.hst.gz \
   --min-size 10 \
   --output 20_repeat_tagged_uhst_left.png

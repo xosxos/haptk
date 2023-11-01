@@ -94,8 +94,8 @@ pub fn run(
 
             // Use start and end from the haplotype to select columns from the matrix by range
 
-            let start = vcf.idx_by_hapvariant(start).unwrap();
-            let mut stop = vcf.idx_by_hapvariant(end).unwrap();
+            let start = vcf.get_first_idx_on_left_by_pos(start.pos);
+            let mut stop = vcf.get_first_idx_on_right_by_pos(end.pos);
             if stop != vcf.ncoords() {
                 stop += 1;
             }
@@ -116,13 +116,13 @@ pub fn run(
 
     if ht.len() > vcf.ncoords() {
         tracing::warn!(
-            "Haplotype has more variants than the given genotypes {} vs {}",
+            "Haplotype has more variants than the VCF {} vs {}",
             ht.len(),
             vcf.ncoords()
         );
     } else if ht.len() < vcf.ncoords() {
         tracing::warn!(
-            "Haplotype has less variants than the given genotypes {} vs {}",
+            "Haplotype has less variants than the VCF {} vs {}",
             ht.len(),
             vcf.ncoords()
         );
@@ -201,12 +201,12 @@ pub fn transform_gt_matrix_to_match_matrix(
 
     if coords_na != 0 {
         tracing::warn!(
-            "In the haplotype range {coords_na} markers were present in the vcf, but not in the haplotype. These were disregarded."
+            "In the haplotype range {coords_na} markers were present in the VCF, but not in the haplotype. These were disregarded."
         );
     }
 
     tracing::info!(
-        "The haplotype file and the vcf had {} in common",
+        "The haplotype and the VCF had {} markers in common.",
         coords.len()
     );
 
@@ -214,9 +214,15 @@ pub fn transform_gt_matrix_to_match_matrix(
     *vcf_coords = coords;
     vcf.matrix = Array2::from_shape_vec((vcf.nrows(), vcf.ncoords()).f(), match_matrix)?;
 
-    vcf.variant_idx = vcf.get_first_idx_on_right_by_pos(variant_pos);
+    vcf.variant_idx = vcf.get_nearest_idx_by_pos(variant_pos);
+    // vcf.variant_idx = vcf.get_first_idx_on_right_by_pos(variant_pos);
 
-    tracing::debug!("Finished transforming to match matrix");
+    tracing::debug!("Finished transforming the genotype matrix to a match matrix.");
+    tracing::info!(
+        "Constructed a match matrix from {} records. Starting variant position: {}.",
+        vcf.ncoords(),
+        vcf.variant_idx_pos(),
+    );
     Ok(vcf)
 }
 
@@ -249,7 +255,8 @@ fn sort_indexes_for_diff_graph(
 
     // Sort shortest alleles to the top
     if mark_shorter_alleles {
-        let only_longest = only_longest.unwrap();
+        let only_longest =
+            only_longest.expect("Failed to select the only-longest haplotypes for tagging. For this to succeed, the option `--select all` should be used.");
         values.sort_by(|a, b| {
             only_longest
                 .contains(&a.0)
@@ -268,7 +275,7 @@ fn sort_indexes_for_diff_graph(
     // Sort by left side length
     values.sort_by(|a, b| a.1.cmp(&b.1));
 
-    tracing::debug!("Finished sorting");
+    tracing::debug!("Finished sorting.");
 
     values.iter().map(|v| v.0).collect::<Vec<usize>>()
 }
@@ -337,7 +344,7 @@ pub fn print_ranges_to_csv(
         "stop",
         "length",
         "markers",
-        "is_decoy",
+        "is_marked",
         "is_longest",
     ])?;
     for (idx, start, stop) in ranges {

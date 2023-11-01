@@ -24,7 +24,7 @@ impl std::fmt::Display for HatkError {
             ),
             Self::PloidyError((pos, num)) => write!(
                 f,
-                "A sample does not have {num} genotypes (required by ploidy) at position: {pos}. Remember: missing genotypes are not allowed."
+                "Ploidy error: A sample does not have the amount of genotypes required by ploidy at position: {pos}. Remember: missing genotypes are not allowed. {num}"
             ),
             Self::MissingGenotypesError(pos) => write!(f, "Missing genotypes at position: {pos}"),
             Self::SamplesNotFoundError => {

@@ -180,9 +180,11 @@ impl<'a> MatrixGraph<'a> {
     pub fn determine_line_color(&self, p: &Point, row_idx: usize, var_idx: usize) -> &str {
         // Color based on if only longest or decoy samples coloring is wanted
         let sample = self.vcf.get_sample_name(row_idx);
+
         if var_idx == self.vcf.variant_idx() && p.gt == 1 {
             return "#000";
         }
+
         match p.gt {
             0 => "#ff0087",
             1 => match (&self.decoy_samples, &self.longest_alleles) {

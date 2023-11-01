@@ -6,7 +6,7 @@ import gzip
 
 import hst_utils
 
-def draw_tree(hst, t, output, samples, samples_to_tag):
+def draw_tree(hst, t, output, samples, samples_to_tag, proportions):
     ts = TreeStyle()
     style = NodeStyle()
     style["size"] = 0
@@ -40,6 +40,10 @@ def draw_tree(hst, t, output, samples, samples_to_tag):
         else:
             label = len(node_data["indexes"])
 
+            if proportions:
+                prc = label / len(samples)
+                label = f"{label} ({prc:.2f})"
+
         F = TextFace(label, tight_text=True, penwidth=30)
         F.rotation = 270
         n.add_face(F, column=0)
@@ -58,7 +62,7 @@ def draw_tree(hst, t, output, samples, samples_to_tag):
     ts.show_leaf_name = False
     ts.show_scale = False
     ts.min_leaf_separation = 0
-    ts.branch_vertical_margin = 5
+    ts.branch_vertical_margin = 10
     ts.optimal_scale_level = "full"
     ts.allow_face_overlap = True
 
@@ -70,6 +74,7 @@ parser.add_argument('--hst', type=str)
 parser.add_argument('--match-hst', type=str)
 parser.add_argument('--min-size', type=int)
 parser.add_argument('--ids', type=str)
+parser.add_argument('--proportions', action="store_true")
 parser.add_argument('-o', '--output', type=str)
 
 args = parser.parse_args()
@@ -91,10 +96,9 @@ if args.ids:
 
 # When drawing the graph, insert label data from the match_hst
 # and not from the original hst
+
 if args.output:
-    draw_tree(MATCH_HST, ete3_tree, args.output, samples, samples_to_tag)
+    draw_tree(MATCH_HST, ete3_tree, args.output, samples, samples_to_tag, args.proportions)
 else:
-    draw_tree(MATCH_HST, ete3_tree, "mytree.png", samples, samples_to_tag)
-
-
+    draw_tree(MATCH_HST, ete3_tree,  "mytree.png", samples, samples_to_tag, args.proportions)
 
