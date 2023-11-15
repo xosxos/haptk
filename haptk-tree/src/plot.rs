@@ -1,8 +1,6 @@
 use std::rc::Rc;
 
-use eframe::egui;
-
-use egui::plot::PlotPoint;
+use egui_plot::{Plot, PlotPoint};
 use haptk::structs::PhasedMatrix;
 
 use crate::app::{Hst, State};
@@ -17,10 +15,10 @@ pub fn init_plot(
     uhst_right: Rc<Hst>,
     nmin_samples: usize,
     decoy_samples: Rc<Vec<String>>,
-) -> egui::plot::Plot {
+) -> Plot {
     let decoy_samples = decoy_samples.clone();
 
-    let plot = egui::plot::Plot::new("measurements")
+    let plot = Plot::new("measurements")
         .auto_bounds_x()
         .auto_bounds_y()
         .label_formatter(move |_name, value| {

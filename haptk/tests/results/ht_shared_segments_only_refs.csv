@@ -1,4 +1,4 @@
-id,start,stop,length,markers,is_decoy,is_longest
+id,start,stop,length,markers,is_marked,is_longest
 SAMPLE1,32,32,0,0,na,na
 SAMPLE2,32,32,0,0,na,na
 SAMPLE3,32,32,0,0,na,na

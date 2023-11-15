@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 #[test]
 #[cfg(feature = "clap")]
-fn read_sample_haplotype() {
+fn read_haplotypes() {
     use common::COORDS;
     use haptk::clap::{ClapSelection, ClapStandardArgs};
 

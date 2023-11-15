@@ -1,6 +1,11 @@
-use color_eyre::{eyre::eyre, Result};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+
+use color_eyre::{
+    eyre::{eyre, WrapErr},
+    Result,
+};
+use serde::{Deserialize, Serialize};
 
 use crate::io::read_lines;
 
@@ -40,6 +45,10 @@ pub fn get_sample_names(path: PathBuf) -> Result<Vec<String>> {
                 ids.push(id.to_string());
             }
         }
+        "hst.gz" | "hst" => {
+            let samples = read_hst_samples(path)?;
+            ids.extend(samples);
+        }
         "fam" => {
             for line in read_lines(path)?.flatten() {
                 let mut split = line.split('\t');
@@ -52,6 +61,19 @@ pub fn get_sample_names(path: PathBuf) -> Result<Vec<String>> {
         _ => return Err(eyre!("filetype not supported for: {}", extension)),
     }
     Ok(ids)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct HstSamples {
+    samples: Vec<String>,
+}
+
+pub fn read_hst_samples(path: PathBuf) -> Result<Vec<String>> {
+    let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
+    let reader = bgzip::BGZFReader::new(file)?;
+    let hst: HstSamples = serde_json::from_reader(reader)?;
+
+    Ok(hst.samples)
 }
 
 #[doc(hidden)]

@@ -9,7 +9,7 @@ use tracing_subscriber::fmt::time::OffsetTime;
 use crate::args::{ConciseArgs, GraphArgs, Selection, StandardArgs};
 use crate::subcommands::{
     bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst, coverage,
-    haplotype_to_vcf, mrca, read_sample_haplotype, read_sample_names, uhst,
+    haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
 };
 
 #[derive(Parser, Debug)]
@@ -423,8 +423,15 @@ pub enum SubCommand {
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
     },
-    /// Output the sample names from FAM / VCF files
+    /// Output the sample names from FAM / VCF / HST files
     Samples {
+        file: PathBuf,
+
+        #[command(flatten)]
+        log_and_verbosity: LogAndVerbosity,
+    },
+    /// Output the markers from a HST file
+    Markers {
         file: PathBuf,
 
         #[command(flatten)]
@@ -471,6 +478,7 @@ impl SubCommand {
             | SubCommand::Bhst { log_and_verbosity, .. }
             | SubCommand::Uhst { log_and_verbosity, .. }
             | SubCommand::Samples { log_and_verbosity, .. }
+            | SubCommand::Markers { log_and_verbosity, .. }
             | SubCommand::ToVcf { log_and_verbosity, .. }
             => (log_and_verbosity.verbosity, &log_and_verbosity.log_file, log_and_verbosity.silent),
         }
@@ -489,7 +497,9 @@ impl SubCommand {
             | SubCommand::Bhst { args: ClapStandardArgs { outdir, .. }, ..}
             | SubCommand::ToVcf { outdir, .. }
             => Some(outdir.clone()),
-            _ => None
+            SubCommand::Samples { .. }
+            | SubCommand::Coverage { .. }
+            | SubCommand::Markers { .. } => None
         }
     }
 }
@@ -531,15 +541,6 @@ pub fn run_args(args: Arguments) -> Result<()> {
 #[rustfmt::skip]
 pub fn run_cmd(cmd: SubCommand) -> Result<()> {
     match cmd {
-        SubCommand::Haplotypes { args, .. } 
-            => read_sample_haplotype::run(args.into())?,
-
-        SubCommand::CheckForHaplotype { args, haplotype, .. } 
-            => check_for_haplotype::run(args.into(), haplotype)?,
-
-        SubCommand::CompareHaplotypes { haplotypes, outdir, prefix, csv, hide_missing, tag_rows, .. }
-            => compare_haplotypes::run(haplotypes, outdir, prefix, csv, hide_missing, tag_rows)?,
-
         SubCommand::CompareToHaplotype { 
             args, haplotype, mark_samples, mark_shorter_alleles, graph_args, png, npy, .. 
         } => compare_to_haplotype::run(
@@ -555,15 +556,9 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
                 },
             )?,
 
-        SubCommand::CompareToHst { 
-            args, hst, .. 
-        } => compare_to_hst::run(
-                args.into(), hst,
-            )?,
-
-        SubCommand::Mrca { args, recombination_rates, .. } => mrca::run(args.into(), recombination_rates)?,
-
-        SubCommand::Bhst { args,  graph_args, mark_samples, variables, variable_data, min_size, publish, .. } => bhst::run(
+        SubCommand::Bhst {
+            args,  graph_args, mark_samples, variables, variable_data, min_size, publish, .. 
+        } => bhst::run(
             args.into(),
             GraphArgs {
                 width: graph_args.width.unwrap_or(10_000.0),
@@ -601,15 +596,17 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
             publish
         )?,
 
-        SubCommand::Coverage { file, bp_per_snp, npipes, .. } 
-            => coverage::run(file, bp_per_snp, npipes)?,
+        SubCommand::CompareHaplotypes { haplotypes, outdir, prefix, csv, hide_missing, tag_rows, .. }
+            => compare_haplotypes::run(haplotypes, outdir, prefix, csv, hide_missing, tag_rows)?,
 
-        SubCommand::Samples { file, .. } 
-            => read_sample_names::run(file)?,
-
-        SubCommand::ToVcf { file, sample_name, outdir, .. } 
-            => haplotype_to_vcf::run(file, sample_name, outdir)?,
-
+        SubCommand::CompareToHst { args, hst, .. } => compare_to_hst::run(args.into(), hst)?,
+        SubCommand::CheckForHaplotype { args, haplotype, .. } => check_for_haplotype::run(args.into(), haplotype)?,
+        SubCommand::Mrca { args, recombination_rates, .. } => mrca::run(args.into(), recombination_rates)?,
+        SubCommand::Haplotypes { args, .. } => list_haplotypes::run(args.into())?,
+        SubCommand::Samples { file, .. } => list_samples::run(file)?, 
+        SubCommand::Markers { file, .. } => list_markers::run(file)?,
+        SubCommand::ToVcf { file, sample_name, outdir, .. } => haplotype_to_vcf::run(file, sample_name, outdir)?,
+        SubCommand::Coverage { file, bp_per_snp, npipes, .. } => coverage::run(file, bp_per_snp, npipes)?,
 
     };
     Ok(())

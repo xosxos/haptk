@@ -8,10 +8,13 @@ pub mod coverage;
 pub mod mrca;
 
 /// Shortcut to read vcf sample namples
-pub mod read_sample_names;
+pub mod list_samples;
 
-/// Print out haplotype files for samples
-pub mod read_sample_haplotype;
+/// Output haplotype files for samples or HSTs
+pub mod list_haplotypes;
+
+/// Output marker lists for HSTs
+pub mod list_markers;
 
 /// Bidirectional haplotype sharing tree algorithm
 pub mod bhst;

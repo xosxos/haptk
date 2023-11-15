@@ -2,9 +2,9 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use eframe::egui;
-use eframe::egui::plot::PlotPoints;
-use egui::plot::{Line, PlotPoint, PlotUi};
 use egui::Color32;
+use egui_plot::PlotPoints;
+use egui_plot::{Line, PlotPoint, PlotUi};
 
 use haptk::structs::PhasedMatrix;
 

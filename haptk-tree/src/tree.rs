@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
-use eframe::egui::plot::PlotPoint;
 use egui::{Color32, RichText};
+use egui_plot::PlotPoint;
 use petgraph::{graph::NodeIndex, Direction, Graph};
 
 use haptk::{structs::PhasedMatrix, subcommands::bhst::Node};
@@ -51,7 +51,7 @@ impl PartialEq for TreePoint {
 }
 impl Eq for TreePoint {}
 
-impl From<TreePoint> for egui::plot::Text {
+impl From<TreePoint> for egui_plot::Text {
     fn from(value: TreePoint) -> Self {
         let color = match value.is_decoy_leaf_node {
             true => Color32::from_rgb(255, 0, 0),
