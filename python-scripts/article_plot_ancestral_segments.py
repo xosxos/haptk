@@ -46,7 +46,7 @@ def visualize(df, rec_rates, snps, min, max, gargs, args):
                    label="foo",
                    linewidth='2')
 
-        plt.text(item[1] + 50000, 135, item[0], rotation=0, c=text_color)
+        plt.text(item[1] + 50000, len(y)/2, item[0], rotation=0, c=text_color)
 
     ax.get_yaxis().set_visible(False)
     ax.spines['top'].set_visible(False)
