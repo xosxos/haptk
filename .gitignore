@@ -15,5 +15,6 @@ src-old/
 1kGP*
 over_20_repeats.ids
 __pycache__
+run_analyses_gsn.sh
 
 !/tests/results
