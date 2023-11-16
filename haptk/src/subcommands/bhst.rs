@@ -16,7 +16,10 @@ use crate::{
     args::{GraphArgs, Selection, StandardArgs},
     io::read_variable_data_file,
 };
-use crate::{core::get_output, read_vcf::read_vcf_to_matrix};
+use crate::{
+    core::get_output,
+    read_vcf::{get_sample_names, read_vcf_to_matrix},
+};
 use crate::{
     core::{open_csv_writer, parse_snp_coord},
     graphs::HstGraph,
@@ -26,6 +29,11 @@ use crate::{io::read_sample_ids, structs::Coord};
 pub fn read_vcf_with_selections(args: &StandardArgs) -> Result<PhasedMatrix> {
     let (contig, pos) = parse_snp_coord(&args.coords)?;
 
+    let (indexes, _) = get_sample_names(args, contig, None)?;
+    ensure!(
+        indexes.len() > 1,
+        "Cannot build a tree with less than 2 samples."
+    );
     let mut vcf = read_vcf_to_matrix(args, contig, pos, None, None)?;
 
     match &args.selection {
@@ -76,7 +84,7 @@ pub fn run(
     let mut sh_output = args.output.clone();
     push_to_output(&args, &mut sh_output, "bhst_mbah", "csv");
     let writer = open_csv_writer(sh_output)?;
-    let mbah = find_mbah(&bhst, &vcf);
+    let mbah = find_mbah(&bhst, &vcf)?;
     write_haplotype(mbah, writer)?;
 
     // Shared haplotype
@@ -317,8 +325,13 @@ fn find_contradictory_gt(
     }
 }
 
-pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Vec<HapVariant> {
+pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Result<Vec<HapVariant>> {
     let nodes = find_majority_nodes(g);
+
+    ensure!(
+        nodes.iter().count() > 2,
+        "The majority branch has only less than 3 nodes."
+    );
     let mut iter = nodes.iter().rev();
     let (last_node, _last_node_idx) = iter.next().unwrap();
     let (second_last_node, _) = iter.next().unwrap();
@@ -334,13 +347,13 @@ pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Vec<HapVariant> {
             }),
     );
 
-    vcf.find_haplotype_for_sample(
+    Ok(vcf.find_haplotype_for_sample(
         vcf.get_contig(),
         // Start and stop idxs are the first deviating genotype and it cannot be a part of the haplotype
         // last_node.start_idx..last_node.stop_idx + 1,
         last_node.start_idx + 1..last_node.stop_idx,
         last_node.indexes[0],
-    )
+    ))
 }
 
 pub fn find_shared_haplotype(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Vec<HapVariant> {

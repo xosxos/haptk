@@ -49,7 +49,7 @@ pub fn get_samples(header: &HeaderView) -> Result<Vec<String>> {
         .collect()
 }
 
-fn get_sample_names(
+pub fn get_sample_names(
     args: &StandardArgs,
     contig: &str,
     wanted_samples: Option<Vec<String>>,

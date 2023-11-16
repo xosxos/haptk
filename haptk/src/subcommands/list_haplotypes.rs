@@ -1,4 +1,4 @@
-use color_eyre::{eyre::ensure, Result};
+use color_eyre::Result;
 
 use crate::{
     args::StandardArgs,
