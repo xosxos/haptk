@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::{
+    eyre::{ensure, eyre},
+    Result,
+};
 use ndarray::s;
 use petgraph::graph::NodeIndex;
 use petgraph::{Direction, Graph};
@@ -87,6 +90,11 @@ pub fn run(
             // Find first, second last and last nodes on the majority branch
             // for downstream analyses
             let nodes = bhst::find_majority_nodes(&uhst);
+
+            ensure!(
+                nodes.iter().count() > 2,
+                "The majority branch has only less than 3 nodes."
+            );
 
             let first_maj_node = nodes.iter().nth(1).unwrap().0.clone();
             let second_last_node = nodes.iter().nth(nodes.len() - 2).unwrap().0;
