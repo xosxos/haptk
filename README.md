@@ -11,7 +11,8 @@ Commands:
   compare-haplotypes    Compare haplotypes to each other by alignment
   coverage              Show coverage levels per contig in a VCF
   haplotypes            Read the haplotypes of a given sample
-  samples               Output the sample names from FAM / VCF files
+  samples               Output the sample names from FAM / VCF / HST files
+  markers               Output the markers from a HST file
   to-vcf                Convert a haplotype CSV into VCF
   help                  Print this message or the help of the given subcommand(s)
 ```
@@ -24,9 +25,14 @@ Commands:
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # The Rust binaries directory is added automatically to the shells $PATH variable when it is restarted
-# If you face problems, add the directory to $PATH.
-# For example for `bash`, add this line to your configuration file:
+# If you face problems, add the directory to the $PATH variable.
+# For example for `bash` or `zsh`, run this line:
 export PATH="$HOME/.cargo/bin:$PATH"
+# For `fish` shell, use this command:
+fish_add_path "$HOME/.cargo/bin"
+
+# Make sure cmake is installed
+# It is available in all common package managers such as apt, dnf, brew
 
 # Install HAPTK
 cargo install haptk --locked
@@ -55,6 +61,7 @@ Options:
 - `only-alts` [Select only the samples carrying the alt variant at the coordinate]
 - `only-longest` [Select only the longest haplotype sharing alleles per sample]
 
+To follow the instructions below
 ```bash
 
 # Download the 1000 genomes reference panel for chromosome 9
@@ -71,15 +78,15 @@ bcftools view -m2 -M2 -v snps $file -Ou |
   bcftools annotate -x "INFO" -Oz -o $biallelic
 
 # Index the file
-tabix $biallelic
+bcftools index -t $biallelic
 
 # Save all the ids to a file
 haptk samples $biallelic > $ids
 
-# Save a known over 20 GGGGCC repeat carrying sample ID into a file
+# The sample HG01109 has over 20 GGGGCC repeats. Echo the sample ID into a file.
 echo HG01109 > over_20_repeats.ids
 
-# The major bottleneck for HST creation is reading in the genotype data
+# The major bottleneck for haplotype sharing tree (HST) creation is reading in the genotype data
 # Reading the 1k genomes reference panel matrix should take around 2 minutes using 8-cores
 # For now to speed up HST creation, you can try to filter out variants
 # from the reference panel before running the analysis
@@ -90,7 +97,7 @@ haptk uhst $biallelic \
   --coords chr9:27573534 \
   --samples $ids \
   --mark-samples over_20_repeats.ids \
-  --min-node-size 50 \
+  --min-size 50 \
   -t 8 \
   -vvv \
   -o results \
@@ -129,7 +136,7 @@ cat results/finnish_als_ht_shared_segments_only_longest.csv \
   | grep -v id \
   > results/over_20kb_sharing_samples.ids
 
-# Tag the over 20 kb Finnish ALS ancestral haplotype sharing samples
+# Mark the over 20 kb Finnish ALS ancestral haplotype sharing samples
 # in the bidirectional HST of the C9orf72 HRE core haplotype carriers
 haptk bhst $biallelic \
   --select only-longest \
