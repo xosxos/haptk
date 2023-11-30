@@ -273,7 +273,7 @@ impl PhasedMatrix {
             }
         } else {
             // return last element if no element is larger
-            self.coords.len()
+            self.coords.len() - 1
         }
     }
 
