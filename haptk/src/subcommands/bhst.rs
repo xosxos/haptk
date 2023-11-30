@@ -211,59 +211,49 @@ fn find_contradictory_gt(
         right = right.saturating_sub(1);
     }
 
-    let (mut rz, mut ro);
-    // Expand to the right until a contradictory genotype is found or the end of sequencing data
+    // Allocate Vecs with capacity so no reallocation is required
+    // NOTE: This is not proven to be the faster approach here
+    let (mut rz, mut ro, mut lz, mut lo) = (
+        Vec::with_capacity(node.indexes.len()),
+        Vec::with_capacity(node.indexes.len()),
+        Vec::with_capacity(node.indexes.len()),
+        Vec::with_capacity(node.indexes.len()),
+    );
+
+    // Expand to both sides until a contradictory genotype is found, or the end of sequencing data is reached
     loop {
-        (rz, ro) = (vec![], vec![]);
         if right < vcf.matrix.ncols() - 1 {
             right += 1;
         }
 
-        for i in node.indexes.iter() {
-            let right_gt = vcf.matrix.slice(s![*i, right]);
-
-            match right_gt.into_scalar() {
-                0 => rz.push(*i),
-                1 => ro.push(*i),
-                _ => unreachable!("Other genotypes than 0 and 1 are present in the matrix"),
-            }
-        }
-
-        if (!rz.is_empty() && !ro.is_empty()) || right == vcf.matrix.ncols() - 1 {
+        if fill_buckets(vcf, node, right, &mut rz, &mut ro) {
             break;
         }
     }
-
-    let (mut lz, mut lo);
-    // Expand to the left until a contradictory genotype is found or the end of sequencing data
     loop {
-        (lz, lo) = (vec![], vec![]);
         left = left.saturating_sub(1);
 
-        for i in node.indexes.iter() {
-            let left_gt = vcf.matrix.slice(s![*i, left]);
-
-            match left_gt.into_scalar() {
-                0 => lz.push(*i),
-                1 => lo.push(*i),
-                _ => unreachable!("Other genotypes than 0 and 1 are present in the matrix"),
-            }
-        }
-
-        if (!lz.is_empty() && !lo.is_empty()) || left == 0 {
+        if fill_buckets(vcf, node, left, &mut lz, &mut lo) {
             break;
         }
     }
 
     // Divide left and right side contradictory genotypes to buckets:
     // [0,1] [0,0] [1, 0] [0, 0]
-    let (mut zo, mut zz, mut oz, mut oo) = (vec![], vec![], vec![], vec![]);
+    let (mut zo, mut zz, mut oz, mut oo) = (
+        Vec::with_capacity(node.indexes.len()),
+        Vec::with_capacity(node.indexes.len()),
+        Vec::with_capacity(node.indexes.len()),
+        Vec::with_capacity(node.indexes.len()),
+    );
 
     for i in &lz {
         if rz.contains(i) {
             zz.push(*i);
         } else if ro.contains(i) {
             zo.push(*i)
+        } else {
+            unreachable!("Genotypes are not biallelic");
         }
     }
 
@@ -272,12 +262,57 @@ fn find_contradictory_gt(
             oz.push(*i);
         } else if ro.contains(i) {
             oo.push(*i)
+        } else {
+            unreachable!("Genotypes are not biallelic");
         }
     }
 
     // Create a new node for each bucket if it is not empty
-    let mut nodes = Vec::with_capacity(4);
+    let nodes = create_nodes_from_buckets(vcf, left, right, oo, oz, zo, zz);
 
+    // Return buckets if more than one bucket exists
+    match nodes.len() > 1 {
+        true => Some(nodes),
+        false => None,
+    }
+}
+
+fn fill_buckets(
+    vcf: &PhasedMatrix,
+    node: &Node,
+    variant_idx: usize,
+    z: &mut Vec<usize>,
+    o: &mut Vec<usize>,
+) -> bool {
+    // Empty the vectors for a new iteration
+    z.clear();
+    o.clear();
+
+    // Iterate all sample indexes to find the genotypes
+    for i in node.indexes.iter() {
+        let gt = vcf.matrix.slice(s![*i, variant_idx]);
+
+        match gt.into_scalar() {
+            0 => z.push(*i),
+            1 => o.push(*i),
+            _ => unreachable!("Other genotypes than 0 and 1 are present in the matrix"),
+        }
+    }
+
+    // If at the end of the matrix or if a contradictory gt is present, return true
+    (!z.is_empty() && !o.is_empty()) || variant_idx == 0 || variant_idx == vcf.matrix.ncols() - 1
+}
+
+fn create_nodes_from_buckets(
+    vcf: &PhasedMatrix,
+    left: usize,
+    right: usize,
+    oo: Vec<usize>,
+    oz: Vec<usize>,
+    zo: Vec<usize>,
+    zz: Vec<usize>,
+) -> Vec<Node> {
+    let mut nodes = Vec::with_capacity(4);
     if !zz.is_empty() {
         let node = Node {
             start_idx: left,
@@ -317,19 +352,14 @@ fn find_contradictory_gt(
         };
         nodes.push(node);
     }
-
-    // Return buckets if more than one bucket exists
-    match nodes.len() > 1 {
-        true => Some(nodes),
-        false => None,
-    }
+    nodes
 }
 
 pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Result<Vec<HapVariant>> {
     let nodes = find_majority_nodes(g);
 
     ensure!(
-        nodes.iter().count() > 2,
+        nodes.len() > 2,
         "The majority branch has only less than 3 nodes."
     );
     let mut iter = nodes.iter().rev();
@@ -417,7 +447,7 @@ pub fn calculate_and_write_var_data(
     if let Some(vars) = &variable_names {
         let mut writer = open_csv_writer(vars_output)?;
 
-        let mut header: Vec<String> = vec!["side", "pos", "1st_n", "2nd_n"]
+        let mut header: Vec<String> = ["side", "pos", "1st_n", "2nd_n"]
             .iter()
             .map(|s| s.to_string())
             .collect();
