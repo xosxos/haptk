@@ -3,14 +3,13 @@
 ### Remember to activate your mamba environment before running
 
 file=$1
-cohort=$2
-samples=$3
-coords=$4
-recombination_rates=$5
-outdir=$6
-gene=$7
+samples=$2
+coords=$3
+recombination_rates=$4
+outdir=$5
+gene=$6
 
-if [[ -z $file || -z $cohort || -z $samples || -z $coords || -z $recombination_rates || -z $outdir || -z $gene ]]
+if [[ -z $file || -z $samples || -z $coords || -z $recombination_rates || -z $outdir || -z $gene ]]
 then
   echo "error: missing input variables, check script for info"
   exit
@@ -94,7 +93,7 @@ python ./python-scripts/article_plot_ancestral_segments.py $outdir/bhst_ht_share
   -o $outdir/bhst_mbah_segments_only_longest.png
 
 
-# Construct the unidirectional HSTs
+# Calculate the MRCA
 haptk mrca $file -c $coords -S $samples -s only-longest -r $recombination_rates -o $outdir
 
 # Construct the publishable HSTs
@@ -115,31 +114,6 @@ python ./python-scripts/article_normal_tree.py $outdir/pub_bhst_only_longest.hst
   --min-size 1 \
   --output $outdir/pub_bhst_only_longest.png
 
-if [ $cohort = "tampere" ]; then
-  # Draw the HST of the right side with FTD cases tagged
-  python ./python-scripts/article_tagged_tree.py $outdir/uhst_right_only_longest.hst.gz \
-    --min-size 1 \
-    --ids test_data/ftd.ids \
-    --output $outdir/uhst_right_only_longest_ftd.png
-
-  # Draw the HST of the left side with FTD cases tagged
-  python ./python-scripts/article_tagged_tree.py $outdir/uhst_left_only_longest.hst.gz \
-    --min-size 1 \
-    --ids test_data/ftd.ids \
-    --output $outdir/uhst_left_only_longest_ftd.png
-
-  # Draw the circular bHST with FTD cases tagged
-  python ./python-scripts/article_tagged_tree.py $outdir/bhst_only_longest.hst.gz \
-    --min-size 1 \
-    --ids test_data/ftd.ids \
-    --output $outdir/bhst_only_longest_ftd.png
-
-  # Draw a normal bHST with FTD cases tagged
-  python ./python-scripts/article_normal_tree.py $outdir/bhst_only_longest.hst.gz \
-    --min-size 1 \
-    --ids test_data/ftd.ids \
-    --output $outdir/bhst_only_longest_ftd.png
-fi
 
 # Print majority based ancestral haplotype sharing summaries
 cd $outdir

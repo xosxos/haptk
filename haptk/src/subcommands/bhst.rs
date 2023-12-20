@@ -69,6 +69,12 @@ pub fn run(
         vcf.set_variable_data(read_variable_data_file(path)?)?;
     }
 
+    ensure!(
+        vcf.nrows() >= min_size,
+        "VCF has less haplotypes than the required minimum node size ({} < {min_size})",
+        vcf.nrows()
+    );
+
     // Construct the bilateral HST
     let bhst = construct_bhst(&vcf, vcf.variant_idx(), min_size);
     tracing::info!("Finished HST construction.");
@@ -102,7 +108,7 @@ pub fn run(
     // Write to .hst
     let mut hst_output = args.output.clone();
     push_to_output(&args, &mut hst_output, "bhst", "hst.gz");
-    write_hst_file(bhst, &vcf, hst_output, publish)?;
+    write_hst_file(bhst, &vcf, hst_output, publish, args)?;
 
     Ok(())
 }
@@ -360,7 +366,7 @@ pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Result<Vec<HapVaria
 
     ensure!(
         nodes.len() > 2,
-        "The majority branch has only less than 3 nodes."
+        "The majority branch has less than 3 nodes."
     );
     let mut iter = nodes.iter().rev();
     let (last_node, _last_node_idx) = iter.next().unwrap();
@@ -565,10 +571,18 @@ pub fn find_coord_list(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Vec<Coord> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Metadata {
+    pub start_coord: String,
+    pub selection: Selection,
+    pub vcf_name: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hst {
     pub coords: Vec<Coord>,
     pub hst: Graph<Node, u8>,
     pub samples: Vec<String>,
+    pub metadata: Metadata,
 }
 
 impl Hst {
@@ -601,6 +615,7 @@ pub fn write_hst_file(
     vcf: &PhasedMatrix,
     path: PathBuf,
     publish: bool,
+    args: StandardArgs,
 ) -> Result<()> {
     let samples = match publish {
         true => vec!["r".to_string()],
@@ -617,6 +632,11 @@ pub fn write_hst_file(
         coords: vcf.coords().clone(),
         hst,
         samples,
+        metadata: Metadata {
+            start_coord: args.coords,
+            selection: args.selection,
+            vcf_name: args.file,
+        },
     };
 
     tracing::info!("HST output: {path:?}.");

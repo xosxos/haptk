@@ -80,8 +80,8 @@ parser.add_argument('-o', '--output', type=str)
 args = parser.parse_args()
 
 # Read in both .hst.gz
-HST, coords, _ = hst_utils.read_path_to_hst(args.hst)
-MATCH_HST, _, samples = hst_utils.read_path_to_hst(args.match_hst)
+HST, coords, _, _ = hst_utils.read_path_to_hst(args.hst)
+MATCH_HST, _, samples, _ = hst_utils.read_path_to_hst(args.match_hst)
 
 # Wrangle the original to an ete3 tree
 graph_dict = hst_utils.hst_to_graph_dict(HST)

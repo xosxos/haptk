@@ -237,7 +237,7 @@ pub enum SubCommand {
         variables: Option<Vec<String>>,
 
         /// List of samples to tag in the HST
-        #[arg(short = 'S', long)]
+        #[arg(short = 'm', long)]
         mark_samples: Option<PathBuf>,
 
         #[command(flatten)]
@@ -268,7 +268,7 @@ pub enum SubCommand {
         graph_args: ClapGraphArgs,
 
         /// List of samples to tag in the HST
-        #[arg(short = 'S', long)]
+        #[arg(short = 'm', long)]
         mark_samples: Option<PathBuf>,
 
         /// Variable file
@@ -313,7 +313,7 @@ pub enum SubCommand {
         log_and_verbosity: LogAndVerbosity,
 
         /// Haplotype for checking
-        #[arg(long)]
+        #[arg(short = 'h', long)]
         haplotype: PathBuf,
     },
     /// Check differences between samples and a haplotype
@@ -325,7 +325,7 @@ pub enum SubCommand {
         log_and_verbosity: LogAndVerbosity,
 
         /// Haplotype for comparing to
-        #[arg(long)]
+        #[arg(short = 'h', long)]
         haplotype: PathBuf,
 
         /// Number of threads
@@ -333,7 +333,7 @@ pub enum SubCommand {
         threads: usize,
 
         /// Mark sample names for tagging
-        #[arg(short = 'S', long)]
+        #[arg(short = 'm', long)]
         mark_samples: Option<PathBuf>,
 
         /// Mark shorter alleles to graph

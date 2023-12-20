@@ -58,6 +58,12 @@ pub fn run(
         vcf.set_variable_data(read_variable_data_file(path)?)?;
     }
 
+    ensure!(
+        vcf.nrows() >= min_size,
+        "VCF has less haplotypes than the required minimum node size ({} < {min_size})",
+        vcf.nrows()
+    );
+
     let vec = vec![LocDirection::Left, LocDirection::Right];
     let first_and_mbah_nodes = vec
         .par_iter()
@@ -120,7 +126,7 @@ pub fn run(
                 &format!("uhst_{direction}"),
                 "hst.gz",
             );
-            write_hst_file(uhst, &vcf, hst_output, publish)?;
+            write_hst_file(uhst, &vcf, hst_output, publish, args.clone())?;
 
             Ok((first_maj_node, last_node))
         })
