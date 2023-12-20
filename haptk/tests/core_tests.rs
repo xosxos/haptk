@@ -284,7 +284,7 @@ mod core {
         assert_eq!(4, vcf.get_nearest_idx_by_pos(26));
         assert_eq!(4, vcf.get_nearest_idx_by_pos(23));
         assert_eq!(5, vcf.get_nearest_idx_by_pos(31));
-        assert_eq!(vcf.ncoords(), vcf.get_nearest_idx_by_pos(9999999));
+        assert_eq!(vcf.ncoords() - 1, vcf.get_nearest_idx_by_pos(9999999));
 
         let coord = Coord {
             contig: "chr9".to_string(),
