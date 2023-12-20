@@ -111,7 +111,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     // Write .hst to file
     let mut hst_output = args.output.clone();
     push_to_output(&args, &mut hst_output, "match_hst", "hst.gz");
-    write_hst_file(match_hst, &vcf, hst_output, false)?;
+    write_hst_file(match_hst, &vcf, hst_output, false, args)?;
 
     Ok(())
 }

@@ -11,6 +11,7 @@ def read_path_to_hst(path):
         hst = hst_struct["hst"]
         coords = hst_struct["coords"]
         samples = hst_struct["samples"]
+        metadata = hst_struct["metadata"]
 
         G = rx.PyDiGraph()
 
@@ -20,7 +21,11 @@ def read_path_to_hst(path):
 
         G.add_nodes_from(hst["nodes"])
         G.add_edges_from(edges_tuple_vec)
-        return G, coords, samples
+
+        if metadata["selection"] == "All":
+            samples = [val for val in samples for _ in (0, 1)]
+
+        return G, coords, samples, metadata
 
 def hst_to_graph_dict(hst):
     graph_dict = {}

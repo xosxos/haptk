@@ -43,10 +43,7 @@ def draw_tree(hst, t, output, samples, samples_to_tag):
             n.add_face(F, column=0)
 
         if n.is_leaf():
-            results = []
-            if len(samples_to_tag) > 0:
-                results = [i for i in node_data["indexes"] if samples[i] in samples_to_tag]
-
+            results = [i for i in node_data["indexes"] if samples[i] in samples_to_tag]
             if results:
                 n.set_style(nstyle)
                 n.img_style["bgcolor"] = narea_color
@@ -72,16 +69,15 @@ def draw_tree(hst, t, output, samples, samples_to_tag):
 ### Script logic
 parser = argparse.ArgumentParser()
 parser.add_argument('hst', type=str)
-parser.add_argument('--min-size', type=int)    
+parser.add_argument('--min-size', type=int, default=1)    
 parser.add_argument('--hard-cut', action="store_true")    
 parser.add_argument('--ids', type=str)
 parser.add_argument('-o', '--output', type=str)
 
 args = parser.parse_args()
 
-
 # Read .hst.gz and wrangle it to an ete3 tree
-HST, coords, samples = hst_utils.read_path_to_hst(args.hst)
+HST, coords, samples, metadata = hst_utils.read_path_to_hst(args.hst)
 graph_dict = hst_utils.hst_to_graph_dict(HST)
 newick = hst_utils.newickify(HST, graph_dict, args.min_size, args.hard_cut)
 
