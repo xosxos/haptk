@@ -115,8 +115,10 @@ python ./python-scripts/article_normal_tree.py $outdir/pub_bhst_only_longest.hst
   --output $outdir/pub_bhst_only_longest.png
 
 
-# Print majority based ancestral haplotype sharing summaries
+# Change directory
 cd $outdir
+
+# Print majority based ancestral haplotype sharing summaries
 printf "\nbHST all shared segments\n"
 cat bhst_ht_shared_segments.csv | zsv stats -s markers,length --median | zsv table
 
@@ -130,6 +132,9 @@ printf "\nuHST only-longest shared segments\n"
 cat uhst_ht_shared_segments_only_longest.csv | zsv stats -s markers,length --median | zsv table
 
 echo ""
+
+# SVG to PNG
+inkscape uhst_ht_comparison_shorter_alleles_marked.svg -o uhst_ht_comparison_shorter_alleles_marked.png
 
 # Archive and compress all figures
 tar -cvf figures.tar.gz pub_* *.png *ht_comparison*
