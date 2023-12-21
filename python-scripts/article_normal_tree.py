@@ -11,7 +11,7 @@ def draw_tree(hst, t, output, samples, samples_to_tag, proportions):
     style = NodeStyle()
     style["size"] = 0
 
-    nnode_color = "#669e00"
+    nnode_color = "#FF0000"
     narea_color = "#DAF7A6"
 
     lnode_color = "#9F2B68"
