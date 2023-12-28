@@ -86,7 +86,7 @@ impl<'a> MatrixGraph<'a> {
             vcf,
             marker_width: 0.0,
             row_height: 0.0,
-            btm_padding: s.width as f32 * 0.015,
+            btm_padding: s.width * 0.015,
             decoy_samples,
             longest_alleles,
             s,
@@ -96,8 +96,8 @@ impl<'a> MatrixGraph<'a> {
     pub fn draw_graph(&mut self, order: &[usize]) {
         let nrows = self.vcf.matrix.nrows();
         let ncols = self.vcf.matrix.ncols();
-        self.marker_width = self.s.width as f32 / ncols as f32;
-        self.row_height = (self.s.height as f32 - (self.s.height as f32) * 0.015) / nrows as f32;
+        self.marker_width = self.s.width / ncols as f32;
+        self.row_height = (self.s.height - (self.s.height) * 0.015) / nrows as f32;
 
         for (y, row_idx) in order.iter().enumerate() {
             let row = self.vcf.matrix.slice(ndarray::s![*row_idx, ..]);
@@ -118,13 +118,13 @@ impl<'a> MatrixGraph<'a> {
     }
 
     pub fn draw_bottom_margin(&mut self) {
-        let y = self.s.height as f32 - self.btm_padding / 3.;
+        let y = self.s.height - self.btm_padding / 3.;
 
         let start = self.vcf.coords().first().unwrap();
         let stop = self.vcf.coords().last().unwrap();
 
         let mut element = Element::new("text");
-        element.assign("x", self.s.width as f32 * 0.02);
+        element.assign("x", self.s.width * 0.02);
         element.assign("y", y);
         element.assign("fill", "black");
         element.assign("font-size", format!("{}px", self.s.font_size));
@@ -132,7 +132,7 @@ impl<'a> MatrixGraph<'a> {
         self.document.append(element);
 
         let mut element = Element::new("text");
-        element.assign("x", self.s.width as f32 * 0.33);
+        element.assign("x", self.s.width * 0.33);
         element.assign("y", y);
         element.assign("fill", "black");
         element.assign("font-size", format!("{}px", self.s.font_size));
@@ -140,14 +140,14 @@ impl<'a> MatrixGraph<'a> {
         self.document.append(element);
 
         let mut element = Element::new("text");
-        element.assign("x", self.s.width as f32 * 0.56);
+        element.assign("x", self.s.width * 0.56);
         element.assign("y", y);
         element.assign("fill", "black");
         element.assign("font-size", format!("{}px", self.s.font_size));
         element.append(Text::new(format!("markers: {}", self.vcf.ncoords())));
         self.document.append(element);
 
-        let second_place = self.s.width as f32 * 0.86;
+        let second_place = self.s.width * 0.86;
         let mut element = Element::new("text");
         element.assign("x", second_place);
         element.assign("y", y);

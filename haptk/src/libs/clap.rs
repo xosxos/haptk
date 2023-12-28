@@ -514,8 +514,7 @@ pub fn run_args(args: Arguments) -> Result<()> {
     let (level, wrtr, _guard) = init_tracing(verbosity, log_file, is_silent)?;
 
     let timer = time::format_description::parse("[hour]:[minute]:[second].[subsecond digits:3]")?;
-    let time_offset =
-        time::UtcOffset::current_local_offset().unwrap_or_else(|_| time::UtcOffset::UTC);
+    let time_offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
     let timer = OffsetTime::new(time_offset, timer);
 
     tracing_subscriber::fmt()

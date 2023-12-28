@@ -18,13 +18,22 @@
 /// Functions for reading vcfs into matrices
 pub mod read_vcf;
 
-/// HAPTK structs
+/// Input args
+pub mod args;
+
+/// Errors
+pub mod error;
+
+/// IO functions
+pub mod io;
+
+/// Statistics, currently not used
+pub mod stats;
+
+/// Structs
 pub mod structs;
 
-pub mod args;
-pub mod error;
-pub mod io;
-pub mod stats;
+/// Utils
 pub mod utils;
 
 #[cfg(feature = "clap")]

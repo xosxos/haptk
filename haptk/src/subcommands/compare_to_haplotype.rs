@@ -108,8 +108,8 @@ pub fn run(
         Selection::Haploid => {
             let vcf =
                 read_vcf_to_matrix(&args, contig, variant_pos, Some((start.pos, end.pos)), None)?;
-            let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?;
-            vcf
+
+            transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
         }
         Selection::Unphased => unreachable!(),
     };

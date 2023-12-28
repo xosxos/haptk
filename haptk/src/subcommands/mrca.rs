@@ -44,7 +44,7 @@ pub fn run(args: StandardArgs, rec_rates: PathBuf) -> Result<()> {
 
     let data = format!("Independent genealogy:\nage: {i_tau_hat:.3} CI ({i_l:.3}, {i_u:.3})\nCorrelated genealogy:\nage: {c_tau_hat:.3} CI ({c_l:.3}, {c_u:.3})");
 
-    std::fs::write(&output, data).expect(&format!("Unable to write to {output:?}"));
+    std::fs::write(&output, data).unwrap_or_else(|_| panic!("Unable to write to {output:?}"));
 
     Ok(())
 }

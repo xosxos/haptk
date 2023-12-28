@@ -44,9 +44,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
 
     let vcf = match args.selection {
         Selection::All | Selection::Haploid => {
-            let vcf =
-                read_vcf_to_matrix(&args, contig, variant_pos, Some((start.pos, end.pos)), None)?;
-            vcf
+            read_vcf_to_matrix(&args, contig, variant_pos, Some((start.pos, end.pos)), None)?
         }
         Selection::OnlyAlts | Selection::OnlyRefs => {
             let mut vcf =
@@ -135,7 +133,7 @@ pub fn init_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> {
         node_idx: NodeIndex,
         hst: &Hst,
         match_hst: &mut Graph<Node, u8>,
-        vcf: &PhasedMatrix,
+        _vcf: &PhasedMatrix,
     ) {
         let children = hst.hst.neighbors_directed(node_idx, Direction::Outgoing);
         for child_idx in children {
@@ -151,7 +149,7 @@ pub fn init_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> {
             let copy_child_idx = match_hst.add_node(new_node);
 
             match_hst.add_edge(copy_idx, copy_child_idx, 0);
-            recursive_copy(copy_child_idx, child_idx, hst, match_hst, vcf)
+            recursive_copy(copy_child_idx, child_idx, hst, match_hst, _vcf)
         }
     }
     match_hst

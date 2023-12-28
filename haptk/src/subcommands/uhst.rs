@@ -98,13 +98,13 @@ pub fn run(
             let nodes = bhst::find_majority_nodes(&uhst);
 
             ensure!(
-                nodes.iter().count() > 2,
+                nodes.len() > 2,
                 "The majority branch has only less than 3 nodes."
             );
 
-            let first_maj_node = nodes.iter().nth(1).unwrap().0.clone();
-            let second_last_node = nodes.iter().nth(nodes.len() - 2).unwrap().0;
-            let last_node = nodes.iter().rev().next().unwrap().0.clone();
+            let first_maj_node = nodes.get(1).unwrap().0.clone();
+            let second_last_node = nodes.get(nodes.len() - 2).unwrap().0;
+            let last_node = nodes.last().unwrap().0.clone();
 
             tracing::info!(
                 "{}-side majority-based ancestral samples:{}",
@@ -141,7 +141,7 @@ pub fn run(
     push_to_output(&args, &mut sh_output, "uhst_shared_core_haplotype", "csv");
     let writer = open_csv_writer(sh_output)?;
     let core_haplotype = combine_node_haplotypes(
-        &vec![
+        &[
             first_and_mbah_nodes[0].0.clone(),
             first_and_mbah_nodes[1].0.clone(),
         ],
@@ -155,7 +155,7 @@ pub fn run(
     push_to_output(&args, &mut sh_output, "uhst_mbah", "csv");
     let writer = open_csv_writer(sh_output)?;
     let mbah = combine_node_haplotypes(
-        &vec![
+        &[
             first_and_mbah_nodes[0].1.clone(),
             first_and_mbah_nodes[1].1.clone(),
         ],

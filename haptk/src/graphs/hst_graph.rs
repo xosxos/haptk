@@ -104,7 +104,7 @@ impl<'a> HstGraph<'a> {
 
     pub fn draw_graph(&mut self) -> Result<()> {
         let root_idx = NodeIndex::new(0);
-        let width = (0.0, self.s.width as f32);
+        let width = (0.0, self.s.width);
 
         // Rescale by subtracting the pixels lost to font scaling from the tree height
         // let extra_y = 0.0;
@@ -251,11 +251,10 @@ fn find_height(g: &Graph<bhst::Node, u8>, s: &GraphArgs, min_size: usize) -> f32
                 false
             }
         })
-        .map(|idx| {
+        .flat_map(|idx| {
             petgraph::algo::all_simple_paths::<Vec<_>, _>(g, NodeIndex::new(0), idx, 0, None)
-                .map(|path| path.iter().count())
+                .map(|path| path.len())
         })
-        .flatten()
         .max()
     {
         tracing::debug!("Height of the tree is {height}");
