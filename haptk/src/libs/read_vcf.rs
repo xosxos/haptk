@@ -13,14 +13,13 @@ use rust_htslib::bcf::IndexedReader;
 use rust_htslib::bcf::Read;
 use rust_htslib::bcf::Record;
 
-use crate::structs::{Coord, PhasedMatrix};
-use crate::utils::filter_samples;
 use crate::{
-    args::Selection,
+    args::{Selection, StandardArgs},
     error::HatkError::{NormalizeError, PloidyError, SamplesNotFoundError},
+    io::{get_htslib_contig_len, read_sample_ids},
+    structs::{Coord, PhasedMatrix, Ploidy},
+    utils::filter_samples,
 };
-use crate::{args::StandardArgs, core::get_htslib_contig_len};
-use crate::{io::read_sample_ids, structs::Ploidy};
 
 pub fn get_reader(
     path: &PathBuf,

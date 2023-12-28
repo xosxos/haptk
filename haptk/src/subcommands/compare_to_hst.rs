@@ -9,15 +9,14 @@ use ndarray::parallel::prelude::*;
 use petgraph::Graph;
 use petgraph::{prelude::NodeIndex, Direction};
 
-use crate::args::Selection;
-use crate::core::parse_snp_coord;
-use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::PhasedMatrix;
-use crate::subcommands::bhst::read_hst_file;
-use crate::utils::push_to_output;
-use crate::{args::StandardArgs, subcommands::bhst::write_hst_file};
-
-use super::bhst::{Hst, Node};
+use crate::{
+    args::{Selection, StandardArgs},
+    io::push_to_output,
+    read_vcf::read_vcf_to_matrix,
+    structs::PhasedMatrix,
+    subcommands::bhst::{read_hst_file, write_hst_file, Hst, Node},
+    utils::parse_snp_coord,
+};
 
 #[doc(hidden)]
 pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {

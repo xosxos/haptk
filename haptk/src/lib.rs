@@ -16,7 +16,7 @@
 //
 
 pub mod libs;
-pub use libs::{args, core, error, io, read_vcf, stats, structs, utils};
+pub use libs::{args, error, io, read_vcf, stats, structs, utils};
 
 #[cfg(feature = "clap")]
 pub use libs::clap;

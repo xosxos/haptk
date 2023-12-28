@@ -2,11 +2,13 @@ use std::path::PathBuf;
 
 use color_eyre::{eyre::eyre, Result};
 
-use crate::args::{Selection, StandardArgs};
-use crate::core::{open_csv_writer, parse_snp_coord};
-use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::{HapVariant, PhasedMatrix};
-use crate::utils::push_to_output;
+use crate::{
+    args::{Selection, StandardArgs},
+    io::{open_csv_writer, push_to_output},
+    read_vcf::read_vcf_to_matrix,
+    structs::{HapVariant, PhasedMatrix},
+    utils::parse_snp_coord,
+};
 
 #[doc(hidden)]
 pub fn run(args: StandardArgs, haplotype_path: PathBuf) -> Result<()> {

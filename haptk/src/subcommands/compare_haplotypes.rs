@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use color_eyre::Result;
 use termion::color;
 
-use crate::core::open_csv_writer;
-use crate::{io::read_haplotype_file, structs::HapVariant};
+use crate::io::{open_csv_writer, read_haplotype_file};
+use crate::structs::HapVariant;
 
 pub fn run(
     haplotypes: Vec<PathBuf>,

@@ -6,15 +6,14 @@ use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Gamma;
 use statrs::statistics::Statistics;
 
-use crate::args::Selection;
-use crate::args::StandardArgs;
-use crate::core::parse_snp_coord;
-use crate::io::read_recombination_file;
-use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::PhasedMatrix;
-use crate::utils::push_to_output;
-
-use super::bhst::Node;
+use crate::{
+    args::{Selection, StandardArgs},
+    io::{push_to_output, read_recombination_file},
+    read_vcf::read_vcf_to_matrix,
+    structs::PhasedMatrix,
+    subcommands::bhst::Node,
+    utils::parse_snp_coord,
+};
 
 pub type Age = (f64, f64, f64);
 

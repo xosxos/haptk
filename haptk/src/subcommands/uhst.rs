@@ -9,15 +9,15 @@ use petgraph::graph::NodeIndex;
 use petgraph::{Direction, Graph};
 use rayon::prelude::*;
 
-use crate::args::{GraphArgs, Selection, StandardArgs};
-use crate::core::open_csv_writer;
-use crate::graphs::HstGraph;
-use crate::io::{read_sample_ids, read_variable_data_file};
-use crate::structs::{HapVariant, PhasedMatrix};
-use crate::subcommands::bhst::{
-    self, calculate_and_write_var_data, write_haplotype, write_hst_file, Node,
+use crate::{
+    args::{GraphArgs, Selection, StandardArgs},
+    graphs::HstGraph,
+    io::{open_csv_writer, push_to_output, read_sample_ids, read_variable_data_file},
+    structs::{HapVariant, PhasedMatrix},
+    subcommands::bhst::{
+        self, calculate_and_write_var_data, write_haplotype, write_hst_file, Node,
+    },
 };
-use crate::utils::push_to_output;
 
 #[doc(hidden)]
 #[derive(PartialEq, Eq, PartialOrd, Ord)]

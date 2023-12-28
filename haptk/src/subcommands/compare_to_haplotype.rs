@@ -9,15 +9,15 @@ use ndarray::parallel::prelude::*;
 use ndarray::{s, Axis};
 use ndarray::{Array2, ShapeBuilder};
 
-use crate::args::Selection;
-use crate::args::{GraphArgs, StandardArgs};
-use crate::core::{open_csv_writer, parse_snp_coord};
+use crate::{
+    args::{GraphArgs, Selection, StandardArgs},
+    graphs::MatrixGraph,
+    io::{open_csv_writer, push_to_output, read_haplotype_file, read_sample_ids},
+    read_vcf::read_vcf_to_matrix,
+    structs::{HapVariant, PhasedMatrix},
+    utils::parse_snp_coord,
+};
 // use crate::graphs::matrix_graph::matrix_graph_png;
-use crate::graphs::MatrixGraph;
-use crate::io::{read_haplotype_file, read_sample_ids};
-use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::{HapVariant, PhasedMatrix};
-use crate::utils::push_to_output;
 
 #[doc(hidden)]
 pub fn run(

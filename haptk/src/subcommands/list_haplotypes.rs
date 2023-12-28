@@ -2,10 +2,10 @@ use color_eyre::Result;
 
 use crate::{
     args::StandardArgs,
-    core::{open_csv_writer, parse_coords},
+    io::{open_csv_writer, push_to_output},
     read_vcf::read_vcf_to_matrix,
     structs::{HapVariant, Ploidy},
-    utils::push_to_output,
+    utils::parse_coords,
 };
 
 #[doc(hidden)]

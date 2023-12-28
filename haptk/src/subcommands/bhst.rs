@@ -10,21 +10,14 @@ use petgraph::{Direction, Graph};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::structs::{HapVariant, PhasedMatrix};
-use crate::utils::push_to_output;
 use crate::{
     args::{GraphArgs, Selection, StandardArgs},
-    io::read_variable_data_file,
-};
-use crate::{
-    core::get_output,
-    read_vcf::{get_sample_names, read_vcf_to_matrix},
-};
-use crate::{
-    core::{open_csv_writer, parse_snp_coord},
     graphs::HstGraph,
+    io::{get_output, open_csv_writer, push_to_output, read_sample_ids, read_variable_data_file},
+    read_vcf::{get_sample_names, read_vcf_to_matrix},
+    structs::{Coord, HapVariant, PhasedMatrix},
+    utils::parse_snp_coord,
 };
-use crate::{io::read_sample_ids, structs::Coord};
 
 pub fn read_vcf_with_selections(args: &StandardArgs) -> Result<PhasedMatrix> {
     let (contig, pos) = parse_snp_coord(&args.coords)?;
