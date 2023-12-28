@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use haptk::core::{get_output, get_vcf_writer, open_csv_writer};
-use haptk::structs::{PhasedMatrix, Ploidy};
-use haptk::subcommands::bhst::{write_haplotype, Node};
-use haptk::subcommands::haplotype_to_vcf::{header, VcfRow};
+use haptk::{
+    io::{get_output, get_vcf_writer, open_csv_writer},
+    structs::{PhasedMatrix, Ploidy},
+    subcommands::bhst::{write_haplotype, Node},
+    subcommands::haplotype_to_vcf::{header, VcfRow},
+};
 
 pub fn write_indexes_to_file<S>(name: S, node: &Node, vcf: Rc<PhasedMatrix>)
 where

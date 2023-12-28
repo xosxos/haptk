@@ -5,10 +5,12 @@ use rayon::prelude::*;
 use rust_htslib::bcf::{IndexedReader, Read};
 use termion::color;
 
+use crate::io::get_htslib_bcf_contigs;
+
 #[doc(hidden)]
 #[tracing::instrument]
 pub fn run(path: PathBuf, bp_per_snp: i64, npipes: i64) -> Result<()> {
-    let contigs = crate::core::get_htslib_bcf_contigs(&path)?;
+    let contigs = get_htslib_bcf_contigs(&path)?;
 
     let lines = contigs
         .par_iter()

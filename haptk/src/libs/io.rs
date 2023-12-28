@@ -1,15 +1,20 @@
 use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Receiver;
+use std::thread::{self, JoinHandle};
 
-use color_eyre::{
-    eyre::{eyre, WrapErr},
-    Result,
-};
+use bgzip::tabix::Tabix;
+use color_eyre::eyre::{eyre, WrapErr};
+use color_eyre::Result;
+use csv::{QuoteStyle, Reader, ReaderBuilder, Writer, WriterBuilder};
 use polars::prelude::*;
+use rust_htslib::bcf::{header::HeaderRecord, IndexedReader, Read};
 
-use crate::core::{get_csv_reader, get_input, get_tsv_reader};
+use crate::args::{Selection, StandardArgs};
 use crate::structs::HapVariant;
 
 pub fn read_variable_data_file(path: PathBuf) -> Result<DataFrame> {
@@ -110,5 +115,281 @@ pub fn read_sample_ids(path: &Option<PathBuf>) -> Result<Option<Vec<String>>> {
             Ok(Some(samples))
         }
         None => Ok(None),
+    }
+}
+
+pub fn push_to_output(args: &StandardArgs, output: &mut PathBuf, name: &str, suffix: &str) {
+    if let Some(prefix) = &args.prefix {
+        match args.selection {
+            Selection::All => output.push(format!("{prefix}_{name}.{suffix}")),
+            Selection::OnlyAlts => output.push(format!("{prefix}_{name}_only_alts.{suffix}")),
+            Selection::OnlyRefs => output.push(format!("{prefix}_{name}_only_refs.{suffix}")),
+            Selection::OnlyLongest => output.push(format!("{prefix}_{name}_only_longest.{suffix}")),
+            Selection::Unphased => output.push(format!("{prefix}_{name}_rwc.{suffix}")),
+            Selection::Haploid => output.push(format!("{prefix}_{name}_haploid.{suffix}")),
+        }
+    } else {
+        match args.selection {
+            Selection::All => output.push(format!("{name}.{suffix}")),
+            Selection::OnlyAlts => output.push(format!("{name}_only_alts.{suffix}")),
+            Selection::OnlyRefs => output.push(format!("{name}_only_refs.{suffix}")),
+            Selection::OnlyLongest => output.push(format!("{name}_only_longest.{suffix}")),
+            Selection::Unphased => output.push(format!("{name}_rwc.{suffix}")),
+            Selection::Haploid => output.push(format!("{name}_haploid.{suffix}")),
+        }
+    }
+}
+
+pub fn get_htslib_contig_len(path: &PathBuf, contig: &str) -> Result<u64> {
+    for r in IndexedReader::from_path(path)?
+        .header()
+        .header_records()
+        .iter()
+        .filter(|r| matches!(r, HeaderRecord::Contig { .. }))
+    {
+        match r {
+            HeaderRecord::Contig { values, .. } => {
+                if let Some(id) = values.get("ID") {
+                    if id == contig {
+                        return Ok(values
+                            .get("length")
+                            .ok_or_else(|| eyre!("VCF header has no contig length for {id}"))?
+                            .parse::<u64>()?);
+                    }
+                }
+            }
+            _ => {
+                panic!("Header contig filtering failed for some reason. Create an issue at Github")
+            }
+        }
+    }
+    Err(eyre!(
+        "Cannot get length for contig {contig}. Check the vcf header."
+    ))
+}
+
+pub fn get_htslib_bcf_contigs(path: &PathBuf) -> Result<Vec<(String, i64)>> {
+    IndexedReader::from_path(path)?
+        .header()
+        .header_records()
+        .iter()
+        .filter(|r| matches!(r, HeaderRecord::Contig { .. }))
+        .map(|r| match r {
+            HeaderRecord::Contig { values, .. } => {
+                let id = values
+                    .get("ID")
+                    .expect("The input VCF has no ID for some contig record in the header");
+                Ok((
+                    id.clone(),
+                    values
+                        .get("length")
+                        .expect(&format!("VCF header has no contig length for {id}"))
+                        .parse::<i64>()?,
+                ))
+            }
+            _ => {
+                panic!("Header contig filtering failed for some reason. Create an issue at Github")
+            }
+        })
+        .collect()
+}
+
+pub fn get_tsv_reader<R: io::Read>(input: R, has_headers: bool) -> Reader<R> {
+    ReaderBuilder::new()
+        .delimiter(b'\t')
+        .has_headers(has_headers)
+        .flexible(false)
+        .from_reader(input)
+}
+
+pub fn get_csv_reader<R: io::Read>(input: R) -> Reader<R> {
+    ReaderBuilder::new()
+        .delimiter(b',')
+        .has_headers(true)
+        .flexible(false)
+        .from_reader(input)
+}
+
+pub fn get_csv_writer<W: io::Write>(output: W) -> Writer<W> {
+    WriterBuilder::new()
+        .delimiter(b',')
+        .has_headers(false)
+        .flexible(true)
+        .from_writer(output)
+}
+
+pub fn get_strict_tsv_writer<W: io::Write>(output: W) -> Writer<W> {
+    WriterBuilder::new()
+        .delimiter(b'\t')
+        .has_headers(false)
+        .flexible(true)
+        .from_writer(output)
+}
+
+pub fn get_vcf_writer<W: io::Write>(output: W) -> Writer<W> {
+    WriterBuilder::new()
+        .delimiter(b'\t')
+        .has_headers(false)
+        .flexible(true)
+        .double_quote(false)
+        .quote_style(QuoteStyle::Never)
+        .from_writer(output)
+}
+
+pub fn get_input(filename: Option<PathBuf>) -> Result<Box<dyn io::Read>> {
+    let input: Box<dyn io::Read> = match filename {
+        Some(name) => match name.to_str() {
+            Some("-") => Box::new(io::stdin()),
+            Some(name) => {
+                let r = match niffler::from_path(name) {
+                    Ok(x) => x.0,
+                    Err(err) => {
+                        let msg = format!("failed to open \"{name}\": {err}");
+                        return Err(eyre!(msg))?;
+                    }
+                };
+                Box::new(r)
+            }
+            None => return Err(eyre!("Unknown I/O error")),
+        },
+        None => Box::new(io::stdin()),
+    };
+    Ok(input)
+}
+
+pub fn get_output(filename: Option<PathBuf>) -> Result<Box<dyn io::Write>> {
+    let output: Box<dyn io::Write> = match filename {
+        Some(name) => match name.to_str() {
+            Some("-") => Box::new(io::stdout()),
+            Some(name) => Box::new(
+                match std::fs::File::options()
+                    .create(true)
+                    .write(true)
+                    .truncate(true)
+                    .open(name)
+                {
+                    Ok(x) => x,
+                    Err(err) => return Err(eyre!("failed to open \"{name}\": {err}"))?,
+                },
+            ),
+            None => return Err(eyre!("Unknown I/O error")),
+        },
+        None => Box::new(io::stdout()),
+    };
+    Ok(output)
+}
+
+pub fn open_csv_writer(name: PathBuf) -> Result<Writer<Box<dyn io::Write>>> {
+    Ok(get_csv_writer(get_output(Some(name))?))
+}
+
+pub fn open_strict_tsv_writer(name: PathBuf) -> Result<Writer<Box<dyn io::Write>>> {
+    Ok(get_strict_tsv_writer(get_output(Some(name))?))
+}
+
+pub fn spawn_csv_collector(
+    rx: Receiver<Vec<String>>,
+    header: Vec<String>,
+    outname: Option<PathBuf>,
+    sort: bool,
+) -> JoinHandle<Result<()>> {
+    thread::spawn(move || -> Result<()> {
+        let output = get_output(outname)?;
+        let mut output = get_csv_writer(output);
+        output.write_record(header)?;
+
+        match sort {
+            true => {
+                let mut lines = vec![];
+
+                while let Ok(line) = rx.recv() {
+                    lines.push(line);
+                }
+
+                lines.sort_by(|a, b| alphanumeric_sort::compare_str(&a[0], &b[0]));
+
+                for line in lines {
+                    output.write_record(&line)?;
+                }
+            }
+            false => {
+                while let Ok(line) = rx.recv() {
+                    output.write_record(&line)?;
+                }
+            }
+        }
+
+        Ok(())
+    })
+}
+
+pub fn append_ext(ext: impl AsRef<OsStr>, path: &PathBuf) -> PathBuf {
+    let mut os_string: OsString = path.into();
+    os_string.push(".");
+    os_string.push(ext.as_ref());
+    os_string.into()
+}
+
+pub fn read_tabix(path: &PathBuf) -> Result<HashMap<String, (u64, usize)>> {
+    let path = append_ext("tbi", path);
+    let mut file = match std::fs::File::open(&path) {
+        Ok(x) => x,
+        Err(err) => {
+            let msg = format!("failed to open \"{}\": {err}", path.display());
+            return Err(eyre!(msg))?;
+        }
+    };
+    let tabix = Tabix::from_reader(&mut file)?;
+
+    let mut contigs: HashMap<String, (u64, usize)> = HashMap::new();
+
+    let names = tabix
+        .names
+        .iter()
+        .map(|n| Ok(std::str::from_utf8(n)?))
+        .collect::<Result<Vec<&str>>>()?;
+
+    let start = tabix
+        .sequences
+        .iter()
+        .map(|n| {
+            Ok((
+                *n.intervals.first().unwrap(),
+                n.number_of_distinct_bin as usize,
+            ))
+        })
+        .collect::<Result<Vec<(u64, usize)>>>()?;
+
+    names.iter().zip(start).for_each(|(name, (start, end))| {
+        let _ = contigs.insert(name.trim_matches(char::from(0)).to_string(), (start, end));
+    });
+
+    Ok(contigs)
+}
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_push_to_output() {
+        let mut output = std::path::PathBuf::new();
+        let args = crate::args::StandardArgs::default();
+        push_to_output(&args, &mut output, "picture", "png");
+        assert_eq!(output, std::path::PathBuf::from("picture.png"));
+
+        let mut output = std::path::PathBuf::from("./foo");
+        let args = crate::args::StandardArgs::default();
+        push_to_output(&args, &mut output, "picture", "png");
+        assert_eq!(output, std::path::PathBuf::from("./foo/picture.png"));
+
+        let mut output = std::path::PathBuf::from("./foo");
+        let args = crate::args::StandardArgs { 
+            prefix: Some("nice".to_string()), 
+            ..Default::default()
+        };
+        push_to_output(&args, &mut output, "picture", "png");
+        assert_eq!(output, std::path::PathBuf::from("./foo/nice_picture.png"));
     }
 }
