@@ -7,6 +7,8 @@ description = "HAPTK - Haplotype analysis toolkit"
 license = "GPL-3.0-only"
 readme = "README.md"
 homepage = "https://github.com/xosxos/haptk"
+repository = "https://github.com/xosxos/haptk"
+
 
 [lib]
 crate-type = ["cdylib", "rlib"]
