@@ -570,7 +570,7 @@ pub fn find_coord_list(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Vec<Coord> {
     coords
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     pub start_coord: String,
     pub selection: Selection,
@@ -582,6 +582,7 @@ pub struct Hst {
     pub coords: Vec<Coord>,
     pub hst: Graph<Node, u8>,
     pub samples: Vec<String>,
+    #[serde(default)]
     pub metadata: Metadata,
 }
 
