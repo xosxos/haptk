@@ -228,7 +228,7 @@ fn construct_phased_matrix(
     let matrix =
         Array2::from_shape_vec((samples.len() * ploidy as usize, coords.len()).f(), markers)?;
 
-    let mut vcf = PhasedMatrix::new(0, matrix, samples, coords, &selection);
+    let mut vcf = PhasedMatrix::new(0, matrix, samples, coords, selection);
 
     // vcf.variant_idx = vcf.get_first_idx_on_right_by_pos(variant_pos);
     vcf.variant_idx = vcf.get_nearest_idx_by_pos(variant_pos);
@@ -282,7 +282,7 @@ fn _check_info_limit(args: &StandardArgs, record: &Record, contig: &str, pos: u6
     if let Some(info_limit) = args.info_limit {
         match record.info(b"INFO").float()? {
             Some(buffer) => Ok(buffer[0] >= info_limit),
-            None => return Err(eyre!("No INFO score on a variant at: {contig}:{pos}")),
+            None => Err(eyre!("No INFO score on a variant at: {contig}:{pos}")),
         }
     } else {
         Ok(true)

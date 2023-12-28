@@ -21,5 +21,8 @@ pub use libs::{args, error, io, read_vcf, stats, structs, utils};
 #[cfg(feature = "clap")]
 pub use libs::clap;
 
+/// Graphs implemented in Rust, HST graph will replaced by Python
 pub mod graphs;
+
+/// HAPTK commands
 pub mod subcommands;

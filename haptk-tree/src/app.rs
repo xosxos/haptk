@@ -37,7 +37,7 @@ impl TreeApp {
         nmin_samples: usize,
         decoy_samples: Option<Vec<String>>,
     ) -> Self {
-        let decoy_samples = decoy_samples.map(|v| Rc::new(v)).unwrap_or(Rc::new(vec![]));
+        let decoy_samples = decoy_samples.map(Rc::new).unwrap_or(Rc::new(vec![]));
         Self {
             vcf: Rc::new(vcf),
             bhst: Rc::new(bhst),

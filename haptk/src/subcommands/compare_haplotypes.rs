@@ -190,8 +190,7 @@ mod tests {
             vec!["hap1".to_string(), "hap2".to_string(), "hap3".to_string()],
         );
         let pos: Vec<u64> = (1..50).collect();
-        let colors = vec![
-            (false, false),
+        let colors = [(false, false),
             (true, false),
             (false, false),
             (true, false),
@@ -200,8 +199,7 @@ mod tests {
             (false, false),
             (true, false),
             (false, true),
-            (true, false),
-        ];
+            (true, false)];
 
         for (i, (k, v)) in aligner.alignment.iter().enumerate() {
             assert_eq!(&pos[i], k);

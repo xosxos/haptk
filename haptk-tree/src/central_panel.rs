@@ -80,15 +80,13 @@ fn draw_hst(
         plot_ui.text(t.clone().into());
     }
 
-    if plot_ui.plot_clicked() {
+    if plot_ui.response().clicked() {
         if let Some(pp) = plot_ui.pointer_coordinate() {
             if let Some(p) = find_closest(&text, pp) {
-                text.get(&p)
-                    .map(|p| hst.node_weight(p.idx).unwrap())
-                    .map(|node| {
-                        write_indexes_to_file(name, node, vcf.clone());
-                        write_tp_ht_to_csv(name, node, vcf.clone());
-                    });
+                if let Some(node) = text.get(p).map(|p| hst.node_weight(p.idx).unwrap()) {
+                    write_indexes_to_file(name, node, vcf.clone());
+                    write_tp_ht_to_csv(name, node, vcf.clone());
+                };
             }
         }
     }
