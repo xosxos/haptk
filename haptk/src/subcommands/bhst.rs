@@ -15,7 +15,7 @@ use crate::{
     graphs::HstGraph,
     io::{get_output, open_csv_writer, push_to_output, read_sample_ids, read_variable_data_file},
     read_vcf::{get_sample_names, read_vcf_to_matrix},
-    structs::{Coord, HapVariant, PhasedMatrix},
+    structs::{Coord, HapVariant, PhasedMatrix, CoordDataSlot},
     utils::parse_snp_coord,
 };
 
@@ -159,7 +159,7 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
 
                 // Children count is 0, but there are still over min_size samples left
                 // Collect such nodes into the `indices` vector
-                count == 0 && node.indexes.len() >= min_size
+                count == 0 && node.indexes.len() >= min_size.max(2)
             })
             .collect::<Vec<NodeIndex>>();
 
@@ -167,7 +167,7 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
         let nodes = indices
             .into_par_iter()
             .filter_map(|node_idx| {
-                find_contradictory_gt(vcf, &bhst, node_idx).map(|nodes| (node_idx, nodes))
+                find_contradictory_gt3(vcf, &bhst, node_idx).map(|nodes| (node_idx, nodes))
             })
             .collect::<Vec<(NodeIndex, Vec<Node>)>>();
 
@@ -197,6 +197,7 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
 }
 
 #[doc(hidden)]
+#[allow(dead_code)]
 fn find_contradictory_gt(
     vcf: &PhasedMatrix,
     bhst: &Graph<Node, u8>,
@@ -266,6 +267,13 @@ fn find_contradictory_gt(
         }
     }
 
+    // let buckets = find_contradictory_gt3(vcf, bhst, node_idx);
+    // if buckets.is_some() {
+    //     let orig = Buckets::from(&zo, &zz, &oz, &oo);
+    //     tracing::info!("verifying at index: {idx:?}, {indexes:?}", idx=node_idx, indexes=node.indexes);
+    //     verify_buckets(&orig, &buckets.unwrap(), true);
+    // }
+
     // Create a new node for each bucket if it is not empty
     let nodes = create_nodes_from_buckets(vcf, left, right, oo, oz, zo, zz);
 
@@ -300,6 +308,90 @@ fn fill_buckets(
 
     // If at the end of the matrix or if a contradictory gt is present, return true
     (!z.is_empty() && !o.is_empty()) || variant_idx == 0 || variant_idx == vcf.matrix.ncols() - 1
+}
+
+#[allow(dead_code)]
+struct Buckets {
+    pub zo: Vec<usize>,
+    pub zz: Vec<usize>,
+    pub oz: Vec<usize>,
+    pub oo: Vec<usize>,
+}
+
+#[allow(dead_code)]
+impl Buckets {
+    pub fn from(zo: &Vec<usize>, zz: &Vec<usize>, oz: &Vec<usize>, oo: &Vec<usize>) -> Self {
+        Self {
+            zo: zo.clone(),
+            zz: zz.clone(),
+            oz: oz.clone(),
+            oo: oo.clone()
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn verify_buckets(a: &Buckets, b: &Buckets, verbose: bool) -> bool {
+    if verbose || a.zz != b.zz {
+        tracing::info!("zz:\n\t{a:?}\n\t{b:?}", a=a.zz, b=b.zz);
+    }
+    if verbose || a.zo != b.zo {
+        tracing::info!("zo:\n\t{a:?}\n\t{b:?}", a=a.zo, b=b.zo);
+    }
+    if verbose || a.oz != b.oz {
+        tracing::info!("oz:\n\t{a:?}\n\t{b:?}", a=a.oz, b=b.oz);
+    }
+    if verbose || a.oo != b.oo {
+        tracing::info!("oo:\n\t{a:?}\n\t{b:?}", a=a.oo, b=b.oo);
+    }
+    a.zo == b.zo && a.zz == b.zz && a.oz == b.oz && a.oo == b.oo
+}
+
+fn find_contradictory_gt3(
+    vcf: &PhasedMatrix,
+    bhst: &Graph<Node, u8>,
+    node_idx: NodeIndex,
+) -> Option<Vec<Node>> {
+    let node = bhst.node_weight(node_idx).unwrap();
+    let (left_idx, mut right_idx) = (node.start_idx, node.stop_idx);
+    // Minus 1 to account for the starting variant itself as well
+    if node_idx == NodeIndex::new(0) {
+        right_idx = right_idx.saturating_sub(1);
+    }
+
+    // Allocate Vecs with capacity so no reallocation is required
+    let prev = vcf.prev_contradictory(left_idx, &node.indexes);
+    let next = vcf.next_contradictory(right_idx, &node.indexes);
+
+    let (mut zo, mut zz, mut oz, mut oo) = (
+        Vec::with_capacity(node.indexes.len()),
+        Vec::with_capacity(node.indexes.len()),
+        Vec::with_capacity(node.indexes.len()),
+        Vec::with_capacity(node.indexes.len()),
+    );
+    match (prev, next) {
+        (Some(left), Some(right)) => {
+            let left_vec =vcf.get_slot(left);
+            let right_vec =vcf.get_slot(right);
+            for i in node.indexes.iter() {
+                let left_bit = left_vec[*i] == 1;
+                let right_bit = right_vec[*i] == 1;
+                match (left_bit, right_bit) {
+                    (false, false) => zz.push(*i),
+                    (false, true)  => zo.push(*i),
+                    (true,  false) => oz.push(*i),
+                    (true,  true)  => oo.push(*i),
+                }
+            }
+            //let buckets = Buckets::from(&zo, &zz, &oz, &oo);
+            //Some(buckets)
+
+            // Create a new node for each bucket if it is not empty
+            let nodes = create_nodes_from_buckets(vcf, left, right, oo, oz, zo, zz);
+            Some(nodes)
+        }
+        (_, _) => None
+    }
 }
 
 fn create_nodes_from_buckets(
