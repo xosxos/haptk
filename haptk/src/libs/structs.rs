@@ -5,7 +5,7 @@ use color_eyre::{
     eyre::{ensure, eyre, WrapErr},
     Result,
 };
-use ndarray::{s, Array2, Axis};
+use ndarray::{s, Array2, Axis, ArrayView1};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -620,6 +620,56 @@ impl PhasedMatrix {
             Ok(None)
         }
     }
+}
+
+pub trait CoordDataSlot {
+    fn get_slot(&self, index: usize) -> ArrayView1<u8>;
+    fn is_contradictory(&self, index: usize, positions: &Vec<usize>) -> bool;
+    fn prev_contradictory(&self, index: usize, positions: &Vec<usize>) -> Option<usize>;
+    fn next_contradictory(&self, index: usize, positions: &Vec<usize>) -> Option<usize>;
+}
+
+
+impl CoordDataSlot for PhasedMatrix {
+    fn get_slot(&self, index: usize) -> ArrayView1<u8> {
+        self.matrix.index_axis(Axis(1), index)
+    }
+    // Slot is contractory if it contains both 0 and 1.
+    fn is_contradictory(&self, index: usize, positions: &Vec<usize>) -> bool {
+        let slot = self.get_slot(index);
+        let mut iter = positions.iter();
+        let first = iter.next().unwrap();
+        slot.len() > 1 && iter.any(|x| slot[*x] != slot[*first])
+    }
+
+    fn prev_contradictory(&self, index: usize, positions: &Vec<usize>) -> Option<usize> {
+        if index == 0 || positions.len() < 2 {
+            return None;
+        }
+        let mut idx = (index - 1) as isize;
+        while idx >= 0 {
+            if self.is_contradictory(idx as usize, positions) {
+                return Some(idx as usize);
+            }
+            idx -= 1;
+        }
+        None
+    }
+
+    fn next_contradictory(&self, index: usize, positions: &Vec<usize>) -> Option<usize> {
+        if index == self.matrix.ncols() - 1 || positions.len() < 2 {
+            return None;
+        }
+        let mut idx = index + 1;
+        while idx < self.matrix.ncols() {
+            if self.is_contradictory(idx as usize, positions) {
+                return Some(idx);
+            }
+            idx += 1;
+        }
+        None
+    }
+
 }
 
 #[cfg(test)]
