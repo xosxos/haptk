@@ -209,10 +209,10 @@ fn find_contradictory_gt(
         right_idx = right_idx.saturating_sub(1);
     }
 
-    // Allocate Vecs with capacity so no reallocation is required
     let prev = vcf.prev_contradictory(left_idx, &node.indexes);
     let next = vcf.next_contradictory(right_idx, &node.indexes);
 
+    // Allocate Vecs with capacity so no reallocation is required
     let (mut zo, mut zz, mut oz, mut oo) = (
         Vec::with_capacity(node.indexes.len()),
         Vec::with_capacity(node.indexes.len()),
