@@ -167,7 +167,7 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
         let nodes = indices
             .into_par_iter()
             .filter_map(|node_idx| {
-                find_contradictory_gt3(vcf, &bhst, node_idx).map(|nodes| (node_idx, nodes))
+                find_contradictory_gt(vcf, &bhst, node_idx).map(|nodes| (node_idx, nodes))
             })
             .collect::<Vec<(NodeIndex, Vec<Node>)>>();
 
@@ -197,157 +197,7 @@ pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<
 }
 
 #[doc(hidden)]
-#[allow(dead_code)]
 fn find_contradictory_gt(
-    vcf: &PhasedMatrix,
-    bhst: &Graph<Node, u8>,
-    node_idx: NodeIndex,
-) -> Option<Vec<Node>> {
-    let node = bhst.node_weight(node_idx).unwrap();
-    let (mut left, mut right) = (node.start_idx, node.stop_idx);
-
-    // Minus 1 to account for the starting variant itself as well
-    if node_idx == NodeIndex::new(0) {
-        right = right.saturating_sub(1);
-    }
-
-    // Allocate Vecs with capacity so no reallocation is required
-    // NOTE: This is not proven to be the faster approach here
-    let (mut rz, mut ro, mut lz, mut lo) = (
-        Vec::with_capacity(node.indexes.len()),
-        Vec::with_capacity(node.indexes.len()),
-        Vec::with_capacity(node.indexes.len()),
-        Vec::with_capacity(node.indexes.len()),
-    );
-
-    // Expand to both sides until a contradictory genotype is found, or the end of sequencing data is reached
-    loop {
-        if right < vcf.matrix.ncols() - 1 {
-            right += 1;
-        }
-
-        if fill_buckets(vcf, node, right, &mut rz, &mut ro) {
-            break;
-        }
-    }
-    loop {
-        left = left.saturating_sub(1);
-
-        if fill_buckets(vcf, node, left, &mut lz, &mut lo) {
-            break;
-        }
-    }
-
-    // Divide left and right side contradictory genotypes to buckets:
-    // [0,1] [0,0] [1, 0] [0, 0]
-    let (mut zo, mut zz, mut oz, mut oo) = (
-        Vec::with_capacity(node.indexes.len()),
-        Vec::with_capacity(node.indexes.len()),
-        Vec::with_capacity(node.indexes.len()),
-        Vec::with_capacity(node.indexes.len()),
-    );
-
-    for i in &lz {
-        if rz.contains(i) {
-            zz.push(*i);
-        } else if ro.contains(i) {
-            zo.push(*i)
-        } else {
-            unreachable!("Genotypes are not biallelic");
-        }
-    }
-
-    for i in &lo {
-        if rz.contains(i) {
-            oz.push(*i);
-        } else if ro.contains(i) {
-            oo.push(*i)
-        } else {
-            unreachable!("Genotypes are not biallelic");
-        }
-    }
-
-    // let buckets = find_contradictory_gt3(vcf, bhst, node_idx);
-    // if buckets.is_some() {
-    //     let orig = Buckets::from(&zo, &zz, &oz, &oo);
-    //     tracing::info!("verifying at index: {idx:?}, {indexes:?}", idx=node_idx, indexes=node.indexes);
-    //     verify_buckets(&orig, &buckets.unwrap(), true);
-    // }
-
-    // Create a new node for each bucket if it is not empty
-    let nodes = create_nodes_from_buckets(vcf, left, right, oo, oz, zo, zz);
-
-    // Return buckets if more than one bucket exists
-    match nodes.len() > 1 {
-        true => Some(nodes),
-        false => None,
-    }
-}
-
-fn fill_buckets(
-    vcf: &PhasedMatrix,
-    node: &Node,
-    variant_idx: usize,
-    z: &mut Vec<usize>,
-    o: &mut Vec<usize>,
-) -> bool {
-    // Empty the vectors for a new iteration
-    z.clear();
-    o.clear();
-
-    // Iterate all sample indexes to find the genotypes
-    for i in node.indexes.iter() {
-        let gt = vcf.matrix.slice(s![*i, variant_idx]);
-
-        match gt.into_scalar() {
-            0 => z.push(*i),
-            1 => o.push(*i),
-            _ => unreachable!("Other genotypes than 0 and 1 are present in the matrix"),
-        }
-    }
-
-    // If at the end of the matrix or if a contradictory gt is present, return true
-    (!z.is_empty() && !o.is_empty()) || variant_idx == 0 || variant_idx == vcf.matrix.ncols() - 1
-}
-
-#[allow(dead_code)]
-struct Buckets {
-    pub zo: Vec<usize>,
-    pub zz: Vec<usize>,
-    pub oz: Vec<usize>,
-    pub oo: Vec<usize>,
-}
-
-#[allow(dead_code)]
-impl Buckets {
-    pub fn from(zo: &Vec<usize>, zz: &Vec<usize>, oz: &Vec<usize>, oo: &Vec<usize>) -> Self {
-        Self {
-            zo: zo.clone(),
-            zz: zz.clone(),
-            oz: oz.clone(),
-            oo: oo.clone()
-        }
-    }
-}
-
-#[allow(dead_code)]
-fn verify_buckets(a: &Buckets, b: &Buckets, verbose: bool) -> bool {
-    if verbose || a.zz != b.zz {
-        tracing::info!("zz:\n\t{a:?}\n\t{b:?}", a=a.zz, b=b.zz);
-    }
-    if verbose || a.zo != b.zo {
-        tracing::info!("zo:\n\t{a:?}\n\t{b:?}", a=a.zo, b=b.zo);
-    }
-    if verbose || a.oz != b.oz {
-        tracing::info!("oz:\n\t{a:?}\n\t{b:?}", a=a.oz, b=b.oz);
-    }
-    if verbose || a.oo != b.oo {
-        tracing::info!("oo:\n\t{a:?}\n\t{b:?}", a=a.oo, b=b.oo);
-    }
-    a.zo == b.zo && a.zz == b.zz && a.oz == b.oz && a.oo == b.oo
-}
-
-fn find_contradictory_gt3(
     vcf: &PhasedMatrix,
     bhst: &Graph<Node, u8>,
     node_idx: NodeIndex,
@@ -383,9 +233,6 @@ fn find_contradictory_gt3(
                     (true,  true)  => oo.push(*i),
                 }
             }
-            //let buckets = Buckets::from(&zo, &zz, &oz, &oo);
-            //Some(buckets)
-
             // Create a new node for each bucket if it is not empty
             let nodes = create_nodes_from_buckets(vcf, left, right, oo, oz, zo, zz);
             Some(nodes)
