@@ -4,7 +4,7 @@ use crate::{
     args::StandardArgs,
     io::{open_csv_writer, push_to_output},
     read_vcf::read_vcf_to_matrix,
-    structs::{HapVariant, Ploidy},
+    structs::HapVariant,
     utils::parse_coords,
 };
 
@@ -21,37 +21,23 @@ pub fn run(args: StandardArgs) -> Result<()> {
     };
 
     for sample_name in vcf.samples() {
-        let mut sh_output = args.output.clone();
-        push_to_output(
-            &args,
-            &mut sh_output,
-            &format!("{sample_name}_haplotype_1"),
-            "csv",
-        );
-        let mut writer = open_csv_writer(sh_output)?;
+        let idxs = vcf.get_sample_idxs(&[sample_name.clone()])?;
 
-        match vcf.ploidy {
-            Ploidy::Haploid => {
-                let ht1 = vcf.find_haplotype_for_sample(contig, 0..vcf.ncoords(), 0);
-                write_haplotype(&mut writer, ht1)?;
-            }
-            Ploidy::Diploid => {
-                let ht1 = vcf.find_haplotype_for_sample(contig, 0..vcf.ncoords(), 0);
-                let ht2 = vcf.find_haplotype_for_sample(contig, 0..vcf.ncoords(), 1);
-                write_haplotype(&mut writer, ht1)?;
+        for (i, idx) in idxs.iter().enumerate() {
+            let mut sh_output = args.output.clone();
 
-                let mut sh_output = args.output.clone();
-                push_to_output(
-                    &args,
-                    &mut sh_output,
-                    &format!("{sample_name}_haplotype_2"),
-                    "csv",
-                );
-                let mut writer = open_csv_writer(sh_output)?;
-                write_haplotype(&mut writer, ht2)?;
-            }
-            Ploidy::Mixed => panic!("Mixed ploidy is not supported."),
-        };
+            push_to_output(
+                &args,
+                &mut sh_output,
+                &format!("{sample_name}_haplotype_{}", i + 1),
+                "csv",
+            );
+
+            let mut writer = open_csv_writer(sh_output)?;
+
+            let ht = vcf.find_haplotype_for_sample(contig, 0..vcf.ncoords(), *idx);
+            write_haplotype(&mut writer, ht)?;
+        }
     }
 
     Ok(())
