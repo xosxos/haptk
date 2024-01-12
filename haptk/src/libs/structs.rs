@@ -5,7 +5,7 @@ use color_eyre::{
     eyre::{ensure, eyre, WrapErr},
     Result,
 };
-use ndarray::{s, Array2, Axis, ArrayView1};
+use ndarray::{s, Array2, ArrayView1, Axis};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -629,7 +629,6 @@ pub trait CoordDataSlot {
     fn next_contradictory(&self, index: usize, positions: &Vec<usize>) -> Option<usize>;
 }
 
-
 impl CoordDataSlot for PhasedMatrix {
     fn get_slot(&self, index: usize) -> ArrayView1<u8> {
         self.matrix.index_axis(Axis(1), index)
@@ -669,7 +668,6 @@ impl CoordDataSlot for PhasedMatrix {
         }
         None
     }
-
 }
 
 #[cfg(test)]
