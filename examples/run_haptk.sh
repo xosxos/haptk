@@ -28,7 +28,7 @@ haptk uhst $biallelic \
   --coords chr9:27573534 \
   --samples $ids \
   --mark-samples over_20_repeats.ids \
-  --min-node-size 50 \
+  --min-size 50 \
   -t 8 \
   -vvv \
   -o results \
@@ -55,7 +55,7 @@ RUST_BACKTRACE=full haptk compare-to-haplotype $biallelic \
   --coords chr9:27573534 \
   --samples results/finnish_als_core_ht_carriers.ids \
   --mark-samples over_20_repeats.ids \
-  --haplotype data/finnish_als_bhst_ancestral_ht.csv \
+  --haplotype data/finnish_als_core_ht.csv \
   -vvv \
   -o results \
   --prefix finnish_als
