@@ -1,0 +1,39 @@
+from ete3 import TreeStyle, TextFace, NodeStyle
+
+def tree_style():
+    ts = TreeStyle()
+    ts.rotation = 90
+    ts.show_leaf_name = False
+    ts.show_scale = False
+    ts.min_leaf_separation = 0
+    ts.branch_vertical_margin = 5
+    ts.optimal_scale_level = "full"
+    ts.allow_face_overlap = True
+    return ts
+    
+
+def draw_index_tree(t, output):
+    style = NodeStyle()
+    style["size"] = 0
+
+    lnode_color = "#9F2B68"
+    larea_color = "#FFB6C1"
+
+    lstyle = NodeStyle()
+    lstyle["fgcolor"] = "#000"
+    lstyle["shape"] = "square"
+    lstyle["size"] = 1
+    lstyle["hz_line_type"] = 0
+    lstyle["vt_line_type"] = 0
+
+    for n in t.traverse():
+        n.set_style(style)
+
+        label = n.name
+
+        F = TextFace(label, tight_text=True, penwidth=30)
+        F.rotation = 270
+        n.add_face(F, column=0)
+        n.set_style(lstyle)
+
+    t.render(output, units="px", tree_style=tree_style(), dpi=600)

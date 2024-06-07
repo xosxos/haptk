@@ -4,28 +4,15 @@ import argparse
 import rustworkx as rx
 import gzip
 
-def read_path_to_hst(path):
-    with gzip.open(path, 'rt') as f:
-        json_bytes = f.read()
-        hst_struct = json.loads(json_bytes)
-        hst = hst_struct["hst"]
-        coords = hst_struct["coords"]
-        samples = hst_struct["samples"]
-        metadata = hst_struct["metadata"]
+def return_node_style(color, size):
+    style = NodeStyle()
+    style["fgcolor"] = color
+    style["size"] = size
+    style["hz_line_type"] = 0
+    style["vt_line_type"] = 0
+    style["shape"] = "square"
+    return style
 
-        G = rx.PyDiGraph()
-
-        edges_tuple_vec = []
-        for edges in hst["edges"]:
-            edges_tuple_vec.append((edges[0], edges[1], edges[2]))
-
-        G.add_nodes_from(hst["nodes"])
-        G.add_edges_from(edges_tuple_vec)
-
-        if metadata["selection"] == "All":
-            samples = [val for val in samples for _ in (0, 1)]
-
-        return G, coords, samples, metadata
 
 def hst_to_graph_dict(hst):
     graph_dict = {}

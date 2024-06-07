@@ -1,0 +1,16 @@
+Metadata-Version: 2.1
+Name: haptk
+Version: 0.0.1
+Summary: HAPTK
+Author: xosxos
+Author-email: xosxos <author@example.com>
+Project-URL: Homepage, https://github.com/xosxos/haptk
+Project-URL: Issues, https://github.com/xosxos/haptk/issues
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: ete3==3.1.3
+Requires-Dist: rustworkx==0.14.2
+Requires-Dist: pyqt5==5.15.10
