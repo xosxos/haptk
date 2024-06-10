@@ -8,7 +8,7 @@ import numpy as np
 import seaborn as sns
 from matplotlib import pyplot as plt
 
-from haptk.graph import leaf_neighbors, read_hst
+import haptk
 
 ### Script logic
 parser = argparse.ArgumentParser()
@@ -30,8 +30,8 @@ def get_repeat_n(data, samples, df):
     return n
 
 
-hst = read_hst(args.hst)
-neighbors = leaf_neighbors(hst)
+hst = haptk.read_hst(args.hst)
+neighbors = hst.leaf_neighbors()
 
 node_n = []
 neighbor_n = []

@@ -48,5 +48,5 @@ def draw_circle_tree(hst, t, output, samples, samples_to_tag, colors):
                     n.set_style(utils.return_node_style(colors[color_i], 5))
                     n.img_style["bgcolor"] = colors[color_i]
 
+    return t
 
-    t.render(output, w=1624, h=1624, units="px", tree_style=circle_tree_style(), dpi=600)

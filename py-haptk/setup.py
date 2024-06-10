@@ -3,7 +3,8 @@ from setuptools import find_packages, setup
 
 setup(
     name='haptk',
-    packages=find_packages(include=['haptk']),
+    # packages=find_packages(include=['haptk']),
+    packages=find_packages(),
     version='0.0.1',
     description='HAPTK Python library',
     author="xosxos",

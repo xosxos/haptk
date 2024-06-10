@@ -1,6 +1,6 @@
 from ete3 import TreeStyle, TextFace, NodeStyle
 
-def tree_style():
+def index_tree_style():
     ts = TreeStyle()
     ts.rotation = 90
     ts.show_leaf_name = False
@@ -15,9 +15,6 @@ def tree_style():
 def draw_index_tree(t, output):
     style = NodeStyle()
     style["size"] = 0
-
-    lnode_color = "#9F2B68"
-    larea_color = "#FFB6C1"
 
     lstyle = NodeStyle()
     lstyle["fgcolor"] = "#000"
@@ -36,4 +33,4 @@ def draw_index_tree(t, output):
         n.add_face(F, column=0)
         n.set_style(lstyle)
 
-    t.render(output, units="px", tree_style=tree_style(), dpi=600)
+    return t
