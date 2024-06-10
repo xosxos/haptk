@@ -230,4 +230,4 @@ The selection of C9orf72 haplotypes is done by discarding the haplotypes tagged 
 ## Citations
 _The shared ancestry between the C9orf72 hexanucleotide repeat expansion and intermediate-length alleles using haplotype sharing trees and HAPTK_
 
-[https://www.biorxiv.org/content/10.1101/2023.07.28.550820v3](https://www.biorxiv.org/content/10.1101/2023.07.28.550820v3)
+[https://pubmed.ncbi.nlm.nih.gov/38242117/](https://pubmed.ncbi.nlm.nih.gov/38242117/)
