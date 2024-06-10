@@ -8,6 +8,9 @@ license = "GPL-3.0-only"
 readme = "README.md"
 homepage = "https://github.com/xosxos/haptk"
 repository = "https://github.com/xosxos/haptk"
+exclude = [
+    "tests/*",
+]
 
 
 [lib]
@@ -56,5 +59,6 @@ clap = { version = "=4.1.14", optional = true, features = ["derive"] }
 
 [dev-dependencies]
 insta = { version = "1.26.0", default-features = false, features = ["yaml"] }
+
 
 
