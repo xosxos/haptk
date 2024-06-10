@@ -3,7 +3,7 @@ from ete3 import TreeStyle, TextFace, NodeStyle
 
 from haptk import utils
 
-def tree_style():
+def match_tree_style():
     ts = TreeStyle()
     ts.rotation = 90
     ts.show_leaf_name = False
@@ -47,5 +47,5 @@ def draw_match_tree(hst, t, output, samples, samples_to_tag, colors, proportions
                     n.set_style(utils.return_node_style(colors[color_i], 5))
                     n.img_style["bgcolor"] = colors[color_i]
 
-    t.render(output, units="px", tree_style=tree_style(), dpi=600)
 
+    return t
