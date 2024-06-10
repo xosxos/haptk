@@ -28,6 +28,7 @@ lib/
 lib64/
 wheels/
 *.manifest
+*.pyc
 
 .env
 .venv
