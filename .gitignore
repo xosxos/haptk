@@ -14,7 +14,26 @@ cargo-test-*
 src-old/
 1kGP*
 over_20_repeats.ids
-__pycache__
 run_analyses_gsn.sh
+
+.Python
+__pycache__
+*.egg
+*.egg-info
+eggs/
+.eggs/
+dist/
+build/
+lib/
+lib64/
+wheels/
+*.manifest
+
+.env
+.venv
+env/
+venv/
+ENV/
+
 
 !/tests/results
