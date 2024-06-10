@@ -49,6 +49,9 @@ cd haptk
 # Build. The binary will be available in `./target/release/` 
 cargo build --release -p haptk
 
+# Install the HAPTK python library for tree visualizations
+pip install haptk
+
 ```
 
 ## Running commands
@@ -171,20 +174,20 @@ haptk compare-to-hst $biallelic \
 # Example scripts for ETE3 visualization
 
 # Compare to HST visualization
-python ./python-scripts/article_compare_hsts.py \
+python ./python-scripts/compare_hsts.py \
   --hst pub_bhst_only_longest.hst.gz \
   --match-hst results/match_hst_only_longest.hst.gz \
   --min-size 1 \
   --output results
 
 # Circular HST visualization
-python python-scripts/article_tagged_tree.py results/20kb_tagged_bhst_only_longest.hst.gz \
+python python-scripts/circle_tree.py results/20kb_tagged_bhst_only_longest.hst.gz \
   --min-size 1 \
   --ids results/over_20kb_sharing_samples.ids \
   --output 20kb_tagged_bhst_only_longest.png
 
 # Normal HST visualization
-python python-scripts/article_normal_tree.py results/20_repeat_tagged_uhst_left.hst.gz \
+python python-scripts/normal_tree.py results/20_repeat_tagged_uhst_left.hst.gz \
   --min-size 10 \
   --output 20_repeat_tagged_uhst_left.png
 
