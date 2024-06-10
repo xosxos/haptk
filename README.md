@@ -36,6 +36,9 @@ fish_add_path "$HOME/.cargo/bin"
 
 # Install HAPTK
 cargo install haptk --locked
+
+# Install the HAPTK Python library for tree visualizations
+pip install haptk
 ```
 
 ## Installing from source
@@ -48,9 +51,6 @@ cd haptk
 
 # Build. The binary will be available in `./target/release/` 
 cargo build --release -p haptk
-
-# Install the HAPTK python library for tree visualizations
-pip install haptk
 
 ```
 
