@@ -115,6 +115,7 @@ mod test_uhst {
             threads: 8,
             min_size: 1,
             publish: false,
+            svg: true,
         };
         haptk::clap::run_cmd(cmd).unwrap();
     }

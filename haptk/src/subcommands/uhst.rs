@@ -44,6 +44,7 @@ pub fn run(
     decoy_samples: Option<PathBuf>,
     min_size: usize,
     publish: bool,
+    svg: bool,
 ) -> Result<()> {
     if args.selection == Selection::Unphased {
         return Err(eyre!("Running with unphased data is not supported."));
@@ -89,9 +90,12 @@ pub fn run(
                 min_size,
             );
             dg.draw_graph()?;
-            let mut decay_graph = args.output.clone();
-            push_to_output(&args, &mut decay_graph, &format!("uhst_{direction}"), "svg");
-            svg::save(decay_graph, &dg.document)?;
+
+            if svg {
+                let mut decay_graph = args.output.clone();
+                push_to_output(&args, &mut decay_graph, &format!("uhst_{direction}"), "svg");
+                svg::save(decay_graph, &dg.document)?;
+            }
 
             // Find first, second last and last nodes on the majority branch
             // for downstream analyses

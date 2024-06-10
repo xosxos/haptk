@@ -12,10 +12,10 @@ use haptk::{
 #[cfg(feature = "clap")]
 fn compare_haplotypes() {
     let args = standard_args(Selection::All);
-    uhst::run(args, GraphArgs::default(), None, None, None, 1, false).unwrap();
+    uhst::run(args, GraphArgs::default(), None, None, None, 1, false, true).unwrap();
 
     let args = standard_args(Selection::OnlyLongest);
-    uhst::run(args, GraphArgs::default(), None, None, None, 1, false).unwrap();
+    uhst::run(args, GraphArgs::default(), None, None, None, 1, false, true).unwrap();
 
     let files = vec![
         PathBuf::from("tests/results/uhst_mbah.csv"),

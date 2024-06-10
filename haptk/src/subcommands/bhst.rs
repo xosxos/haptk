@@ -46,6 +46,7 @@ pub fn run(
     variable_names: Option<Vec<String>>,
     min_size: usize,
     publish: bool,
+    svg: bool,
 ) -> Result<()> {
     ensure!(
         args.selection != Selection::Unphased,
@@ -72,11 +73,13 @@ pub fn run(
     tracing::info!("Finished HST construction.");
 
     // Write to svg
-    let mut dg = HstGraph::new(&bhst, &vcf, graph_args, decoy_samples, min_size);
-    dg.draw_graph()?;
-    let mut decay_graph = args.output.clone();
-    push_to_output(&args, &mut decay_graph, "bhst", "svg");
-    svg::save(decay_graph, &dg.document)?;
+    if svg {
+        let mut dg = HstGraph::new(&bhst, &vcf, graph_args, decoy_samples, min_size);
+        dg.draw_graph()?;
+        let mut decay_graph = args.output.clone();
+        push_to_output(&args, &mut decay_graph, "bhst", "svg");
+        svg::save(decay_graph, &dg.document)?;
+    }
 
     // Majority based haplotype
     let mut sh_output = args.output.clone();

@@ -254,6 +254,10 @@ pub enum SubCommand {
         /// Remove sample IDs and hard cut out all nodes with samples less than or equal to `min_size`
         #[arg(long)]
         publish: bool,
+
+        /// Output the tree in an unpolished SVG format, NOTE: using HAPTK in Python is recommended instead
+        #[arg(long)]
+        svg: bool,
     },
 
     /// Build a bidirectional haplotype sharing tree at a coordinate
@@ -290,6 +294,10 @@ pub enum SubCommand {
         /// Remove sample IDs and hard cut out all nodes with samples less than or equal to `min_size`
         #[arg(long)]
         publish: bool,
+
+        /// Output the tree in an unpolished SVG format, NOTE: using HAPTK in Python is recommended instead
+        #[arg(long)]
+        svg: bool,
     },
 
     /// Analyze the MRCA based on the Gamma method at a coordinate
@@ -556,7 +564,7 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
             )?,
 
         SubCommand::Bhst {
-            args,  graph_args, mark_samples, variables, variable_data, min_size, publish, .. 
+            args,  graph_args, mark_samples, variables, variable_data, min_size, publish, svg, .. 
         } => bhst::run(
             args.into(),
             GraphArgs {
@@ -573,10 +581,11 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
             variables,
             min_size,
             publish,
+            svg,
         )?,
 
         SubCommand::Uhst {
-            args, variable_data, variables, mark_samples, graph_args, min_size, publish, ..
+            args, variable_data, variables, mark_samples, graph_args, min_size, publish, svg, ..
         } => uhst::run(
             args.into(),
             GraphArgs {
@@ -592,7 +601,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
             variables,
             mark_samples,
             min_size,
-            publish
+            publish,
+            svg,
         )?,
 
         SubCommand::CompareHaplotypes { haplotypes, outdir, prefix, csv, hide_missing, tag_rows, .. }
