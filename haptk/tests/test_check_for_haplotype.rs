@@ -108,7 +108,7 @@ mod test_check_for_haplotype {
 
     fn check_for_haplotype(selection: Selection) {
         let args = standard_args(Selection::OnlyLongest);
-        uhst::run(args, GraphArgs::default(), None, None, None, 1, false).unwrap();
+        uhst::run(args, GraphArgs::default(), None, None, None, 1, false, true).unwrap();
 
         let args = clap_standard_args(selection);
         let cmd = haptk::clap::SubCommand::CheckForHaplotype {

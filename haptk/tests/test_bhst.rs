@@ -91,6 +91,7 @@ mod test_bhst {
             threads: 8,
             min_size: 1,
             publish: false,
+            svg: true,
         };
         haptk::clap::run_cmd(cmd).unwrap();
 
@@ -112,6 +113,7 @@ mod test_bhst {
             threads: 8,
             min_size: 1,
             publish: false,
+            svg: true,
         };
         haptk::clap::run_cmd(cmd).unwrap();
     }

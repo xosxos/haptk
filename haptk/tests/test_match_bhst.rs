@@ -83,6 +83,7 @@ mod test_bhst {
             threads: 8,
             min_size: 1,
             publish: false,
+            svg: true,
         };
 
         // Build match HST
