@@ -42,7 +42,7 @@ wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_c
 
 # Extract biallelic SNPs from the panel
 bcftools view -m2 -M2 -v snps 1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDEL_SV_phased_panel.vcf.gz -Ou |
-  bcftools view -R examples/data/illumina_gsa_v3_hg38.tsv.gz -Ou | # To ease the computational load, you can select variants from an SNP array
+  bcftools view -R data/illumina_gsa_v3_hg38.tsv.gz -Ou | # To ease the computational load, you can select variants from an SNP array
   bcftools annotate -x "INFO" -Oz -o 1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDEL_SV_phased_panel.biallelic.vcf.gz
 
 # Index the file
