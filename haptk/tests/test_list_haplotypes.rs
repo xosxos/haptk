@@ -17,7 +17,7 @@ fn read_haplotypes() {
             select: ClapSelection::All,
             // info_limit: None,
             prefix: None,
-            samples: Some(PathBuf::from("tests/data/SAMPLE1.ids")),
+            samples: Some(vec![PathBuf::from("tests/data/SAMPLE1.ids")]),
         },
         log_and_verbosity: crate::common::silent_verbosity(),
     };
