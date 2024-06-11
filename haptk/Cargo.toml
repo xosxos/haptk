@@ -24,7 +24,7 @@ path = "src/bin.rs"
 
 [features]
 default = ["clap"]
-clap = ["dep:clap"]
+clap = ["dep:clap", "dep:anstyle"]
 
 [dependencies]
 alphanumeric-sort = "1.5"
@@ -55,7 +55,8 @@ statrs = { version = "0.16", default-features = false }
 chrono = { version = "=0.4.31" }
 
 # Optional
-clap = { version = "=4.1.14", optional = true, features = ["derive"] }
+clap = { version = "=4.5.7", optional = true, features = ["derive"] }
+anstyle = { version = "1.0.7", optional = true }
 
 [dev-dependencies]
 insta = { version = "1.26.0", default-features = false, features = ["yaml"] }
