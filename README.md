@@ -32,6 +32,10 @@ Options:
 - `only-longest` [Select only the longest haplotype sharing alleles per sample]
 
 ```bash
+
+# Go into the examples directory
+cd examples
+
 # Download the 1000 genomes reference panel for chromosome 9
 wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV/1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDEL_SV_phased_panel.vcf.gz
 wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV/1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDEL_SV_phased_panel.vcf.gz.tbi
@@ -63,6 +67,7 @@ def read_samples(filename):
       lines = [line.rstrip() for line in file]
       return lines
 
+# The IDs are located in the examples directory
 gambian = read_samples("1kGP_high_coverage_Illumina.gambian.ids")
 finnish = read_samples("1kGP_high_coverage_Illumina.finnish.ids")
 han_chinese = read_samples("1kGP_high_coverage_Illumina.han_chinese.ids")
