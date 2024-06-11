@@ -1,22 +1,3 @@
-## Features
-
-```
-Commands:
-  uhst                  Build unidirectional haplotype sharing trees at a coordinate
-  bhst                  Build a bidirectional haplotype sharing tree at a coordinate
-  mrca                  Analyze the MRCA based on the Gamma method at a coordinate
-  check-for-haplotype   Check if samples share a given haplotype
-  compare-to-haplotype  Check differences between samples and a haplotype
-  compare-to-hst        Check what haplotypes of the HST are present in samples
-  compare-haplotypes    Compare haplotypes to each other by alignment
-  coverage              Show coverage levels per contig in a VCF
-  haplotypes            Read the haplotypes of a given sample
-  samples               Output the sample names from FAM / VCF / HST files
-  markers               Output the markers from a HST file
-  to-vcf                Convert a haplotype CSV into VCF
-  help                  Print this message or the help of the given subcommand(s)
-```
-
 ## How to install
 ```bash
 # HAPTK has been tested with Rust 1.69 and higher
@@ -42,7 +23,7 @@ pip install haptk
 ```
 
 
-## Running commands
+## Example
 Often a common requirement is to select only certain alleles of the samples based on a condition, this is done with the `--select` argument.
 Options:
 - `all` (default) [Select all alleles]
@@ -50,9 +31,7 @@ Options:
 - `only-alts` [Select only the samples carrying the alt variant at the coordinate]
 - `only-longest` [Select only the longest haplotype sharing alleles per sample]
 
-Example usage:
 ```bash
-
 # Download the 1000 genomes reference panel for chromosome 9
 wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV/1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDEL_SV_phased_panel.vcf.gz
 wget ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV/1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDEL_SV_phased_panel.vcf.gz.tbi
@@ -97,6 +76,24 @@ The HST starting from chr9:27573534 tagged for Gambian (red), Finnish (blue) and
 
 ![A left side HST of chr9:27573534 tagged for Gambian, Finnish and Han Chinese ancestry](./examples/example_left_hst.png)
 
+## Features
+
+```
+Commands:
+  uhst                  Build unidirectional haplotype sharing trees at a coordinate
+  bhst                  Build a bidirectional haplotype sharing tree at a coordinate
+  mrca                  Analyze the MRCA based on the Gamma method at a coordinate
+  check-for-haplotype   Check if samples share a given haplotype
+  compare-to-haplotype  Check differences between samples and a haplotype
+  compare-to-hst        Check what haplotypes of the HST are present in samples
+  compare-haplotypes    Compare haplotypes to each other by alignment
+  coverage              Show coverage levels per contig in a VCF
+  haplotypes            Read the haplotypes of a given sample
+  samples               Output the sample names from FAM / VCF / HST files
+  markers               Output the markers from a HST file
+  to-vcf                Convert a haplotype CSV into VCF
+  help                  Print this message or the help of the given subcommand(s)
+```
 
 ## Example graphs from the original [article](https://www.biorxiv.org/content/10.1101/2023.07.28.550820v3)
 
