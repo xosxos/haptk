@@ -43,8 +43,6 @@ pip install haptk
 
 
 ## Running commands
-To get started, try the `run_haptk.sh` script, which uses the 1000 genomes reference panel and Finnish ALS haplotypes. The script can be found in the `examples` directory.
-
 Often a common requirement is to select only certain alleles of the samples based on a condition, this is done with the `--select` argument.
 Options:
 - `all` (default) [Select all alleles]
@@ -95,8 +93,9 @@ hst = haptk.read_hst("results/uhst_left.hst.gz")
 hst.circle_tree("my_left_hst.png", to_tag=[gambian, finnish, han_chinese], colors=["red", "blue", "green"])
 ```
 
-Results
-![A left side HST of chr9:27573534 tagged for Gambian, Finnish and Han Chinese ancestry][./examples/example_left_hst.png]
+The HST starting from chr9:27573534 tagged for Gambian (red), Finnish (blue) and Han Chinese (green) ancestry
+
+![A left side HST of chr9:27573534 tagged for Gambian, Finnish and Han Chinese ancestry](./examples/example_left_hst.png)
 
 
 ## Example graphs from the original [article](https://www.biorxiv.org/content/10.1101/2023.07.28.550820v3)
