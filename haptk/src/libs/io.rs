@@ -103,6 +103,22 @@ where
     Ok(io::BufReader::new(file).lines())
 }
 
+pub fn read_multiple_sample_ids(path: &Option<Vec<PathBuf>>) -> Result<Option<Vec<String>>> {
+    match path {
+        Some(paths) => {
+            let mut samples = vec![];
+            for path in paths {
+                for line in read_lines(path)?.flatten() {
+                    let line = line.trim();
+                    samples.push(line.to_string());
+                }
+            }
+            Ok(Some(samples))
+        }
+        None => Ok(None),
+    }
+}
+
 pub fn read_sample_ids(path: &Option<PathBuf>) -> Result<Option<Vec<String>>> {
     match path {
         Some(path) => {

@@ -64,8 +64,8 @@ pub struct ClapStandardArgs {
     pub outdir: PathBuf,
 
     /// List of samples to select from the given vcf file
-    #[arg(short = 'S', long)]
-    pub samples: Option<PathBuf>,
+    #[arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. )]
+    pub samples: Option<Vec<PathBuf>>,
 
     /// Selection of a subset of alleles
     #[arg(short = 's', long, value_enum)]

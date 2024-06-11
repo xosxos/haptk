@@ -35,6 +35,7 @@ wheels/
 env/
 venv/
 ENV/
+.DS_store
 
 
 !/tests/results

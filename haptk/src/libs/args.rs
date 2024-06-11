@@ -7,7 +7,7 @@ pub struct StandardArgs {
     pub file: PathBuf,
     pub coords: String,
     pub output: PathBuf,
-    pub samples: Option<PathBuf>,
+    pub samples: Option<Vec<PathBuf>>,
     pub selection: Selection,
     pub info_limit: Option<f32>,
     pub prefix: Option<String>,

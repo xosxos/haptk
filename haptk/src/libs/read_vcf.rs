@@ -16,7 +16,7 @@ use rust_htslib::bcf::Record;
 use crate::{
     args::{Selection, StandardArgs},
     error::HatkError::{NormalizeError, PloidyError, SamplesNotFoundError},
-    io::{get_htslib_contig_len, read_sample_ids},
+    io::{get_htslib_contig_len, read_multiple_sample_ids},
     structs::{Coord, PhasedMatrix, Ploidy},
     utils::filter_samples,
 };
@@ -64,7 +64,7 @@ pub fn get_sample_names(
 
     let wanted = match wanted_samples.clone() {
         Some(wanted) => Some(wanted),
-        None => read_sample_ids(&args.samples)?,
+        None => read_multiple_sample_ids(&args.samples)?,
     };
 
     let sample_indexes = filter_samples(&samples, wanted);
