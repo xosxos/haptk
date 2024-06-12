@@ -7,7 +7,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('hst', type=str)
 parser.add_argument('--min-size', type=int, default=1)    
 parser.add_argument('--hard-cut', action="store_true")    
-parser.add_argument('--ids', type=str)
+parser.add_argument('--ids', nargs="+", type=str)
 parser.add_argument('--proportions', action="store_true")
 parser.add_argument('-o', '--output', type=str)
 
