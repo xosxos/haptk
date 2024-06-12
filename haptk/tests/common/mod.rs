@@ -39,7 +39,7 @@ pub fn clap_standard_args(select: Selection) -> haptk::clap::ClapStandardArgs {
         file: PathBuf::from(TEST_VCF),
         outdir: PathBuf::from("tests/results"),
         coords: String::from(COORDS),
-        select: select.into(),
+        alleles: select.into(),
         samples: None,
         // info_limit: None,
         prefix: None,

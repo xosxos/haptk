@@ -25,7 +25,7 @@ pub struct LogAndVerbosity {
     #[arg(short, long, action = clap::ArgAction::Count, default_value_t = 3)]
     pub verbosity: u8,
 
-    /// File path to save logging information
+    /// A file path to save logs to
     #[arg(short, long)]
     pub log_file: Option<PathBuf>,
 
@@ -36,16 +36,15 @@ pub struct LogAndVerbosity {
 
 #[derive(clap::ValueEnum, Clone, Debug)]
 pub enum ClapSelection {
-    /// Select all alleles from samples
+    /// Select all alleles from samples (as of now only diploid or haploid organisms are supported)
     All,
-    /// Select only the alleles containing the alt variant at given a coords
-    OnlyAlts,
-    /// Select only the alleles containing the ref variant at given a coord
+    /// Select only the allele per each sample sharing the most haplotype with the haplotypes of the other samples
+    LongestHaplotype,
+    /// Select only the alleles containing the REF variant at given a coordinate
     OnlyRefs,
-    /// Select only the longest alleles per sample in the majority based ancestral haplotype
-    /// algorithm
-    OnlyLongest,
-    /// Use for unphased data
+    /// Select only the alleles containing the ALT variant at given a coordinate
+    OnlyAlts,
+    /// Use for unphased data (currently not supported for most commands)
     Unphased,
     /// Use for haploid genotypes
     Haploid,
@@ -55,7 +54,7 @@ pub enum ClapSelection {
 pub struct ClapStandardArgs {
     pub file: PathBuf,
 
-    /// Variant coordinates, i.e. chr9:27573534
+    /// The starting coordinate, i.e. chr9:27573534
     #[arg(short = 'c', long)]
     pub coords: String,
 
@@ -63,18 +62,15 @@ pub struct ClapStandardArgs {
     #[arg(short = 'o', long, default_value_os_t = PathBuf::from("./"))]
     pub outdir: PathBuf,
 
-    /// List of samples to select from the given vcf file
+    /// List of samples for HST construction (one ID per row)
     #[arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. )]
     pub samples: Option<Vec<PathBuf>>,
 
-    /// Selection of a subset of alleles
-    #[arg(short = 's', long, value_enum)]
-    pub select: ClapSelection,
+    #[arg(short = 'a', long, value_enum)]
+    pub alleles: ClapSelection,
 
-    /// Info limit for accepted variants
     // #[arg(long)]
     // pub info_limit: Option<f32>,
-
     /// Output filename prefix
     #[arg(short = 'p', long)]
     pub prefix: Option<String>,
@@ -121,7 +117,7 @@ impl From<ClapStandardArgs> for StandardArgs {
             coords: value.coords,
             output: value.outdir,
             samples: value.samples,
-            selection: value.select.into(),
+            selection: value.alleles.into(),
             info_limit: None,
             // info_limit: value.info_limit,
             prefix,
@@ -153,7 +149,7 @@ impl From<ClapSelection> for Selection {
             ClapSelection::OnlyAlts => Self::OnlyAlts,
             ClapSelection::OnlyRefs => Self::OnlyRefs,
             ClapSelection::All => Self::All,
-            ClapSelection::OnlyLongest => Self::OnlyLongest,
+            ClapSelection::LongestHaplotype => Self::OnlyLongest,
             ClapSelection::Unphased => Self::Unphased,
             ClapSelection::Haploid => Self::Haploid,
         }
@@ -166,7 +162,7 @@ impl From<Selection> for ClapSelection {
             Selection::OnlyAlts => Self::OnlyAlts,
             Selection::OnlyRefs => Self::OnlyRefs,
             Selection::All => Self::All,
-            Selection::OnlyLongest => Self::OnlyLongest,
+            Selection::OnlyLongest => Self::LongestHaplotype,
             Selection::Unphased => Self::Unphased,
             Selection::Haploid => Self::Haploid,
         }
@@ -228,21 +224,6 @@ pub enum SubCommand {
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
 
-        /// Variable file
-        #[arg(long)]
-        variable_data: Option<PathBuf>,
-
-        /// Wanted variable columns from the variable file
-        #[arg(long = "vars")]
-        variables: Option<Vec<String>>,
-
-        /// List of samples to tag in the HST
-        #[arg(short = 'm', long)]
-        mark_samples: Option<PathBuf>,
-
-        #[command(flatten)]
-        graph_args: ClapGraphArgs,
-
         /// Number of threads
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
@@ -254,10 +235,6 @@ pub enum SubCommand {
         /// Remove sample IDs and hard cut out all nodes with samples less than or equal to `min_size`
         #[arg(long)]
         publish: bool,
-
-        /// Output the tree in an unpolished SVG format, NOTE: using HAPTK in Python is recommended instead
-        #[arg(long)]
-        svg: bool,
     },
 
     /// Build a bidirectional haplotype sharing tree at a coordinate
@@ -268,21 +245,6 @@ pub enum SubCommand {
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
 
-        #[command(flatten)]
-        graph_args: ClapGraphArgs,
-
-        /// List of samples to tag in the HST
-        #[arg(short = 'm', long)]
-        mark_samples: Option<PathBuf>,
-
-        /// Variable file
-        #[arg(long)]
-        variable_data: Option<PathBuf>,
-
-        /// Wanted variable columns from the variable file
-        #[arg(long = "vars")]
-        variables: Option<Vec<String>>,
-
         /// Number of threads
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
@@ -294,10 +256,6 @@ pub enum SubCommand {
         /// Remove sample IDs and hard cut out all nodes with samples less than or equal to `min_size`
         #[arg(long)]
         publish: bool,
-
-        /// Output the tree in an unpolished SVG format, NOTE: using HAPTK in Python is recommended instead
-        #[arg(long)]
-        svg: bool,
     },
 
     /// Analyze the MRCA based on the Gamma method at a coordinate
@@ -563,47 +521,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
                 },
             )?,
 
-        SubCommand::Bhst {
-            args,  graph_args, mark_samples, variables, variable_data, min_size, publish, svg, .. 
-        } => bhst::run(
-            args.into(),
-            GraphArgs {
-                width: graph_args.width.unwrap_or(10_000.0),
-                height: graph_args.height.unwrap_or(8_000.0),
-                font_size: graph_args.font_size.unwrap_or(50.0),
-                stroke_width: graph_args.stroke_width.unwrap_or(10),
-                color: graph_args.color.unwrap_or("black".into()),
-                background_color: graph_args.background_color.unwrap_or("white".into()),
-                ..Default::default()
-            },
-            mark_samples,
-            variable_data,
-            variables,
-            min_size,
-            publish,
-            svg,
-        )?,
-
-        SubCommand::Uhst {
-            args, variable_data, variables, mark_samples, graph_args, min_size, publish, svg, ..
-        } => uhst::run(
-            args.into(),
-            GraphArgs {
-                width: graph_args.width.unwrap_or(20_000.0),
-                height: graph_args.height.unwrap_or(14_000.0),
-                font_size: graph_args.font_size.unwrap_or(210.0),
-                stroke_width: graph_args.stroke_width.unwrap_or(20),
-                color: graph_args.color.unwrap_or("black".into()),
-                background_color: graph_args.background_color.unwrap_or("white".into()),
-                ..Default::default()
-            },
-            variable_data,
-            variables,
-            mark_samples,
-            min_size,
-            publish,
-            svg,
-        )?,
+        SubCommand::Bhst { args,  min_size, publish, .. } => bhst::run(args.into(), min_size, publish,)?,
+        SubCommand::Uhst {args,  min_size, publish, .. } => uhst::run(args.into(), min_size, publish,)?,
 
         SubCommand::CompareHaplotypes { haplotypes, outdir, prefix, csv, hide_missing, tag_rows, .. }
             => compare_haplotypes::run(haplotypes, outdir, prefix, csv, hide_missing, tag_rows)?,

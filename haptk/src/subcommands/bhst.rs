@@ -10,9 +10,8 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    args::{GraphArgs, Selection, StandardArgs},
-    graphs::HstGraph,
-    io::{get_output, open_csv_writer, push_to_output, read_sample_ids, read_variable_data_file},
+    args::{Selection, StandardArgs},
+    io::{get_output, open_csv_writer, push_to_output},
     read_vcf::{get_sample_names, read_vcf_to_matrix},
     structs::{Coord, CoordDataSlot, HapVariant, PhasedMatrix},
     utils::parse_snp_coord,
@@ -38,29 +37,13 @@ pub fn read_vcf_with_selections(args: &StandardArgs) -> Result<PhasedMatrix> {
 }
 
 #[doc(hidden)]
-pub fn run(
-    args: StandardArgs,
-    graph_args: GraphArgs,
-    decoy_samples: Option<PathBuf>,
-    variable_data: Option<PathBuf>,
-    variable_names: Option<Vec<String>>,
-    min_size: usize,
-    publish: bool,
-    svg: bool,
-) -> Result<()> {
+pub fn run(args: StandardArgs, min_size: usize, publish: bool) -> Result<()> {
     ensure!(
         args.selection != Selection::Unphased,
         "Running with unphased data is not supported."
     );
 
-    let decoy_samples = read_sample_ids(&decoy_samples)?;
-
-    let mut vcf = read_vcf_with_selections(&args)?;
-
-    // Set clinical data
-    if let Some(path) = variable_data {
-        vcf.set_variable_data(read_variable_data_file(path)?)?;
-    }
+    let vcf = read_vcf_with_selections(&args)?;
 
     ensure!(
         vcf.nrows() >= min_size,
@@ -71,15 +54,6 @@ pub fn run(
     // Construct the bilateral HST
     let bhst = construct_bhst(&vcf, vcf.variant_idx(), min_size);
     tracing::info!("Finished HST construction.");
-
-    // Write to svg
-    if svg {
-        let mut dg = HstGraph::new(&bhst, &vcf, graph_args, decoy_samples, min_size);
-        dg.draw_graph()?;
-        let mut decay_graph = args.output.clone();
-        push_to_output(&args, &mut decay_graph, "bhst", "svg");
-        svg::save(decay_graph, &dg.document)?;
-    }
 
     // Majority based haplotype
     let mut sh_output = args.output.clone();
@@ -94,11 +68,6 @@ pub fn run(
     let writer = open_csv_writer(sh_output)?;
     let ht = find_shared_haplotype(&bhst, &vcf);
     write_haplotype(ht, writer)?;
-
-    // Calculate variable data
-    let mut vars_output = args.output.clone();
-    push_to_output(&args, &mut vars_output, "bhst_vars", "csv");
-    calculate_and_write_var_data(&bhst, &vcf, variable_names, vars_output)?;
 
     // Write to .hst
     let mut hst_output = args.output.clone();
@@ -410,80 +379,6 @@ pub fn find_majority_nodes(g: &Graph<Node, u8>) -> Vec<(&Node, NodeIndex)> {
     }
 
     majority_nodes
-}
-
-pub fn calculate_and_write_var_data(
-    g: &Graph<Node, u8>,
-    vcf: &PhasedMatrix,
-    variable_names: Option<Vec<String>>,
-    vars_output: PathBuf,
-) -> Result<()> {
-    // Calculate variable data
-    if let Some(vars) = &variable_names {
-        let mut writer = open_csv_writer(vars_output)?;
-
-        let mut header: Vec<String> = ["side", "pos", "1st_n", "2nd_n"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-
-        for var in vars {
-            header.push(format!("{var}_1st"));
-            header.push(format!("{var}_2nd"));
-            header.push(format!("{var}_t_test"));
-        }
-
-        writer.write_record(header)?;
-
-        let mnodes = find_majority_nodes(g);
-        for (_node, idx) in mnodes {
-            let children: Vec<NodeIndex> = g.neighbors_directed(idx, Direction::Outgoing).collect();
-
-            let mut children: Vec<(&_, NodeIndex)> = children
-                .iter()
-                .map(|c| (g.node_weight(*c).unwrap(), *c))
-                .collect();
-
-            children.sort_by(|a, b| b.0.indexes.len().cmp(&a.0.indexes.len()));
-
-            for (i, (child_node, _child_idx)) in children.iter().enumerate() {
-                if i > 0 && (children[0].0.indexes.len() > 5 && child_node.indexes.len() > 5) {
-                    let majority = children[0].0;
-                    let sibling_node = child_node;
-
-                    let v1 = vcf
-                        .get_variable_data_vecs(&majority.indexes, vars)?
-                        .ok_or(eyre!("Error in variable data."))?;
-                    let v2 = vcf
-                        .get_variable_data_vecs(&sibling_node.indexes, vars)?
-                        .ok_or(eyre!("Error in variable data."))?;
-
-                    let n1 = vcf
-                        .get_variable_data_mean(&majority.indexes, vars)?
-                        .ok_or(eyre!("Cannot calculate variable data means."))?;
-                    let n2 = vcf
-                        .get_variable_data_mean(&sibling_node.indexes, vars)?
-                        .ok_or(eyre!("Cannot calculate variable data means."))?;
-
-                    let block_len = calculate_block_len(vcf, majority);
-
-                    let mut csv_row = vec![
-                        block_len.to_string(),
-                        majority.indexes.len().to_string(),
-                        sibling_node.indexes.len().to_string(),
-                    ];
-                    for i in 0..n1.len() {
-                        csv_row.push(format!("{:.2}", n1[i]));
-                        csv_row.push(format!("{:.2}", n2[i]));
-                        let t_test = crate::stats::two_tail_welch_t_test(&v1[i], &v2[i]);
-                        csv_row.push(format!("{t_test:.5}"));
-                    }
-                    writer.write_record(csv_row)?;
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 pub fn write_haplotype(

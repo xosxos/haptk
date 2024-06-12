@@ -106,7 +106,7 @@ mod test_compare_to_haplotype {
 
     fn compare_to_haplotype(selection: Selection, mark: bool, png: bool) {
         let args = standard_args(Selection::OnlyLongest);
-        uhst::run(args, GraphArgs::default(), None, None, None, 1, false, true).unwrap();
+        uhst::run(args, 1, false).unwrap();
 
         let args = common::clap_standard_args(selection);
 
