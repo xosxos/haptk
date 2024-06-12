@@ -24,12 +24,12 @@ pip install haptk
 
 
 ## Example
-Often a common requirement is to select only certain alleles of the samples based on a condition, this is done with the `--select` argument.
+A common requirement is to select only certain alleles of the samples based on a condition, this is done with the `--alleles` argument.
 Options:
-- `all` (default) [Select all alleles]
-- `only-refs` [Select only the samples carrying the ref variant at the coordinate]
-- `only-alts` [Select only the samples carrying the alt variant at the coordinate]
-- `only-longest` [Select only the longest haplotype sharing alleles per sample]
+- `all` (default) [Select all alleles (diploid genomes)]
+- `only-refs` [Select only the samples carrying the REF variant at the coordinate]
+- `only-alts` [Select only the samples carrying the ALT variant at the coordinate]
+- `longest-haplotype` [Select only the allele per each sample sharing the most haplotype with the haplotypes of the other samples]
 
 ```bash
 
@@ -50,7 +50,7 @@ bcftools index -t 1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDEL_SV_phased_
  
 # Create unidirectional HSTs of the 1kg samples
 haptk uhst 1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDEL_SV_phased_panel.biallelic.vcf.gz \
-  --select all \
+  --alleles all \
   --samples 1kGP_high_coverage_Illumina.finnish.ids 1kGP_high_coverage_Illumina.gambian.ids 1kGP_high_coverage_Illumina.han_chinese.ids \
   --coords chr9:27573534 \
   -t 8 \

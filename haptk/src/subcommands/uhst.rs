@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use color_eyre::{
     eyre::{ensure, eyre},
     Result,
@@ -10,13 +8,10 @@ use petgraph::{Direction, Graph};
 use rayon::prelude::*;
 
 use crate::{
-    args::{GraphArgs, Selection, StandardArgs},
-    graphs::HstGraph,
-    io::{open_csv_writer, push_to_output, read_sample_ids, read_variable_data_file},
+    args::{Selection, StandardArgs},
+    io::{open_csv_writer, push_to_output},
     structs::{HapVariant, PhasedMatrix},
-    subcommands::bhst::{
-        self, calculate_and_write_var_data, write_haplotype, write_hst_file, Node,
-    },
+    subcommands::bhst::{self, write_haplotype, write_hst_file, Node},
 };
 
 #[doc(hidden)]
@@ -36,28 +31,12 @@ impl std::fmt::Display for LocDirection {
 }
 
 #[doc(hidden)]
-pub fn run(
-    args: StandardArgs,
-    graph_args: GraphArgs,
-    variable_data: Option<PathBuf>,
-    variable_names: Option<Vec<String>>,
-    decoy_samples: Option<PathBuf>,
-    min_size: usize,
-    publish: bool,
-    svg: bool,
-) -> Result<()> {
+pub fn run(args: StandardArgs, min_size: usize, publish: bool) -> Result<()> {
     if args.selection == Selection::Unphased {
         return Err(eyre!("Running with unphased data is not supported."));
     }
 
-    let decoy_samples = read_sample_ids(&decoy_samples)?;
-
-    let mut vcf = bhst::read_vcf_with_selections(&args)?;
-
-    // Set clinical data
-    if let Some(path) = variable_data {
-        vcf.set_variable_data(read_variable_data_file(path)?)?;
-    }
+    let vcf = bhst::read_vcf_with_selections(&args)?;
 
     ensure!(
         vcf.nrows() >= min_size,
@@ -70,32 +49,6 @@ pub fn run(
         .par_iter()
         .map(|direction| -> Result<(Node, Node)> {
             let uhst = construct_uhst(&vcf, direction, vcf.variant_idx(), min_size, false);
-
-            // Calculate variable data
-            let mut vars_output = args.output.clone();
-            push_to_output(
-                &args,
-                &mut vars_output,
-                &format!("uhst_vars_{direction}"),
-                "csv",
-            );
-            calculate_and_write_var_data(&uhst, &vcf, variable_names.clone(), vars_output)?;
-
-            // Create decay graph svg
-            let mut dg = HstGraph::new(
-                &uhst,
-                &vcf,
-                graph_args.clone(),
-                decoy_samples.clone(),
-                min_size,
-            );
-            dg.draw_graph()?;
-
-            if svg {
-                let mut decay_graph = args.output.clone();
-                push_to_output(&args, &mut decay_graph, &format!("uhst_{direction}"), "svg");
-                svg::save(decay_graph, &dg.document)?;
-            }
 
             // Find first, second last and last nodes on the majority branch
             // for downstream analyses

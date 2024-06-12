@@ -34,12 +34,6 @@ mod test_uhst {
     fn uhst_all() {
         run_uhst(Selection::All);
 
-        let res = std::fs::read_to_string("tests/results/uhst_left.svg").unwrap();
-        insta::assert_yaml_snapshot!(res);
-
-        let res = std::fs::read_to_string("tests/results/uhst_right.svg").unwrap();
-        insta::assert_yaml_snapshot!(res);
-
         let res = std::fs::read_to_string("tests/results/uhst_mbah.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
 
@@ -50,12 +44,6 @@ mod test_uhst {
     #[test]
     fn uhst_only_ref() {
         run_uhst(Selection::OnlyRefs);
-
-        let res = std::fs::read_to_string("tests/results/uhst_left_only_refs.svg").unwrap();
-        insta::assert_yaml_snapshot!(res);
-
-        let res = std::fs::read_to_string("tests/results/uhst_right_only_refs.svg").unwrap();
-        insta::assert_yaml_snapshot!(res);
 
         let res = std::fs::read_to_string("tests/results/uhst_mbah_only_refs.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
@@ -69,12 +57,6 @@ mod test_uhst {
     fn uhst_only_alt() {
         run_uhst(Selection::OnlyAlts);
 
-        let res = std::fs::read_to_string("tests/results/uhst_left_only_alts.svg").unwrap();
-        insta::assert_yaml_snapshot!(res);
-
-        let res = std::fs::read_to_string("tests/results/uhst_right_only_alts.svg").unwrap();
-        insta::assert_yaml_snapshot!(res);
-
         let res = std::fs::read_to_string("tests/results/uhst_mbah_only_alts.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
 
@@ -86,12 +68,6 @@ mod test_uhst {
     #[test]
     fn uhst_only_longest() {
         run_uhst(Selection::OnlyLongest);
-
-        let res = std::fs::read_to_string("tests/results/uhst_left_only_longest.svg").unwrap();
-        insta::assert_yaml_snapshot!(res);
-
-        let res = std::fs::read_to_string("tests/results/uhst_right_only_longest.svg").unwrap();
-        insta::assert_yaml_snapshot!(res);
 
         let res = std::fs::read_to_string("tests/results/uhst_mbah_only_longest.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
@@ -107,15 +83,10 @@ mod test_uhst {
 
         let cmd = haptk::clap::SubCommand::Uhst {
             args,
-            graph_args: haptk::clap::ClapGraphArgs::default(),
-            mark_samples: None,
-            variable_data: Some(PathBuf::from("tests/data/clinical_data.csv")),
-            variables: Some(vec!["aoo".to_string()]),
             log_and_verbosity: crate::common::silent_verbosity(),
             threads: 8,
             min_size: 1,
             publish: false,
-            svg: true,
         };
         haptk::clap::run_cmd(cmd).unwrap();
     }

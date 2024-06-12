@@ -14,7 +14,7 @@ fn read_haplotypes() {
             file: PathBuf::from(TEST_VCF),
             outdir: PathBuf::from("tests/results"),
             coords: String::from(COORDS),
-            select: ClapSelection::All,
+            alleles: ClapSelection::All,
             // info_limit: None,
             prefix: None,
             samples: Some(vec![PathBuf::from("tests/data/SAMPLE1.ids")]),

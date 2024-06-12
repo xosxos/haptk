@@ -67,7 +67,7 @@ mod test_bhst {
             file: PathBuf::from("tests/data/test.vcf.gz"),
             outdir: PathBuf::from("tests/results"),
             coords: String::from("chr9:32"),
-            select: selection.clone().into(),
+            alleles: selection.clone().into(),
             samples: None,
             // info_limit: None,
             prefix: None,
@@ -75,15 +75,10 @@ mod test_bhst {
 
         let cmd = haptk::clap::SubCommand::Bhst {
             args,
-            graph_args: haptk::clap::ClapGraphArgs::default(),
-            mark_samples: None,
-            variable_data: None,
-            variables: None,
             log_and_verbosity: crate::common::silent_verbosity(),
             threads: 8,
             min_size: 1,
             publish: false,
-            svg: true,
         };
 
         // Build match HST
@@ -94,7 +89,7 @@ mod test_bhst {
             file: PathBuf::from("tests/data/test_match.vcf.gz"),
             outdir: PathBuf::from("tests/results"),
             coords: String::from("chr9:32"),
-            select: selection.into(),
+            alleles: selection.into(),
             samples: None,
             // info_limit: None,
             prefix: None,
