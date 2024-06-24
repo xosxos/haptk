@@ -19,8 +19,28 @@ class HST:
         self.metadata = metadata
 
     def get_node_data(self, idx):
+        idx = int(idx)
         return self.G.get_node_data(idx)
 
+    def get_node_haplotype(self, idx):
+        idx = int(idx)
+        data = self.G.get_node_data(idx)
+        return data["haplotype"]
+
+    def get_node_indexes(self, idx):
+        idx = int(idx)
+        data = self.G.get_node_data(idx)
+        return data["indexes"]
+
+    def get_node_start_idx(self, idx):
+        idx = int(idx)
+        data = self.G.get_node_data(idx)
+        return data["start_idx"]
+
+    def get_node_stop_idx(self, idx):
+        idx = int(idx)
+        data = self.G.get_node_data(idx)
+        return data["stop_idx"]
     
     def leaf_neighbors(self): 
         return find_leaf_neighbors(self.G)
@@ -72,7 +92,7 @@ class HST:
             raise ValueError("more samples to tag than available colors")
 
         t = create_ete3_tree(self, min_size, hard_cut)
-        t = draw_circle_tree(self.G, t, output, self.samples, to_tag, colors)
+        t = draw_circle_tree(self, t, output, self.samples, to_tag, colors)
 
         t.render(output, w=w, h=h, units="px", tree_style=tree_style, dpi=dpi)
 
