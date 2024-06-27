@@ -15,7 +15,7 @@ pub fn run(args: StandardArgs) -> Result<()> {
 
     let vcf = match (start, stop) {
         (Some(start), Some(stop)) => {
-            read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None)?
+            read_vcf_to_matrix(&args, contig, 0, Some((Some(start), Some(stop))), None)?
         }
         _ => read_vcf_to_matrix(&args, contig, 0, None, None)?,
     };

@@ -269,6 +269,12 @@ pub enum SubCommand {
         /// Recombination rate file
         #[arg(short = 'r', long)]
         recombination_rates: PathBuf,
+
+        #[arg(long)]
+        start: Option<u64>,
+
+        #[arg(long)]
+        stop: Option<u64>,
     },
     /// Check if samples share a given haplotype
     CheckForHaplotype {
@@ -529,7 +535,7 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
         SubCommand::CompareToHst { args, hst, .. } => compare_to_hst::run(args.into(), hst)?,
         SubCommand::CheckForHaplotype { args, haplotype, .. } => check_for_haplotype::run(args.into(), haplotype)?,
-        SubCommand::Mrca { args, recombination_rates, .. } => mrca::run(args.into(), recombination_rates)?,
+        SubCommand::Mrca { args, recombination_rates, start, stop, .. } => mrca::run(args.into(), recombination_rates, start, stop)?,
         SubCommand::Haplotypes { args, .. } => list_haplotypes::run(args.into())?,
         SubCommand::Samples { file, .. } => list_samples::run(file)?, 
         SubCommand::Markers { file, .. } => list_markers::run(file)?,

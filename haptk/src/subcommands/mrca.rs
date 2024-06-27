@@ -18,7 +18,12 @@ use crate::{
 pub type Age = (f64, f64, f64);
 
 #[doc(hidden)]
-pub fn run(args: StandardArgs, rec_rates: PathBuf) -> Result<()> {
+pub fn run(
+    args: StandardArgs,
+    rec_rates: PathBuf,
+    start: Option<u64>,
+    stop: Option<u64>,
+) -> Result<()> {
     if args.selection == Selection::Unphased {
         return Err(eyre!("Running with unphased data is not supported."));
     }
@@ -30,7 +35,7 @@ pub fn run(args: StandardArgs, rec_rates: PathBuf) -> Result<()> {
 
     let rates = read_recombination_file(rec_rates)?;
 
-    let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None)?;
+    let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, Some((start, stop)), None)?;
 
     if args.selection == Selection::OnlyAlts || args.selection == Selection::OnlyRefs {
         vcf.select_carriers(variant_pos, &args.selection)?;
@@ -49,19 +54,26 @@ pub fn run(args: StandardArgs, rec_rates: PathBuf) -> Result<()> {
     Ok(())
 }
 
-///
-/// The original R algorithm by Gandolfo et al translated to Rust.
-/// <https://github.com/bahlolab/DatingRareMutations>
-///
-pub fn mrca_gamma_method(
+pub fn get_sums(
     vcf: &PhasedMatrix,
     shared_lengths: Vec<(Node, Node)>,
     variant_pos: u64,
     rec_rates: &BTreeMap<u64, f32>,
-) -> Result<(Age, Age)> {
-    let mut l_lengths = shared_lengths
+) -> (Vec<f64>, Vec<f64>) {
+    let l_sum = shared_lengths
         .iter()
-        .map(|(lnode, _)| vcf.get_pos(lnode.start_idx + 1))
+        .map(|(lnode, _)| vcf.get_pos(lnode.stop_idx) - vcf.get_pos(lnode.start_idx))
+        .sum::<u64>();
+    let r_sum = shared_lengths
+        .iter()
+        .map(|(_, rnode)| vcf.get_pos(rnode.stop_idx) - vcf.get_pos(rnode.start_idx))
+        .sum::<u64>();
+    tracing::debug!("Sums bp: left {l_sum:.3}, right {r_sum:.3})",);
+
+    let l_lengths = shared_lengths
+        .iter()
+        // .map(|(lnode, _)| vcf.get_pos(lnode.start_idx + 1))
+        .map(|(lnode, _)| vcf.get_pos(lnode.start_idx))
         .map(|start| {
             // Transform from pos to centimorgans by selecting nearest value to the left in the
             // BTreeMap
@@ -76,7 +88,7 @@ pub fn mrca_gamma_method(
         })
         .collect::<Vec<f64>>();
 
-    let mut r_lengths = shared_lengths
+    let r_lengths = shared_lengths
         .iter()
         .map(|(_, rnode)| vcf.get_pos(rnode.stop_idx))
         .map(|stop| {
@@ -91,9 +103,16 @@ pub fn mrca_gamma_method(
         })
         .collect::<Vec<f64>>();
 
-    let cc = 0.95;
-    let n = l_lengths.len() as f64;
-    let cs_corr = 0.0;
+    (l_lengths, r_lengths)
+}
+
+pub fn independent(
+    n: f64,
+    l_lengths: &[f64],
+    r_lengths: &[f64],
+    cc: f64,
+    cs_corr: f64,
+) -> Result<Age> {
     let l_sum: f64 = l_lengths.iter().sum();
     let r_sum: f64 = r_lengths.iter().sum();
 
@@ -117,11 +136,21 @@ pub fn mrca_gamma_method(
     let i_tau_hat_l = i_tau_hat * g_l;
     let i_tau_hat_u = i_tau_hat * g_u;
 
-    tracing::debug!(
-        "Independent genealogy:\nage: {i_tau_hat:.3} CI ({i_tau_hat_l:.3}, {i_tau_hat_u:.3})",
-    );
+    Ok((i_tau_hat, i_tau_hat_l, i_tau_hat_u))
+}
 
-    // Correlated genealogy
+// Correlated genealogy
+pub fn correlated(
+    mut l_lengths: Vec<f64>,
+    mut r_lengths: Vec<f64>,
+    cc: f64,
+    cs_corr: f64,
+) -> Result<Age> {
+    let l_sum: f64 = l_lengths.iter().sum::<f64>();
+    let r_sum: f64 = r_lengths.iter().sum::<f64>();
+    tracing::debug!("Sums: left {l_sum:.3}, right {r_sum:.3})",);
+    let n = l_lengths.len() as f64;
+
     let length_corr: f64 = (l_sum + r_sum - 2.0 * (n - 1.0) * cs_corr) / (2.0 * n);
 
     let highest_l = l_lengths.iter_mut().max_by(|a, b| a.total_cmp(b)).unwrap();
@@ -167,11 +196,44 @@ pub fn mrca_gamma_method(
 
     let c_tau_hat_l = c_tau_hat * c_l;
     let c_tau_hat_u = c_tau_hat * c_u;
+
+    Ok((c_tau_hat, c_tau_hat_l, c_tau_hat_u))
+}
+
+///
+/// The original R algorithm by Gandolfo et al translated to Rust.
+/// <https://github.com/bahlolab/DatingRareMutations>
+///
+pub fn mrca_gamma_method(
+    vcf: &PhasedMatrix,
+    shared_lengths: Vec<(Node, Node)>,
+    variant_pos: u64,
+    rec_rates: &BTreeMap<u64, f32>,
+) -> Result<(Age, Age)> {
+    let cc = 0.95;
+    let cs_corr = 0.0;
+    let n = shared_lengths.len() as f64;
+
+    let (l_lengths, r_lengths) = get_sums(vcf, shared_lengths, variant_pos, rec_rates);
+
+    let (left_tau_hat, _, _) = independent(n, &l_lengths, &[0.1], cc, cs_corr)?;
+    let (right_tau_hat, _, _) = independent(n, &[0.1], &r_lengths, cc, cs_corr)?;
+
+    let (i_tau_hat, i_tau_hat_l, i_tau_hat_u) =
+        independent(n, &l_lengths, &r_lengths, cc, cs_corr)?;
+    let (c_tau_hat, c_tau_hat_l, c_tau_hat_u) = correlated(l_lengths, r_lengths, cc, cs_corr)?;
+
+    tracing::debug!("Independent. Left age: {left_tau_hat:.3}, right age: {right_tau_hat:.3})",);
+
+    tracing::debug!(
+        "Independent genealogy:\nage: {i_tau_hat:.3} CI ({i_tau_hat_l:.3}, {i_tau_hat_u:.3})",
+    );
+
     tracing::debug!(
         "Correlated genealogy:\nage: {c_tau_hat:.3} CI ({c_tau_hat_l:.3}, {c_tau_hat_u:.3})",
     );
 
-    let independent = (i_tau_hat, i_tau_hat * g_l, i_tau_hat * g_u);
+    let independent = (i_tau_hat, i_tau_hat_l, i_tau_hat_u);
     let correlated = (c_tau_hat, c_tau_hat_l, c_tau_hat_u);
 
     Ok((independent, correlated))

@@ -43,12 +43,21 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     tracing::info!("Reading coord range: {} - {}", start, end);
 
     let vcf = match args.selection {
-        Selection::All | Selection::Haploid => {
-            read_vcf_to_matrix(&args, contig, variant_pos, Some((start.pos, end.pos)), None)?
-        }
+        Selection::All | Selection::Haploid => read_vcf_to_matrix(
+            &args,
+            contig,
+            variant_pos,
+            Some((Some(start.pos), Some(end.pos))),
+            None,
+        )?,
         Selection::OnlyAlts | Selection::OnlyRefs => {
-            let mut vcf =
-                read_vcf_to_matrix(&args, contig, variant_pos, Some((start.pos, end.pos)), None)?;
+            let mut vcf = read_vcf_to_matrix(
+                &args,
+                contig,
+                variant_pos,
+                Some((Some(start.pos), Some(end.pos))),
+                None,
+            )?;
 
             // Select carriers before switching to the given haplotype as the reference
             vcf.select_carriers(variant_pos, &args.selection)?;

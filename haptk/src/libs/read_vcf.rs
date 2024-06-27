@@ -24,17 +24,19 @@ use crate::{
 pub fn get_reader(
     path: &PathBuf,
     contig: &str,
-    range: Option<(u64, u64)>,
+    range: Option<(Option<u64>, Option<u64>)>,
 ) -> Result<IndexedReader> {
     let mut reader = IndexedReader::from_path(path)?;
     let rid = reader.header().name2rid(contig.as_bytes())?;
 
     match range {
         // RUST-HTSLIB is 0-based so subtract 1
-        Some((start, end)) => {
+        Some((Some(start), Some(end))) => {
             reader.fetch(rid, start.saturating_sub(1), Some(end.saturating_sub(1)))?
         }
-        None => reader.fetch(rid, 0, None)?,
+        Some((Some(start), None)) => reader.fetch(rid, start.saturating_sub(1), None)?,
+        Some((None, Some(end))) => reader.fetch(rid, 0, Some(end.saturating_sub(1)))?,
+        _ => reader.fetch(rid, 0, None)?,
     };
 
     Ok(reader)
@@ -83,7 +85,7 @@ pub fn read_vcf_to_matrix(
     args: &StandardArgs,
     contig: &str,
     variant_pos: u64,
-    range: Option<(u64, u64)>,
+    range: Option<(Option<u64>, Option<u64>)>,
     wanted_samples: Option<Vec<String>>,
 ) -> Result<PhasedMatrix> {
     let (indexes, samples) = get_sample_names(args, contig, wanted_samples)?;
@@ -117,7 +119,7 @@ pub fn read_vcf_to_matrix(
 fn read_vcf_to_matrix_single_batch(
     args: &StandardArgs,
     contig: &str,
-    range: Option<(u64, u64)>,
+    range: Option<(Option<u64>, Option<u64>)>,
     sample_indexes: &[usize],
 ) -> Result<(Vec<u8>, Vec<Coord>)> {
     let mut reader = get_reader(&args.file, contig, range)?;
@@ -166,13 +168,13 @@ fn read_parallel(
     args: &StandardArgs,
     contig: &str,
     variant_pos: u64,
-    range: Option<(u64, u64)>,
+    range: Option<(Option<u64>, Option<u64>)>,
     samples: Vec<String>,
     sample_indexes: &[usize],
 ) -> Result<PhasedMatrix> {
     let (first_pos, last_pos) = match range {
-        Some((start, end)) => (start, end),
-        None => (0, get_htslib_contig_len(&args.file, contig)?),
+        Some((Some(start), Some(end))) => (start, end),
+        _ => (0, get_htslib_contig_len(&args.file, contig)?),
     };
     let mut batches = vec![];
     let nthreads = rayon::current_num_threads();
@@ -195,7 +197,14 @@ fn read_parallel(
 
     let matrices = batches
         .par_iter()
-        .map(|range| read_vcf_to_matrix_single_batch(args, contig, Some(*range), sample_indexes))
+        .map(|(start, stop)| {
+            read_vcf_to_matrix_single_batch(
+                args,
+                contig,
+                Some((Some(*start), Some(*stop))),
+                sample_indexes,
+            )
+        })
         .collect::<Result<Vec<(Vec<u8>, Vec<Coord>)>>>()?;
 
     tracing::info!("Finished parallelized construction of genotype matrices.");

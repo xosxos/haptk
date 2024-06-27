@@ -22,7 +22,13 @@ pub fn run(args: StandardArgs, haplotype_path: PathBuf) -> Result<()> {
     let start = ht.first().unwrap();
     let end = ht.last().unwrap();
 
-    let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, Some((start.pos, end.pos)), None)?;
+    let mut vcf = read_vcf_to_matrix(
+        &args,
+        contig,
+        variant_pos,
+        Some((Some(start.pos), Some(end.pos))),
+        None,
+    )?;
     match args.selection {
         Selection::OnlyAlts | Selection::OnlyRefs => {
             vcf.select_carriers(variant_pos, &args.selection)?

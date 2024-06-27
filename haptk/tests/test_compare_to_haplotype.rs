@@ -25,7 +25,14 @@ mod test_compare_to_haplotype {
             file: PathBuf::from(TEST_VCF),
             ..Default::default()
         };
-        let vcf = read_vcf_to_matrix(&args, "chr9", 32, Some((start.pos, end.pos)), None).unwrap();
+        let vcf = read_vcf_to_matrix(
+            &args,
+            "chr9",
+            32,
+            Some((Some(start.pos), Some(end.pos))),
+            None,
+        )
+        .unwrap();
 
         // let ht = remove_unused_ht(&vcf, ht.clone()).unwrap();
         let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, 32).unwrap();
@@ -48,8 +55,14 @@ mod test_compare_to_haplotype {
             assert_eq!(vec![1; 28], col)
         }
 
-        let mut vcf =
-            read_vcf_to_matrix(&args, "chr9", 32, Some((start.pos, end.pos)), None).unwrap();
+        let mut vcf = read_vcf_to_matrix(
+            &args,
+            "chr9",
+            32,
+            Some((Some(start.pos), Some(end.pos))),
+            None,
+        )
+        .unwrap();
         vcf.select_carriers(32, &Selection::OnlyAlts).unwrap();
         let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, 32).unwrap();
         for row in vcf.matrix.rows() {

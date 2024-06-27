@@ -69,15 +69,25 @@ pub fn run(
     let mut only_longest = None;
     let vcf = match args.selection {
         Selection::All => {
-            let vcf =
-                read_vcf_to_matrix(&args, contig, variant_pos, Some((start.pos, end.pos)), None)?;
+            let vcf = read_vcf_to_matrix(
+                &args,
+                contig,
+                variant_pos,
+                Some((Some(start.pos), Some(end.pos))),
+                None,
+            )?;
             let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?;
             only_longest = Some(vcf.only_longest_indexes());
             vcf
         }
         Selection::OnlyAlts | Selection::OnlyRefs => {
-            let mut vcf =
-                read_vcf_to_matrix(&args, contig, variant_pos, Some((start.pos, end.pos)), None)?;
+            let mut vcf = read_vcf_to_matrix(
+                &args,
+                contig,
+                variant_pos,
+                Some((Some(start.pos), Some(end.pos))),
+                None,
+            )?;
 
             // Select carriers before switching to the given haplotype as the reference
             vcf.select_carriers(variant_pos, &args.selection)?;
@@ -85,8 +95,14 @@ pub fn run(
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
         }
         Selection::OnlyLongest => {
-            let vcf =
-                read_vcf_to_matrix(&args, contig, variant_pos, Some((start.pos, end.pos)), None)?;
+            let vcf = read_vcf_to_matrix(
+                &args,
+                contig,
+                variant_pos,
+                Some((Some(start.pos), Some(end.pos))),
+                None,
+            )?;
+
             let mut vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?;
 
             // Do only longest selection after swithing to the given haplotype as the refernce
@@ -106,8 +122,13 @@ pub fn run(
             vcf
         }
         Selection::Haploid => {
-            let vcf =
-                read_vcf_to_matrix(&args, contig, variant_pos, Some((start.pos, end.pos)), None)?;
+            let vcf = read_vcf_to_matrix(
+                &args,
+                contig,
+                variant_pos,
+                Some((Some(start.pos), Some(end.pos))),
+                None,
+            )?;
 
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
         }
