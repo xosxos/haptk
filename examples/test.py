@@ -13,5 +13,6 @@ gambian = read_samples("/Users/xosxos/code/haptk/examples/1kGP_high_coverage_Ill
 finnish = read_samples("/Users/xosxos/code/haptk/examples/1kGP_high_coverage_Illumina.toscani.ids")
 han_chinese = read_samples("/Users/xosxos/code/haptk/examples/1kGP_high_coverage_Illumina.han_chinese.ids")
 
-hst.circle_tree("tmp.png", to_tag=[gambian, finnish, han_chinese], colors=["red", "blue", "green"], w=4560, h=4560)
+# hst.circle_tree("tmp.png", to_tag=[gambian, finnish, han_chinese], colors=["red", "blue", "green"], w=4560, h=4560)
 # hst.circle_tree("tmp.png")
+hst.normal_tree("tmp.png", branch_point_size=80, branch_length_as_majority=14)

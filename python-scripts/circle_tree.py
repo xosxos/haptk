@@ -7,6 +7,8 @@ import haptk
 parser = argparse.ArgumentParser()
 parser.add_argument('hst', type=str)
 parser.add_argument('--min-size', type=int, default=1)    
+parser.add_argument('--branch-point-size', type=int, default=9999999)    
+parser.add_argument('--branch-length', type=int, default=99999999)    
 parser.add_argument('--hard-cut', action="store_true")    
 parser.add_argument('--ids', nargs="+", type=str)
 parser.add_argument('-o', '--output', type=str)
@@ -28,7 +30,7 @@ if args.ids:
         samples_to_tag.append(ids)
 
 # Render the tree
-hst.circle_tree(args.output, to_tag=samples_to_tag, min_size=args.min_size, hard_cut=args.hard_cut)
+hst.circle_tree(args.output, colors=["red", "blue"], to_tag=samples_to_tag, min_size=args.min_size, hard_cut=args.hard_cut, branch_point_size=args.branch_point_size, branch_length_as_majority=args.branch_length)
 
 
 

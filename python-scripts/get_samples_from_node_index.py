@@ -13,7 +13,9 @@ args = parser.parse_args()
 hst = haptk.read_hst(args.hst)
 
 # Get all samples from a node index
-samples = hst.node_samples(args.idx)
+samples = hst.node_samples([args.idx])
 
-print(samples)
-
+for sample_list in samples:
+    for sample in sample_list:
+        print(sample)
+        
