@@ -43,6 +43,7 @@ def iterate_tree_inner(hst, t, samples_to_tag):
         n_cases = len(n_cases)
         n_ctrls = len(n_ctrls)
         # res = fisher_exact([[n_cases, n_ctrls], [tot_cases - n_cases, tot_ctrls - n_ctrls]], alternative="greater")
+        # res = fisher_exact([[n_cases, n_ctrls], [tot_cases - n_cases, tot_ctrls - n_ctrls]], alternative="less")
         res = fisher_exact([[n_cases, n_ctrls], [tot_cases - n_cases, tot_ctrls - n_ctrls]])
         
         print(f"{n.name},{res.pvalue},{n_cases},{n_ctrls},{tot_cases},{tot_ctrls}")
@@ -54,9 +55,12 @@ def iterate_tree_inner(hst, t, samples_to_tag):
             F.margin_right = 10
             n.add_face(F, column=0)
 
-        # if n.is_leaf() and res.pvalue < 0.005:
-        label = len(indexes)
-        F = TextFace(label, tight_text=True, penwidth=30, fsize=8)
+        if not n.is_leaf():
+            label = len(indexes)
+        else:
+            label = "o"
+
+        F = TextFace(label, tight_text=True, penwidth=30, fsize=8, fgcolor="black")
         F.rotation = 270
 
         mix = res.pvalue * 1000
@@ -65,6 +69,9 @@ def iterate_tree_inner(hst, t, samples_to_tag):
         color = utils.color_fader('red', 'blue', mix)
 
         F.background.color = color
+        if mix == 1:
+            F.fgcolor = "white"
         n.add_face(F, column=0)
+        
 
     return t

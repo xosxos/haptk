@@ -67,7 +67,8 @@ def load_df(name):
     sorted_start = df['start'].sort_values().tolist()
     sorted_stop = df['stop'].sort_values().tolist()
 
-    cutoff = int(len(sorted_start) * 0.2)
+    # cutoff = int(len(sorted_start) * 0.2)
+    cutoff = int(len(sorted_start) * 0.05)
 
     start_last = sorted_start[cutoff]
     stop_last = sorted_stop[-cutoff]
