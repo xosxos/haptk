@@ -34,5 +34,13 @@ pub mod compare_to_hst;
 /// Compare haplotypes
 pub mod compare_haplotypes;
 
+// Genome-wide HSTs
+pub mod hst_gwas;
+// pub mod hst_mrca_gwas;
+// pub mod hst_qt_gwas;
+pub mod hst_scan;
+// pub mod hst_segregation;
+pub mod mrca_scan;
+
 // / Annotate haplotype
 // pub mod annotate_haplotype;

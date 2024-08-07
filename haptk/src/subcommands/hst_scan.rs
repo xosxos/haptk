@@ -1,22 +1,31 @@
-use std::path::PathBuf;
+use std::{borrow::Borrow, collections::HashMap, hash::DefaultHasher, path::PathBuf, sync::Arc};
+
+use std::hash::Hasher;
+use std::sync::mpsc::Sender;
+
+use petgraph::graph::NodeIndex;
+use petgraph::Graph;
+use rayon::prelude::*;
+use rust_htslib::bam::{
+    header::HeaderRecord,
+    record::{Aux, AuxArray, Cigar, CigarString},
+    Format, Header, Record, Writer,
+};
+
+use crate::args::{Selection, StandardArgs};
+use crate::io::push_to_output;
+use crate::structs::{Coord, HapVariant, PhasedMatrix};
+use crate::utils::parse_coords;
 
 use color_eyre::{
     eyre::{ensure, eyre, WrapErr},
     Result,
 };
-use ndarray::s;
-use petgraph::prelude::NodeIndex;
-use petgraph::{Direction, Graph};
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::args::{Selection, StandardArgs};
-use crate::core::get_output;
-use crate::core::parse_coords;
+use crate::io::get_output;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::PhasedMatrix;
-use crate::subcommands::bhst;
-use crate::utils::push_to_output;
+use crate::subcommands::bhst::{construct_bhst, Node};
 
 #[doc(hidden)]
 pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
@@ -41,7 +50,7 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
     // return in ordered fashion with .collect()
     let range: Vec<_> = (0..vcf.ncoords()).collect();
 
-    let trees = range
+    let hsts = range
         .par_iter()
         .filter(|idx| *idx % step_size == 0)
         .map(|idx| {
@@ -49,38 +58,32 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
                 tracing::info!("Finished constructing 10% of the trees...");
             }
 
-            TreeRow {
+            HstScanRow {
                 idx: *idx,
-                tree: construct_bhst(&vcf, *idx, 4),
+                hst: construct_bhst(&vcf, *idx, 4),
             }
         })
         .collect();
 
     let metadata = Metadata::new(&vcf, args);
 
-    let trees = Trees { trees, metadata };
+    let trees = HstScan { hsts, metadata };
 
-    write_trees(trees, output)?;
+    write_hsts(trees, output)?;
 
     Ok(())
 }
-#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq, PartialOrd)]
-pub struct Node {
-    pub indexes: Vec<usize>,
-    pub start_idx: usize,
-    pub stop_idx: usize,
-    pub block_len: f32,
-}
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct TreeRow {
+pub struct HstScanRow {
     pub idx: usize,
-    pub tree: Graph<Node, u8>,
+    pub hst: Graph<Node, u8>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Metadata {
-    pub coords: String,
+    pub coords: Vec<Coord>,
+    pub contig: String,
     pub samples: Vec<String>,
     pub selection: Selection,
     pub vcf_name: PathBuf,
@@ -92,7 +95,8 @@ impl Metadata {
         let samples = vcf.samples().to_vec();
 
         Self {
-            coords: args.coords,
+            coords: vcf.coords().clone(),
+            contig: vcf.get_contig().clone(),
             samples,
             selection: args.selection,
             vcf_name: args.file,
@@ -102,12 +106,18 @@ impl Metadata {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Trees {
+pub struct HstScan {
     pub metadata: Metadata,
-    pub trees: Vec<TreeRow>,
+    pub hsts: Vec<HstScanRow>,
 }
 
-fn write_trees(trees: Trees, path: PathBuf) -> Result<()> {
+impl HstScan {
+    pub fn get_pos(&self, idx: usize) -> u64 {
+        self.metadata.coords[idx].pos
+    }
+}
+
+fn write_hsts(trees: HstScan, path: PathBuf) -> Result<()> {
     // use std::io::{BufWriter, Write};
 
     tracing::info!("Writing trees to file.");
@@ -127,243 +137,309 @@ fn write_trees(trees: Trees, path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn read_tree_file(path: PathBuf) -> Result<Trees> {
+pub fn read_tree_file(path: PathBuf) -> Result<HstScan> {
     let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
     let reader = bgzip::BGZFReader::new(file)?;
-    let trees: Trees = serde_json::from_reader(reader)?;
-    tracing::info!("Read HSTs with the following metadata: \ncoords: {},\nselection: {:?},\nnsamples:{},\ninfo_limit: {:?}", trees.metadata.coords, trees.metadata.selection, trees.metadata.samples.len(), trees.metadata.info_limit);
+    let hst_scan: HstScan = serde_json::from_reader(reader)?;
+    tracing::info!(
+        "Read HSTs with the following metadata: \nselection: {:?},\nnsamples:{},\ninfo_limit: {:?}",
+        hst_scan.metadata.selection,
+        hst_scan.metadata.samples.len(),
+        hst_scan.metadata.info_limit
+    );
 
-    Ok(trees)
+    Ok(hst_scan)
 }
 
-impl std::fmt::Display for Node {
+// impl std::fmt::Display for Node {
+//     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+//         let nmarkers = match self.stop_idx.cmp(&self.start_idx) {
+//             std::cmp::Ordering::Greater => self.stop_idx - self.start_idx + 1,
+//             std::cmp::Ordering::Less => self.start_idx - self.stop_idx + 1,
+//             std::cmp::Ordering::Equal => 0,
+//         };
+//         let line = format!(
+//             "n: {}\nstart_idx: {}\nstop_idx: {}\nnmarkers: {}\nblock length (bp): {}\n",
+//             self.indexes.len(),
+//             self.start_idx,
+//             self.stop_idx,
+//             nmarkers,
+//             self.haplotype.len(),
+//         );
+//         write!(f, "{line}")
+//     }
+// }
+
+pub fn get_sender(
+    write_bam: bool,
+    args: &StandardArgs,
+    hsts: Arc<HstScan>,
+) -> Option<Sender<(usize, NodeIndex, f64)>> {
+    match write_bam {
+        true => {
+            let mut bam_output = args.output.clone();
+            push_to_output(args, &mut bam_output, "hst_scan", "bam");
+            let header = return_header(&hsts.metadata.contig);
+            let mut out = Writer::from_path(bam_output, &header, Format::Bam).unwrap();
+            let (tx, rx) = std::sync::mpsc::channel();
+
+            std::thread::spawn(move || {
+                while let Ok((tree_idx, top_node_idx, optimized_value)) = rx.recv() {
+                    let record =
+                        create_bam_record(hsts.clone(), tree_idx, top_node_idx, optimized_value);
+                    out.write(&record).unwrap();
+                }
+            });
+            Some(tx)
+        }
+        false => None,
+    }
+}
+
+pub fn return_assoc<F, U>(
+    hsts: Arc<HstScan>,
+    args: &StandardArgs,
+    write_bam: bool,
+    optimizer: F,
+    rower: U,
+    // tx: Option<std::sync::mpsc::Sender<(usize, NodeIndex, f64)>>,
+) -> Vec<AssocRow>
+where
+    F: Fn(usize) -> Option<(usize, NodeIndex, f64)> + Sync + Send + Clone,
+    U: Fn(usize, NodeIndex, f64) -> AssocRow + Sync + Send,
+{
+    let tx = get_sender(write_bam, &args, hsts.clone());
+
+    hsts.hsts
+        .par_iter()
+        .filter_map(|hst_row| optimizer(hst_row.idx))
+        .map_with(tx, |tx, optimizer_tuple| {
+            if let Some(tx) = tx {
+                tx.send(optimizer_tuple).unwrap();
+            }
+            optimizer_tuple
+        })
+        .map(|(tree_idx, top_node_idx, optimized_value)| {
+            rower(tree_idx, top_node_idx, optimized_value)
+        })
+        .collect()
+}
+
+pub fn write_assoc(
+    header: &[&str],
+    rows: Vec<AssocRow>,
+    mut writer: csv::Writer<Box<dyn std::io::Write>>,
+) -> Result<()> {
+    writer.write_record(header)?;
+
+    rows.into_iter().try_for_each(|row| -> Result<()> {
+        let record = row.to_csv_row();
+        writer.write_record(record)?;
+        Ok(())
+    })
+}
+
+#[derive(Clone, Debug)]
+pub struct AssocRow {
+    pub contig: String,
+    pub pos: u64,
+    pub marker_id: String,
+    pub bp_len: f32,
+    pub marker_len: usize,
+    pub start: u64,
+    pub stop: u64,
+    pub start_idx: usize,
+    pub stop_idx: usize,
+    pub opt_value: f64,
+    pub node_idx: NodeIndex,
+    pub first_sample_idx: usize,
+    pub hashmap: HashMap<String, String>,
+}
+
+impl AssocRow {
+    pub fn new(
+        hsts: Arc<HstScan>,
+        tree_idx: usize,
+        top_node_idx: NodeIndex,
+        opt_value: f64,
+        hashmap: HashMap<String, String>,
+    ) -> AssocRow {
+        let hst = &hsts.hsts[tree_idx].hst;
+        let top_node = hst.node_weight(top_node_idx).unwrap();
+
+        AssocRow {
+            contig: hsts.metadata.contig.clone(),
+            pos: hsts.get_pos(tree_idx),
+            marker_id: get_marker_id(top_node, hsts.clone()),
+            bp_len: (hsts.get_pos(top_node.stop_idx) - hsts.get_pos(top_node.start_idx)) as f32,
+            marker_len: top_node.stop_idx - top_node.start_idx + 1,
+            start: hsts.get_pos(top_node.start_idx),
+            stop: hsts.get_pos(top_node.stop_idx),
+            start_idx: top_node.start_idx,
+            stop_idx: top_node.stop_idx,
+            opt_value,
+            hashmap,
+            node_idx: top_node_idx,
+            first_sample_idx: top_node.indexes[0],
+        }
+    }
+
+    fn pos(&self) -> u64 {
+        self.pos
+    }
+    fn bp_len(&self) -> f32 {
+        self.bp_len
+    }
+    fn marker_len(&self) -> usize {
+        self.marker_len
+    }
+    fn node_idx(&self) -> NodeIndex {
+        self.node_idx
+    }
+    fn start_idx(&self) -> usize {
+        self.start_idx
+    }
+    fn stop_idx(&self) -> usize {
+        self.stop_idx
+    }
+    fn first_sample_idx(&self) -> usize {
+        self.first_sample_idx
+    }
+    fn opt_value(&self) -> f64 {
+        self.opt_value
+    }
+    fn hashmap(&self) -> &std::collections::HashMap<String, String> {
+        &self.hashmap
+    }
+    fn show(&self) -> String {
+        self.to_string()
+    }
+    fn to_csv_row(&self) -> Vec<String> {
+        self.into()
+    }
+}
+
+impl From<&AssocRow> for Vec<String> {
+    fn from(row: &AssocRow) -> Vec<String> {
+        vec![
+            row.contig.to_string(),
+            row.pos.to_string(),
+            row.marker_id.to_string(),
+            row.bp_len.to_string(),
+            row.marker_len.to_string(),
+            row.start.to_string(),
+            row.stop.to_string(),
+            row.opt_value.to_string(),
+        ]
+    }
+}
+
+impl std::fmt::Display for AssocRow {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let nmarkers = match self.stop_idx.cmp(&self.start_idx) {
-            std::cmp::Ordering::Greater => self.stop_idx - self.start_idx + 1,
-            std::cmp::Ordering::Less => self.start_idx - self.stop_idx + 1,
-            std::cmp::Ordering::Equal => 0,
-        };
-        let line = format!(
-            "n: {}\nstart_idx: {}\nstop_idx: {}\nnmarkers: {}\nblock length (bp): {}\n",
-            self.indexes.len(),
-            self.start_idx,
-            self.stop_idx,
-            nmarkers,
-            self.block_len,
-        );
+        let vector: Vec<String> = self.into();
+        let line = format!("{:?}", vector);
         write!(f, "{line}")
     }
 }
 
-impl bhst::Indexes for Node {
-    fn indexes(&self) -> &Vec<usize> {
-        &self.indexes
-    }
-    fn block_len(&self) -> f32 {
-        self.block_len
-    }
+pub fn get_marker_id<T: Borrow<HstScan>>(top_node: &Node, hsts: T) -> String {
+    let hsts = hsts.borrow();
+    let start = hsts.get_pos(top_node.start_idx);
+    let stop = hsts.get_pos(top_node.stop_idx);
 
-    fn show(&self) -> String {
-        self.to_string()
-    }
+    let ht = top_node.haplotype.iter().fold(
+        format!("{}_{}_{}_", hsts.metadata.contig, start, stop),
+        |acc, e| format!("{acc}{e}"),
+    );
+
+    let mut hasher = DefaultHasher::new();
+    hasher.write(ht.as_bytes());
+
+    format!("{:02x}", hasher.finish())
 }
 
-#[doc(hidden)]
-pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<Node, u8> {
-    let mut bhst = Graph::<_, _>::new();
-
-    bhst.add_node(Node {
-        block_len: 0.0,
-        start_idx: idx,
-        stop_idx: idx,
-        indexes: (0..vcf.matrix.nrows()).collect(),
-    });
-
-    loop {
-        // Filter out nodes with children and nodes with less indexes than min_size
-        let indices = bhst
-            .node_indices()
-            .filter(|node_idx| {
-                let node = bhst.node_weight(*node_idx).unwrap();
-                let count = bhst
-                    .neighbors_directed(*node_idx, Direction::Outgoing)
-                    .count();
-
-                count == 0 && node.indexes.len() > min_size
-            })
-            .collect::<Vec<NodeIndex>>();
-
-        // Multithread horizontally all childless nodes
-        let nodes = indices
-            .into_par_iter()
-            .filter_map(|node_idx| {
-                find_contradictory_gt(vcf, &bhst, node_idx).map(|nodes| (node_idx, nodes))
-            })
-            .collect::<Vec<(NodeIndex, Vec<Node>)>>();
-
-        // Terminate if no new nodes will be added to the tree
-        if nodes.is_empty() {
-            break;
-        }
-
-        // Add nodes to the tree
-        for (node_idx, new_nodes) in nodes {
-            for new_node in new_nodes {
-                let new_node_idx = bhst.add_node(new_node.clone());
-
-                // FOR TESTING
-                // let ht = vcf.find_haplotype_for_sample(
-                //     vcf.get_contig(),
-                //     new_node.start_idx..new_node.stop_idx + 1,
-                //     new_node.indexes[0],
-                // );
-                // let matching_idxs = crate::subcommands::check_for_haplotype::identical_haplotype_count(&vcf, &ht);
-                // let len = new_node.indexes.len();
-
-                // if matching_idxs.len() != len && new_node.start_idx != new_node.stop_idx {
-                //     for h in &ht {
-                //         println!("{:?} {}", h, vcf.get_nearest_idx_by_pos(h.pos));
-                //     }
-                //     println!(
-                //         "{new_node_idx:?} {} {len} {}",
-                //         matching_idxs.len(),
-                //         ht.len()
-                //     );
-                //     panic!();
-                // }
-
-                bhst.add_edge(node_idx, new_node_idx, 0);
-            }
-        }
-    }
-    bhst
+/// BAM creator
+pub fn return_header(contig: &str) -> Header {
+    let mut header = Header::new();
+    let mut header_record = HeaderRecord::new(b"SQ");
+    header_record.push_tag(b"SN", contig);
+    header_record.push_tag(b"LN", 0);
+    header.push_record(&header_record);
+    header
 }
 
-#[doc(hidden)]
-fn find_contradictory_gt(
-    vcf: &PhasedMatrix,
-    bhst: &Graph<Node, u8>,
-    node_idx: NodeIndex,
-) -> Option<Vec<Node>> {
-    let node = bhst.node_weight(node_idx).unwrap();
-    let (mut left, mut right) = (node.start_idx, node.stop_idx);
+pub fn u8_to_hapvariant(hsts: Arc<HstScan>, ht: &[u8]) -> Vec<HapVariant> {
+    panic!("unimplented")
+}
 
-    // Minus 1 to account for the starting variant itself as well
-    if node_idx == NodeIndex::new(0) {
-        right = right.saturating_sub(1);
-    }
+pub fn create_bam_record(
+    hsts: Arc<HstScan>,
+    tree_idx: usize,
+    top_node_idx: NodeIndex,
+    lowest_pvalue: f64,
+) -> Record {
+    let hst = &hsts.hsts[tree_idx].hst;
+    let top_node = hst.node_weight(top_node_idx).unwrap();
+    let mut record = record_from_ht(u8_to_hapvariant(hsts.clone(), &top_node.haplotype));
+    add_aux_data(&mut record, lowest_pvalue, top_node);
+    record
+}
 
-    let (mut rz, mut ro);
-    // Expand to the right until a contradictory genotype is found or the end of sequencing data
-    loop {
-        (rz, ro) = (vec![], vec![]);
-        if right < vcf.matrix.ncols() - 1 {
-            right += 1;
+fn add_aux_data(record: &mut Record, lowest_pvalue: f64, top_node: &Node) {
+    // Add an integer field
+    let aux_integer_field = Aux::Float(lowest_pvalue as f32);
+    record.push_aux(b"PV", aux_integer_field).unwrap();
+
+    let aux_array: &Vec<u32> = &top_node.indexes.iter().map(|v| *v as u32).collect();
+    let aux_array: AuxArray<u32> = aux_array.into();
+    let aux_array_field = Aux::ArrayU32(aux_array);
+    record.push_aux(b"ID", aux_array_field).unwrap();
+}
+
+fn record_from_ht(ht: Vec<HapVariant>) -> Record {
+    let start = ht.first().unwrap().pos;
+    let stop = ht.last().unwrap().pos;
+
+    let hash_str = ht
+        .iter()
+        .map(|ht| ht.genotype())
+        .fold(format!("{}_{}_{}_", "chr9", start, stop), |acc, e| {
+            format!("{acc}{e}")
+        });
+
+    let mut hasher = DefaultHasher::new();
+    hasher.write(hash_str.as_bytes());
+
+    let qname = format!("{:02x}", hasher.finish());
+
+    let mut cigar = vec![];
+    let mut seq = vec![];
+
+    for (i, item) in ht.iter().enumerate() {
+        let curr_pos = ht[i].pos;
+        let last_pos = ht.get(i - 1).map_or(0, |last| last.pos);
+
+        if last_pos != 0 {
+            let distance = curr_pos as u32 - last_pos as u32 - 1;
+            cigar.push(Cigar::RefSkip(distance));
         }
 
-        for i in node.indexes.iter() {
-            let right_gt = vcf.matrix.slice(s![*i, right]);
+        seq.push(item.genotype().as_bytes()[0]);
 
-            match right_gt.into_scalar() {
-                0 => rz.push(*i),
-                1 => ro.push(*i),
-                _ => unreachable!("Other genotypes than 0 and 1 are present in the matrix"),
-            }
-        }
-
-        if (!rz.is_empty() && !ro.is_empty()) || right == vcf.matrix.ncols() - 1 {
-            break;
-        }
-    }
-
-    let (mut lz, mut lo);
-    // Expand to the left until a contradictory genotype is found or the end of sequencing data
-    loop {
-        (lz, lo) = (vec![], vec![]);
-        left = left.saturating_sub(1);
-
-        for i in node.indexes.iter() {
-            let left_gt = vcf.matrix.slice(s![*i, left]);
-
-            match left_gt.into_scalar() {
-                0 => lz.push(*i),
-                1 => lo.push(*i),
-                _ => unreachable!("Other genotypes than 0 and 1 are present in the matrix"),
-            }
-        }
-
-        if (!lz.is_empty() && !lo.is_empty()) || left == 0 {
-            break;
-        }
-    }
-
-    // Divide left and right side contradictory genotypes to buckets:
-    // [0,1] [0,0] [1, 0] [0, 0]
-    let (mut zo, mut zz, mut oz, mut oo) = (vec![], vec![], vec![], vec![]);
-
-    for i in &lz {
-        if rz.contains(i) {
-            zz.push(*i);
-        } else if ro.contains(i) {
-            zo.push(*i)
+        match item.gt {
+            0 => cigar.push(Cigar::Equal(1)),
+            1 => cigar.push(Cigar::Diff(1)),
+            _ => unreachable!(),
         }
     }
 
-    for i in &lo {
-        if rz.contains(i) {
-            oz.push(*i);
-        } else if ro.contains(i) {
-            oo.push(*i)
-        }
-    }
-
-    // Create a new node for each bucket if it is not empty
-    let mut nodes = Vec::with_capacity(4);
-    let block_len = vcf.get_pos(right) as f32 - vcf.get_pos(left) as f32;
-
-    if !zz.is_empty() {
-        let node = Node {
-            block_len,
-            start_idx: left,
-            stop_idx: right,
-            indexes: zz,
-        };
-        nodes.push(node);
-    }
-
-    if !zo.is_empty() {
-        let node = Node {
-            block_len,
-            start_idx: left,
-            stop_idx: right,
-            indexes: zo,
-        };
-        nodes.push(node);
-    }
-
-    if !oz.is_empty() {
-        let node = Node {
-            block_len,
-            start_idx: left,
-            stop_idx: right,
-            indexes: oz,
-        };
-        nodes.push(node);
-    }
-
-    if !oo.is_empty() {
-        let node = Node {
-            block_len,
-            start_idx: left,
-            stop_idx: right,
-            indexes: oo,
-        };
-        nodes.push(node);
-    }
-
-    // Return buckets if more than one bucket exists
-    match nodes.len() > 1 {
-        true => Some(nodes),
-        false => None,
-    }
+    let mut record = Record::new();
+    record.set_pos(start as i64);
+    record.set(
+        qname.as_bytes(),
+        Some(&CigarString(cigar)),
+        &seq,
+        &vec![255; seq.len()],
+    );
+    record
 }

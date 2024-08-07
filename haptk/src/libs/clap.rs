@@ -15,6 +15,12 @@ use crate::subcommands::{
     haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
 };
 
+// Genome-wide methods
+// use crate::subcommands::{
+// hst_gwas, hst_mrca_gwas, hst_qt_gwas, hst_scan, hst_segregation, mrca_scan,
+// };
+use crate::subcommands::{hst_gwas, hst_scan, mrca_scan};
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, styles=get_styles())]
 pub struct Arguments {
@@ -81,8 +87,7 @@ pub struct ClapStandardArgs {
 
 #[derive(Args, Debug, Clone)]
 pub struct ClapConciseArgs {
-    pub file: PathBuf,
-
+    // pub file: PathBuf,
     /// Output directory
     #[arg(short = 'o', long, default_value_os_t = PathBuf::from("./"))]
     pub outdir: PathBuf,
@@ -139,7 +144,7 @@ impl From<ClapConciseArgs> for ConciseArgs {
             None => None,
         };
         Self {
-            file: value.file,
+            // file: value.file,
             output: value.outdir,
             prefix,
         }
@@ -260,11 +265,6 @@ pub enum SubCommand {
         #[arg(long)]
         publish: bool,
     },
-    /// bHST scan
-    BhstScan {
-        #[command(flatten)]
-        args: ClapStandardArgs,
-
     /// Analyze the MRCA based on the Gamma method at a coordinate
     Mrca {
         #[command(flatten)]
@@ -430,6 +430,212 @@ pub enum SubCommand {
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
     },
+    /// bHST scan
+    BhstScan {
+        #[command(flatten)]
+        args: ClapStandardArgs,
+
+        #[command(flatten)]
+        log_and_verbosity: LogAndVerbosity,
+
+        /// Run the scan every n markers
+        #[arg(long)]
+        step_size: usize,
+
+        /// Number of threads
+        #[arg(short = 't', long, default_value_t = 8)]
+        threads: usize,
+    },
+    /// bHST binary GWAS
+    BhstGwas {
+        #[command(flatten)]
+        args: ClapConciseArgs,
+
+        #[command(flatten)]
+        log_and_verbosity: LogAndVerbosity,
+
+        /// Branch sample size to end recursion
+        #[arg(long, default_value_t = 4)]
+        min_sample_size: usize,
+
+        /// Branch sample size to end recursion
+        #[arg(long, default_value_t = 10000000)]
+        max_sample_size: usize,
+
+        /// Minimum number of variants required in the haplotype
+        #[arg(long, default_value_t = 1)]
+        min_ht_len: usize,
+
+        /// Maximum number of variants in the haplotype
+        #[arg(long, default_value_t = 10000000)]
+        max_ht_len: usize,
+
+        /// Number of threads
+        #[arg(short = 't', long, default_value_t = 8)]
+        threads: usize,
+
+        /// Bidirectional HSTs created with the `bhst-scan` command
+        #[arg(long)]
+        trees: PathBuf,
+
+        /// List of CTRL ids (one ID per row)
+        #[arg(short = 'C', long, value_delimiter = ' ', num_args = 1.. )]
+        controls: Option<Vec<PathBuf>>,
+
+        /// Path to controls vcf if controls are not included in the same file
+        #[arg(long)]
+        control_vcf: Option<PathBuf>,
+    },
+
+    /// bHST quantitative GWAS
+    BhstQtGwas {
+        #[command(flatten)]
+        args: ClapConciseArgs,
+
+        #[command(flatten)]
+        log_and_verbosity: LogAndVerbosity,
+
+        /// Branch sample size to end recursion
+        #[arg(long, default_value_t = 4)]
+        min_sample_size: usize,
+
+        /// Branch sample size to end recursion
+        #[arg(long, default_value_t = 10000000)]
+        max_sample_size: usize,
+
+        /// Minimum number of variants required in the haplotype
+        #[arg(long, default_value_t = 1)]
+        min_ht_len: usize,
+
+        /// Maximum number of variants in the haplotype
+        #[arg(long, default_value_t = 10000000)]
+        max_ht_len: usize,
+
+        /// Number of threads
+        #[arg(short = 't', long, default_value_t = 8)]
+        threads: usize,
+
+        /// Bilateral haplotype state trees
+        #[arg(long)]
+        trees: PathBuf,
+
+        /// List of control ids
+        #[arg(long)]
+        var_data: PathBuf,
+
+        /// Path to controls vcf if controls are not included in the same file
+        #[arg(long)]
+        var_name: String,
+    },
+
+    /// bHST MRCA minimization
+    BhstMrcaGwas {
+        #[command(flatten)]
+        args: ClapConciseArgs,
+
+        #[command(flatten)]
+        log_and_verbosity: LogAndVerbosity,
+
+        /// Branch sample size to end recursion
+        #[arg(long, default_value_t = 15)]
+        min_sample_size: usize,
+
+        /// Branch sample size to end recursion
+        #[arg(long, default_value_t = 10000000)]
+        max_sample_size: usize,
+
+        /// Minimum number of variants required in the haplotype
+        #[arg(long, default_value_t = 1)]
+        min_ht_len: usize,
+
+        /// Maximum number of variants in the haplotype
+        #[arg(long, default_value_t = 10000000)]
+        max_ht_len: usize,
+
+        /// Number of threads
+        #[arg(short = 't', long, default_value_t = 8)]
+        threads: usize,
+
+        /// Bilateral haplotype state trees
+        #[arg(long)]
+        trees: PathBuf,
+
+        /// Recombination rate file
+        #[arg(short = 'r', long)]
+        recombination_rates: PathBuf,
+    },
+
+    /// Find bHST based segregated haplotypes genome-wide
+    BhstSegregation {
+        #[command(flatten)]
+        args: ClapConciseArgs,
+
+        #[command(flatten)]
+        log_and_verbosity: LogAndVerbosity,
+
+        /// Branch sample size to end recursion
+        #[arg(long, default_value_t = 1)]
+        min_sample_size: usize,
+
+        /// Branch sample size to end recursion
+        #[arg(long, default_value_t = 10000000)]
+        max_sample_size: usize,
+
+        /// Minimum number of variants required in the haplotype
+        #[arg(long, default_value_t = 1)]
+        min_ht_len: usize,
+
+        /// Maximum number of variants in the haplotype
+        #[arg(long, default_value_t = 10000000)]
+        max_ht_len: usize,
+
+        /// Number of threads
+        #[arg(short = 't', long, default_value_t = 8)]
+        threads: usize,
+
+        /// Bilateral haplotype state trees
+        #[arg(long)]
+        trees: PathBuf,
+
+        /// Wanted segregating samples
+        #[arg(short = 'r', long)]
+        samples: PathBuf,
+    },
+
+    /// Analyze the MRCA every x markers along a given contig
+    MrcaScan {
+        #[command(flatten)]
+        args: ClapStandardArgs,
+
+        #[command(flatten)]
+        log_and_verbosity: LogAndVerbosity,
+        /// Recombination rate file
+        #[arg(short = 'r', long)]
+        recombination_rates: PathBuf,
+
+        /// Run the MRCA analysis every n markers
+        #[arg(long)]
+        step_size: usize,
+
+        /// Dont output to csv
+        #[arg(long)]
+        no_csv: bool,
+
+        /// Draw plot
+        #[arg(long)]
+        plot: bool,
+
+        /// Number of threads
+        #[arg(short = 't', long, default_value_t = 8)]
+        threads: usize,
+
+        #[command(flatten)]
+        graph_args: ClapGraphArgs,
+
+        /// Only supports hg38! Mark the centromere to the graph
+        #[arg(long)]
+        mark_centromere: bool,
+    },
 }
 
 impl SubCommand {
@@ -588,6 +794,50 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         SubCommand::ToVcf { file, sample_name, outdir, .. } => haplotype_to_vcf::run(file, sample_name, outdir)?,
         SubCommand::Coverage { file, bp_per_snp, npipes, .. } => coverage::run(file, bp_per_snp, npipes)?,
 
+        // Genome-wide methods
+        SubCommand::MrcaScan {
+            args, recombination_rates, step_size, no_csv, plot, graph_args, mark_centromere, ..
+        } => mrca_scan::run(
+            args.into(), recombination_rates, step_size, no_csv, plot, graph_args.into(), mark_centromere
+        )?,
+
+        SubCommand::BhstScan { args, step_size, .. } => hst_scan::run(args.into(), step_size)?,
+
+        SubCommand::BhstGwas {
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, controls, ..
+        } => hst_gwas::run(
+            args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), trees, controls
+        )?,
+
+        // SubCommand::BhstQtGwas {
+        //     args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, var_data, var_name, ..
+        // } => hst_qt_gwas::run(
+        //         args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), trees, var_data, var_name,
+        //     )?,
+
+        // SubCommand::BhstMrcaGwas {
+        //     args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, recombination_rates, ..
+        // } => hst_mrca_gwas::run(
+        //         args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), trees, recombination_rates,
+        //     )?,
+
+        // SubCommand::BhstSegregation {
+        //     args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, samples, ..
+        // } => hst_segregation::run(
+        //         args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), trees, samples,
+        //     )?,
+
+        SubCommand::BhstQtGwas {
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, var_data, var_name, ..
+        } => todo!(),
+
+        SubCommand::BhstMrcaGwas {
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, recombination_rates, ..
+        } => todo!(),
+
+        SubCommand::BhstSegregation {
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, samples, ..
+        } => todo!(),
     };
     Ok(())
 }

@@ -361,16 +361,10 @@ impl PhasedMatrix {
         Ok(())
     }
 
-    pub fn get_lengths_from_uhst(&self) -> Vec<(Node, Node)> {
-        let uhst_right = uhst::construct_uhst(
-            self,
-            &uhst::LocDirection::Right,
-            self.variant_idx(),
-            1,
-            true,
-        );
-        let uhst_left =
-            uhst::construct_uhst(self, &uhst::LocDirection::Left, self.variant_idx(), 1, true);
+    pub fn get_lengths_from_uhst(&self, variant_idx: usize) -> Vec<(Node, Node)> {
+        let uhst_right =
+            uhst::construct_uhst(self, &uhst::LocDirection::Right, variant_idx, 1, true);
+        let uhst_left = uhst::construct_uhst(self, &uhst::LocDirection::Left, variant_idx, 1, true);
 
         let lmaj_branch = find_majority_nodes(&uhst_left);
         let rmaj_branch = find_majority_nodes(&uhst_right);

@@ -9,15 +9,16 @@ use color_eyre::{
 use petgraph::{graph::NodeIndex, Graph};
 
 use crate::args::{ConciseArgs, Selection, StandardArgs};
-use crate::core::{open_csv_writer, parse_coords};
 use crate::io::read_variable_data_file;
+use crate::io::{open_csv_writer, push_to_output};
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::PhasedMatrix;
+use crate::subcommands::bhst::Node;
 use crate::subcommands::hst_gwas::{
     self, find_homozygosity_no_ctrl, get_marker_id, get_sender, return_assoc, write_assoc, Assoc,
 };
-use crate::subcommands::hst_scan::{read_tree_file, Node, Trees};
-use crate::utils::push_to_output;
+use crate::subcommands::hst_scan::{read_tree_file, Trees};
+use crate::utils::parse_coords;
 
 #[doc(hidden)]
 pub fn run(
@@ -192,7 +193,7 @@ impl QtAssocRow {
             contig: vcf.get_contig().to_string(),
             pos: vcf.get_pos(tree_idx),
             marker_id: get_marker_id(top_node, vcf.clone()),
-            bp_len: top_node.block_len,
+            bp_len: (vcf.get_pos(top_node.stop_idx) - vcf.get_pos(top_node.start_idx)) as f32,
             marker_len,
             start: vcf.get_pos(start_idx),
             stop: vcf.get_pos(stop_idx),

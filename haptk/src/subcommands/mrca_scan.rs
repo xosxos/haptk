@@ -7,12 +7,11 @@ use plotters::prelude::*;
 use rayon::prelude::*;
 
 use crate::args::{GraphArgs, Selection, StandardArgs};
-use crate::core::{centromeres_hg38, open_csv_writer, parse_coords};
-use crate::io::read_recombination_file;
+use crate::io::{open_csv_writer, push_to_output, read_recombination_file};
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::PhasedMatrix;
 use crate::subcommands::mrca::mrca_gamma_method;
-use crate::utils::push_to_output;
+use crate::utils::{centromeres_hg38, parse_coords};
 
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)]
