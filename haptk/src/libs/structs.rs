@@ -6,6 +6,7 @@ use color_eyre::{
     Result,
 };
 use ndarray::{s, Array2, ArrayView1, Axis};
+use petgraph::graph::NodeIndex;
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -366,8 +367,9 @@ impl PhasedMatrix {
             uhst::construct_uhst(self, &uhst::LocDirection::Right, variant_idx, 1, true);
         let uhst_left = uhst::construct_uhst(self, &uhst::LocDirection::Left, variant_idx, 1, true);
 
-        let lmaj_branch = find_majority_nodes(&uhst_left);
-        let rmaj_branch = find_majority_nodes(&uhst_right);
+        let start_idx = NodeIndex::new(0);
+        let lmaj_branch = find_majority_nodes(&uhst_left, start_idx);
+        let rmaj_branch = find_majority_nodes(&uhst_right, start_idx);
 
         (0..self.matrix.nrows())
             .map(|idx| {

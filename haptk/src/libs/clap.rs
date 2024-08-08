@@ -12,14 +12,14 @@ use tracing_subscriber::fmt::time::OffsetTime;
 use crate::args::{ConciseArgs, GraphArgs, Selection, StandardArgs};
 use crate::subcommands::{
     bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst, coverage,
-    haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
+    haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, mrca_scan, uhst,
 };
 
 // Genome-wide methods
 // use crate::subcommands::{
 // hst_gwas, hst_mrca_gwas, hst_qt_gwas, hst_scan, hst_segregation, mrca_scan,
 // };
-use crate::subcommands::{hst_gwas, hst_scan, mrca_scan};
+use crate::subcommands::hst_scan::{self, hst_gwas};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, styles=get_styles())]
