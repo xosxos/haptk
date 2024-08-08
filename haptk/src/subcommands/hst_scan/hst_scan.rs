@@ -74,6 +74,8 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
     Ok(())
 }
 
+pub type Limits = (usize, usize, usize, usize);
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct HstScanRow {
     pub idx: usize,
@@ -114,6 +116,14 @@ pub struct HstScan {
 impl HstScan {
     pub fn get_pos(&self, idx: usize) -> u64 {
         self.metadata.coords[idx].pos
+    }
+
+    pub fn get_sample_names(&self, indexes: &[usize]) -> Vec<String> {
+        let mut names = vec![];
+        for i in indexes {
+            names.push(self.metadata.samples[*i].clone());
+        }
+        names
     }
 }
 
@@ -199,20 +209,20 @@ pub fn get_sender(
 pub fn return_assoc<F, U>(
     hsts: Arc<HstScan>,
     args: &StandardArgs,
+    limits: Limits,
     write_bam: bool,
     optimizer: F,
     rower: U,
-    // tx: Option<std::sync::mpsc::Sender<(usize, NodeIndex, f64)>>,
 ) -> Vec<AssocRow>
 where
-    F: Fn(usize) -> Option<(usize, NodeIndex, f64)> + Sync + Send + Clone,
-    U: Fn(usize, NodeIndex, f64) -> AssocRow + Sync + Send,
+    F: Fn(Arc<HstScan>, usize, Limits) -> Option<(usize, NodeIndex, f64)> + Sync + Send + Clone,
+    U: Fn(Arc<HstScan>, usize, NodeIndex, f64) -> AssocRow + Sync + Send,
 {
     let tx = get_sender(write_bam, &args, hsts.clone());
 
     hsts.hsts
         .par_iter()
-        .filter_map(|hst_row| optimizer(hst_row.idx))
+        .filter_map(|hst_row| optimizer(hsts.clone(), hst_row.idx, limits))
         .map_with(tx, |tx, optimizer_tuple| {
             if let Some(tx) = tx {
                 tx.send(optimizer_tuple).unwrap();
@@ -220,7 +230,7 @@ where
             optimizer_tuple
         })
         .map(|(tree_idx, top_node_idx, optimized_value)| {
-            rower(tree_idx, top_node_idx, optimized_value)
+            rower(hsts.clone(), tree_idx, top_node_idx, optimized_value)
         })
         .collect()
 }

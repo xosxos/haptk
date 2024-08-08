@@ -52,7 +52,8 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool) -> Result<()> {
 
             // Find first, second last and last nodes on the majority branch
             // for downstream analyses
-            let nodes = bhst::find_majority_nodes(&uhst);
+            let start_idx = NodeIndex::new(0);
+            let nodes = bhst::find_majority_nodes(&uhst, start_idx);
 
             ensure!(
                 nodes.len() > 2,

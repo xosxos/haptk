@@ -300,7 +300,8 @@ fn create_nodes_from_buckets(
 }
 
 pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Result<Vec<HapVariant>> {
-    let nodes = find_majority_nodes(g);
+    let start_idx = NodeIndex::new(0);
+    let nodes = find_majority_nodes(g, start_idx);
 
     ensure!(
         nodes.len() > 2,
@@ -331,7 +332,8 @@ pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Result<Vec<HapVaria
 }
 
 pub fn find_shared_haplotype(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Vec<HapVariant> {
-    let nodes = find_majority_nodes(g);
+    let start_idx = NodeIndex::new(0);
+    let nodes = find_majority_nodes(g, start_idx);
     let (second_node, _second_node_idx) = nodes[1];
 
     vcf.find_haplotype_for_sample(
@@ -351,8 +353,8 @@ pub fn calculate_block_len(vcf: &PhasedMatrix, node: &Node) -> u64 {
     }
 }
 
-pub fn find_majority_nodes(g: &Graph<Node, u8>) -> Vec<(&Node, NodeIndex)> {
-    let mut idx = NodeIndex::new(0);
+pub fn find_majority_nodes(g: &Graph<Node, u8>, start_idx: NodeIndex) -> Vec<(&Node, NodeIndex)> {
+    let mut idx = start_idx;
     let start_node = g.node_weight(idx).unwrap();
     let mut majority_nodes = vec![(start_node, idx)];
 

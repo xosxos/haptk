@@ -7,6 +7,9 @@ pub mod coverage;
 /// Find the most recent common ancestor. The original R algorithm by Gandolfo et al translated to Rust. <https://github.com/bahlolab/DatingRareMutations>
 pub mod mrca;
 
+/// MRCA scan
+pub mod mrca_scan;
+
 /// Shortcut to read vcf sample namples
 pub mod list_samples;
 
@@ -34,13 +37,7 @@ pub mod compare_to_hst;
 /// Compare haplotypes
 pub mod compare_haplotypes;
 
-// Genome-wide HSTs
-pub mod hst_gwas;
-// pub mod hst_mrca_gwas;
-// pub mod hst_qt_gwas;
-pub mod hst_scan;
-// pub mod hst_segregation;
-pub mod mrca_scan;
-
 // / Annotate haplotype
 // pub mod annotate_haplotype;
+
+pub mod hst_scan;
