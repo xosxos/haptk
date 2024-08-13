@@ -13,6 +13,8 @@ use crate::structs::PhasedMatrix;
 use crate::subcommands::mrca::mrca_gamma_method;
 use crate::utils::{centromeres_hg38, parse_coords};
 
+use super::bhst::Node;
+
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)]
 pub fn run(
@@ -69,18 +71,45 @@ pub fn run(
 
 fn write_ages_to_csv(
     args: &StandardArgs,
-    ages: &Vec<(usize, f64)>,
+    ages: &Vec<(usize, f64, bool)>,
     mut output: PathBuf,
     vcf: &PhasedMatrix,
 ) -> Result<()> {
     push_to_output(args, &mut output, "mrca_scan", "csv");
 
     let mut writer = open_csv_writer(output)?;
-    writer.write_record(vec!["POS", "mrca"])?;
-    for (idx, age) in ages {
-        writer.write_record(vec![format!("{}", vcf.get_pos(*idx)), format!("{age:.5}")])?;
+    writer.write_record(vec!["contig", "pos", "mrca", "centromere"])?;
+    for (idx, age, check) in ages {
+        writer.write_record(vec![
+            vcf.get_contig().to_string(),
+            format!("{}", vcf.get_pos(*idx)),
+            format!("{age:.5}"),
+            format!("{check}"),
+        ])?;
     }
     Ok(())
+}
+
+fn check_for_centromeres(vcf: &PhasedMatrix, lengths: &Vec<(Node, Node)>) -> bool {
+    let (c_start, c_stop) = centromeres_hg38(vcf.get_contig());
+
+    let mut overlapping_centromere = 0;
+
+    for (left_node, right_node) in lengths {
+        let start = vcf.get_pos(left_node.start_idx);
+        let stop = vcf.get_pos(right_node.stop_idx);
+
+        let c1 = start > c_start && start < c_stop;
+        let c2 = stop > c_start && stop < c_stop;
+        let c3 = start < c_start && stop > c_stop;
+
+        if c1 || c2 || c3 {
+            overlapping_centromere += 1;
+        }
+    }
+
+    // If over 20% of lengths overlap a centromere, flag as true
+    overlapping_centromere as f32 / lengths.len() as f32 > 0.1
 }
 
 fn find_ages(
@@ -88,7 +117,7 @@ fn find_ages(
     args: &StandardArgs,
     rates: BTreeMap<u64, f32>,
     step_size: usize,
-) -> Result<Vec<(usize, f64)>> {
+) -> Result<Vec<(usize, f64, bool)>> {
     // Create a Vec because par_iter cannot be used with pure ranges and par_bridge does not
     // return in ordered fashion with .collect()
     let range: Vec<usize> = (0..vcf.ncoords()).collect();
@@ -97,21 +126,25 @@ fn find_ages(
         true => range
             .par_iter()
             .filter(|n| *n % step_size == 0)
-            .map(|i| -> Result<(usize, f64)> {
+            .map(|i| {
                 let only_longest_lengths = vcf.only_longest_lengths(*i);
+
+                let check = check_for_centromeres(vcf, &only_longest_lengths);
+
                 let ((i_tau_hat, _, _), _) =
                     mrca_gamma_method(vcf, only_longest_lengths, vcf.get_pos(*i), &rates)?;
-                Ok((*i, i_tau_hat))
+                Ok((*i, i_tau_hat, check))
             })
             .collect(),
         false => range
             .par_iter()
             .filter(|n| *n % step_size == 0)
-            .map(|i| -> Result<(usize, f64)> {
+            .map(|i| {
                 let shared_lengths = vcf.get_lengths_from_uhst(*i);
+                let check = check_for_centromeres(vcf, &shared_lengths);
                 let ((i_tau_hat, _, _), _) =
                     mrca_gamma_method(vcf, shared_lengths, vcf.get_pos(*i), &rates)?;
-                Ok((*i, i_tau_hat))
+                Ok((*i, i_tau_hat, check))
             })
             .collect(),
     }
@@ -122,7 +155,7 @@ fn draw_plot(
     args: &StandardArgs,
     graph_args: GraphArgs,
     mut output: PathBuf,
-    data: Vec<(usize, f64)>,
+    data: Vec<(usize, f64, bool)>,
     contig: &str,
     mark_centromere: bool,
 ) -> Result<()> {
@@ -213,7 +246,7 @@ fn draw_plot(
     }
 
     // Mean line
-    let sum: f64 = data.iter().map(|(_pos, mrca)| mrca).sum();
+    let sum: f64 = data.iter().map(|(_pos, mrca, _check)| mrca).sum();
     let mean = sum / data.len() as f64;
     chart.draw_series(LineSeries::new(
         [(0, mean), (vcf.ncoords(), mean)].into_iter(),

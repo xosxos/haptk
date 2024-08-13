@@ -4,6 +4,7 @@ import pandas as pd
 import argparse
 from scipy.signal import savgol_filter
 import re
+import seaborn as sns
 
 def draw_lines(df, angle, cum_angle, color):
     # Set the coordinates limits
@@ -25,16 +26,16 @@ def draw_lines(df, angle, cum_angle, color):
     indexes = list(range(1, len(df.index)+1))
     angles = [cum_angle + element * width for element in indexes]
 
-    # Draw bars
+    # Draw Savitzky line
     bars = ax.plot(
         angles, 
         heights,
-        linewidth=4,
+        linewidth=6,
         color=color
     )
 
     slope = (max - lowerLimit) / max
-    heights = slope * df["mrca"] + lowerLimit
+    heights = slope * df[column] + lowerLimit
 
     # Compute the width of each bar. In total we have 2*Pi = 360°
     width = angle / len(df.index)
@@ -43,7 +44,7 @@ def draw_lines(df, angle, cum_angle, color):
     indexes = list(range(1, len(df.index)+1))
     angles = [cum_angle + element * width for element in indexes]
 
-    # Draw bars
+    # Draw raw data
     bars = ax.plot(
         angles, 
         heights,
@@ -87,8 +88,9 @@ def centromeres_hg38(chr):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d','--dfs', nargs='+', help='<Required> Set flag', required=True)
+parser.add_argument('-c','--column', type=str, help='<Required> Set flag', required=True)
 parser.add_argument('--window-length', type=int, default=400)
-parser.add_argument('--polyorder', type=int, default=3)
+parser.add_argument('--polyorder', type=int, default=1)
 parser.add_argument('--ymax', type=int, default=4)
 parser.add_argument('--width', type=int, default=2560)
 parser.add_argument('--height', type=int, default=1440)
@@ -96,42 +98,46 @@ parser.add_argument('-o', '--output', type=str, required=False)
 
 args = parser.parse_args()
 
+column = args.column
 print(args.dfs)
 dfs = []
 chrs = []
+
+plt.figure(figsize=(20,20))
+ax = plt.subplot(111, polar=True)
+
 for filename in args.dfs:
     x = re.search("chr.*?_", filename).group(0)
     chr = x[:-1]
 
-    df = pd.read_csv(filename, usecols=['POS', 'mrca'])
+    df = pd.read_csv(filename, usecols=['pos', column, 'centromere'])
 
-    # Drop 10 first markers to remove telomere effects
-    df = df.iloc[100:,:]
-    df = df.iloc[:-100]
+    df = df[df.centromere != True]
 
     # Drop markers from centromeres to remove centromeric effects
-    print(chr, len(df))
-    df = df[~df["POS"].between(centromeres_hg38(chr)[0]-500_000, centromeres_hg38(chr)[1]+500_000)]
+    # df = df[~df["pos"].between(centromeres_hg38(chr)[0]-500_000, centromeres_hg38(chr)[1]+500_000)]
     print(len(df))
 
-    df["mrca"] = np.log10(df["mrca"])
-    df["mrca"] = df["mrca"]
-    df["savgol"] = savgol_filter(df.mrca, args.window_length, args.polyorder)
+    if column == 'mrca':
+        df[column] = np.log10(df[column])
+        plt.ylim(ymin=1.0, ymax=4)
+
+    df[column] = df[column]
+    df["savgol"] = savgol_filter(df[column], args.window_length, args.polyorder)
     dfs.append(df)
     chrs.append(chr)
 
-plt.figure(figsize=(20,20))
-ax = plt.subplot(111, polar=True)
 # plt.axis('off')
 
-import seaborn as sns
 colors = sns.color_palette("colorblind", 28)
 colors = colors[4:28]
 
 total_len = sum([len(df) for df in dfs])
 
 cum_radians = 0;
+
 x_tick_positions = []
+
 for (df, color) in zip(dfs, colors):
     df_radians = deserved_radians(len(df), total_len)
     draw_lines(df, df_radians, cum_radians, color)
@@ -141,7 +147,6 @@ for (df, color) in zip(dfs, colors):
 
 ax.set_xticks(x_tick_positions)
 ax.set_xticklabels(chrs)
-plt.ylim(ymin=1.0, ymax=4)
 ax.tick_params(axis='both', which='major', pad=16)  # move the tick labels
 ax.grid("lightgray", linestyle='--', linewidth=0.5)
 

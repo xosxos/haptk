@@ -466,15 +466,11 @@ impl PhasedMatrix {
 
                 let (_, max_nodes) = lengths
                     .clone()
-                    .max_by_key(|(_, l)| calculate_len(*l))
+                    .max_by_key(|(_, l)| calculate_len(l))
                     .unwrap();
 
                 let max_len = calculate_len(max_nodes);
-                if lengths
-                    .filter(|(_, l)| calculate_len(*l) == max_len)
-                    .count()
-                    > 1
-                {
+                if lengths.filter(|(_, l)| calculate_len(l) == max_len).count() > 1 {
                     tracing::warn!(
                         "Sample {} has two equally long haplotypes.",
                         self.get_sample_name(i)

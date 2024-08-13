@@ -78,7 +78,7 @@ pub fn centromeres_hg38(chr: &str) -> (u64, u64) {
     }
 }
 
-pub fn filter_samples(samples: &Vec<String>, wanted: Option<Vec<String>>) -> Vec<usize> {
+pub fn filter_samples(samples: &[String], wanted: Option<Vec<String>>) -> Vec<usize> {
     if let Some(wanted) = wanted {
         for i in &wanted {
             if !samples.contains(i) {

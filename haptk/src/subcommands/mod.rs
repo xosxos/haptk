@@ -40,4 +40,4 @@ pub mod compare_haplotypes;
 // / Annotate haplotype
 // pub mod annotate_haplotype;
 
-pub mod hst_scan;
+pub mod scan;

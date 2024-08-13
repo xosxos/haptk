@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, collections::HashMap, hash::DefaultHasher, path::PathBuf, sync::Arc};
+use std::{borrow::Borrow, collections::BTreeMap, hash::DefaultHasher, path::PathBuf, sync::Arc};
 
 use std::hash::Hasher;
 use std::sync::mpsc::Sender;
@@ -14,7 +14,7 @@ use rust_htslib::bam::{
 
 use crate::args::{Selection, StandardArgs};
 use crate::io::push_to_output;
-use crate::structs::{Coord, HapVariant, PhasedMatrix};
+use crate::structs::{Coord, HapVariant, PhasedMatrix, Ploidy};
 use crate::utils::parse_coords;
 
 use color_eyre::{
@@ -88,6 +88,7 @@ pub struct Metadata {
     pub contig: String,
     pub samples: Vec<String>,
     pub selection: Selection,
+    pub ploidy: Ploidy,
     pub vcf_name: PathBuf,
     pub info_limit: Option<f32>,
 }
@@ -101,6 +102,7 @@ impl Metadata {
             contig: vcf.get_contig().clone(),
             samples,
             selection: args.selection,
+            ploidy: vcf.ploidy.clone(),
             vcf_name: args.file,
             info_limit: args.info_limit,
         }
@@ -114,16 +116,52 @@ pub struct HstScan {
 }
 
 impl HstScan {
+    pub fn nhaplotypes(&self) -> usize {
+        self.metadata.samples.len() * *self.metadata.ploidy
+    }
+
     pub fn get_pos(&self, idx: usize) -> u64 {
         self.metadata.coords[idx].pos
     }
 
+    pub fn get_sample_name(&self, index: usize) -> String {
+        self.metadata
+            .samples
+            .get(index / *self.metadata.ploidy)
+            .unwrap()
+            .clone()
+    }
+
     pub fn get_sample_names(&self, indexes: &[usize]) -> Vec<String> {
-        let mut names = vec![];
-        for i in indexes {
-            names.push(self.metadata.samples[*i].clone());
-        }
-        names
+        indexes.iter().map(|i| self.get_sample_name(*i)).collect()
+    }
+
+    pub fn get_sample_idxs(&self, samples: &[String]) -> Result<Vec<usize>> {
+        let idxs: Vec<_> = self
+            .metadata
+            .samples
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| samples.contains(s))
+            .flat_map(|(i, _)| {
+                ((i * *self.metadata.ploidy)..(i * *self.metadata.ploidy) + *self.metadata.ploidy)
+                    .collect::<Vec<usize>>()
+            })
+            .collect();
+
+        ensure!(
+            !idxs.is_empty(),
+            "None of the control samples are found in the vcf."
+        );
+        Ok(idxs)
+    }
+
+    pub fn get_sample_idx(&self, sample: &str) -> Result<usize> {
+        self.metadata
+            .samples
+            .iter()
+            .position(|s| s == sample)
+            .ok_or_else(|| eyre!("sample {sample} not found in the vcf"))
     }
 }
 
@@ -150,7 +188,11 @@ fn write_hsts(trees: HstScan, path: PathBuf) -> Result<()> {
 pub fn read_tree_file(path: PathBuf) -> Result<HstScan> {
     let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
     let reader = bgzip::BGZFReader::new(file)?;
-    let hst_scan: HstScan = serde_json::from_reader(reader)?;
+
+    let hst_scan: HstScan = serde_json::from_reader(reader).wrap_err(eyre!(
+        "Failed deserializing HSTs from the json.gz. Are you sure the input file is correct?"
+    ))?;
+
     tracing::info!(
         "Read HSTs with the following metadata: \nselection: {:?},\nnsamples:{},\ninfo_limit: {:?}",
         hst_scan.metadata.selection,
@@ -263,7 +305,7 @@ pub struct AssocRow {
     pub opt_value: f64,
     pub node_idx: NodeIndex,
     pub first_sample_idx: usize,
-    pub hashmap: HashMap<String, String>,
+    pub hashmap: BTreeMap<String, String>,
 }
 
 impl AssocRow {
@@ -272,7 +314,7 @@ impl AssocRow {
         tree_idx: usize,
         top_node_idx: NodeIndex,
         opt_value: f64,
-        hashmap: HashMap<String, String>,
+        hashmap: BTreeMap<String, String>,
     ) -> AssocRow {
         let hst = &hsts.hsts[tree_idx].hst;
         let top_node = hst.node_weight(top_node_idx).unwrap();
@@ -318,7 +360,7 @@ impl AssocRow {
     fn opt_value(&self) -> f64 {
         self.opt_value
     }
-    fn hashmap(&self) -> &std::collections::HashMap<String, String> {
+    fn hashmap(&self) -> &BTreeMap<String, String> {
         &self.hashmap
     }
     fn show(&self) -> String {
@@ -331,7 +373,7 @@ impl AssocRow {
 
 impl From<&AssocRow> for Vec<String> {
     fn from(row: &AssocRow) -> Vec<String> {
-        vec![
+        let mut csv_row = vec![
             row.contig.to_string(),
             row.pos.to_string(),
             row.marker_id.to_string(),
@@ -340,7 +382,13 @@ impl From<&AssocRow> for Vec<String> {
             row.start.to_string(),
             row.stop.to_string(),
             row.opt_value.to_string(),
-        ]
+        ];
+
+        for v in row.hashmap.values() {
+            csv_row.push(v.to_string());
+        }
+
+        csv_row
     }
 }
 
@@ -452,4 +500,51 @@ fn record_from_ht(ht: Vec<HapVariant>) -> Record {
         &vec![255; seq.len()],
     );
     record
+}
+
+pub fn top_node_from_hsts(hsts: &Arc<HstScan>, hst_idx: usize, top_node_idx: NodeIndex) -> &Node {
+    let hst: &HstScanRow = &hsts.hsts[hst_idx];
+    let hst = &hst.hst;
+    hst.node_weight(top_node_idx).unwrap()
+}
+
+pub fn zygosity_from_node(node: &Node) -> (usize, usize) {
+    let (nhet_cases, nhom_cases) = calculate_zygote_n(node.indexes.clone());
+    (nhet_cases, nhom_cases)
+}
+
+pub fn case_ctrl_zygosity_from_node(
+    node: &Node,
+    case_list: &[usize],
+) -> (usize, usize, usize, usize) {
+    let controls = node
+        .indexes
+        .iter()
+        .filter(|i| !case_list.contains(i))
+        .copied()
+        .collect::<Vec<usize>>();
+
+    let cases = node
+        .indexes
+        .iter()
+        .filter(|i| case_list.contains(i))
+        .copied()
+        .collect::<Vec<usize>>();
+
+    let (nhet_ctrls, nhom_ctrls) = calculate_zygote_n(controls);
+    let (nhet_cases, nhom_cases) = calculate_zygote_n(cases);
+
+    (nhet_cases, nhom_cases, nhet_ctrls, nhom_ctrls)
+}
+
+fn calculate_zygote_n(mut indexes: Vec<usize>) -> (usize, usize) {
+    let prior_len = indexes.len();
+    indexes.sort();
+    indexes.dedup();
+    let post_len = indexes.len();
+
+    let nhomozygotes = prior_len - post_len;
+    let nheterozygotes = post_len - nhomozygotes;
+
+    (nheterozygotes, nhomozygotes)
 }

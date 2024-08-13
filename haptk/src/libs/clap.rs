@@ -12,14 +12,14 @@ use tracing_subscriber::fmt::time::OffsetTime;
 use crate::args::{ConciseArgs, GraphArgs, Selection, StandardArgs};
 use crate::subcommands::{
     bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst, coverage,
-    haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, mrca_scan, uhst,
+    haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
 };
 
 // Genome-wide methods
-// use crate::subcommands::{
-// hst_gwas, hst_mrca_gwas, hst_qt_gwas, hst_scan, hst_segregation, mrca_scan,
-// };
-use crate::subcommands::hst_scan::{self, hst_gwas};
+use crate::subcommands::mrca_scan;
+use crate::subcommands::scan::{
+    hst_scan, scan_branch_mrca, scan_nodes, scan_quantitative, scan_segregate,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, styles=get_styles())]
@@ -87,7 +87,9 @@ pub struct ClapStandardArgs {
 
 #[derive(Args, Debug, Clone)]
 pub struct ClapConciseArgs {
-    // pub file: PathBuf,
+    /// Bilateral HST file obtained from bhst-scan
+    pub file: PathBuf,
+
     /// Output directory
     #[arg(short = 'o', long, default_value_os_t = PathBuf::from("./"))]
     pub outdir: PathBuf,
@@ -144,7 +146,7 @@ impl From<ClapConciseArgs> for ConciseArgs {
             None => None,
         };
         Self {
-            // file: value.file,
+            file: value.file,
             output: value.outdir,
             prefix,
         }
@@ -283,6 +285,42 @@ pub enum SubCommand {
         #[arg(long)]
         stop: Option<u64>,
     },
+
+    /// Analyze the MRCA every x markers along a given contig
+    MrcaScan {
+        #[command(flatten)]
+        args: ClapStandardArgs,
+
+        #[command(flatten)]
+        log_and_verbosity: LogAndVerbosity,
+        /// Recombination rate file
+        #[arg(short = 'r', long)]
+        recombination_rates: PathBuf,
+
+        /// Run the MRCA analysis every n markers
+        #[arg(long)]
+        step_size: usize,
+
+        /// Dont output to csv
+        #[arg(long)]
+        no_csv: bool,
+
+        /// Draw plot
+        #[arg(long)]
+        plot: bool,
+
+        /// Number of threads
+        #[arg(short = 't', long, default_value_t = 8)]
+        threads: usize,
+
+        #[command(flatten)]
+        graph_args: ClapGraphArgs,
+
+        /// Only supports hg38! Mark the centromere to the graph
+        #[arg(long)]
+        mark_centromere: bool,
+    },
+
     /// Check if samples share a given haplotype
     CheckForHaplotype {
         #[command(flatten)]
@@ -446,8 +484,8 @@ pub enum SubCommand {
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
     },
-    /// bHST binary GWAS
-    BhstGwas {
+    /// Scan all nodes of all trees for a node specific value
+    ScanNodes {
         #[command(flatten)]
         args: ClapConciseArgs,
 
@@ -473,22 +511,10 @@ pub enum SubCommand {
         /// Number of threads
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
-
-        /// Bidirectional HSTs created with the `bhst-scan` command
-        #[arg(long)]
-        trees: PathBuf,
-
-        /// List of CTRL ids (one ID per row)
-        #[arg(short = 'C', long, value_delimiter = ' ', num_args = 1.. )]
-        controls: Option<Vec<PathBuf>>,
-
-        /// Path to controls vcf if controls are not included in the same file
-        #[arg(long)]
-        control_vcf: Option<PathBuf>,
     },
 
-    /// bHST quantitative GWAS
-    BhstQtGwas {
+    /// Scan all nodes of all trees for a difference in a quantative variable
+    ScanQuantitative {
         #[command(flatten)]
         args: ClapConciseArgs,
 
@@ -514,10 +540,6 @@ pub enum SubCommand {
         /// Number of threads
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
-
-        /// Bilateral haplotype state trees
-        #[arg(long)]
-        trees: PathBuf,
 
         /// List of control ids
         #[arg(long)]
@@ -528,8 +550,8 @@ pub enum SubCommand {
         var_name: String,
     },
 
-    /// bHST MRCA minimization
-    BhstMrcaGwas {
+    /// Scan all branches of all trees for the smallest MRCA value
+    ScanBranchMrca {
         #[command(flatten)]
         args: ClapConciseArgs,
 
@@ -556,17 +578,13 @@ pub enum SubCommand {
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
 
-        /// Bilateral haplotype state trees
-        #[arg(long)]
-        trees: PathBuf,
-
         /// Recombination rate file
         #[arg(short = 'r', long)]
         recombination_rates: PathBuf,
     },
 
     /// Find bHST based segregated haplotypes genome-wide
-    BhstSegregation {
+    ScanSegregate {
         #[command(flatten)]
         args: ClapConciseArgs,
 
@@ -593,48 +611,9 @@ pub enum SubCommand {
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
 
-        /// Bilateral haplotype state trees
-        #[arg(long)]
-        trees: PathBuf,
-
         /// Wanted segregating samples
-        #[arg(short = 'r', long)]
+        #[arg(short = 'S', long)]
         samples: PathBuf,
-    },
-
-    /// Analyze the MRCA every x markers along a given contig
-    MrcaScan {
-        #[command(flatten)]
-        args: ClapStandardArgs,
-
-        #[command(flatten)]
-        log_and_verbosity: LogAndVerbosity,
-        /// Recombination rate file
-        #[arg(short = 'r', long)]
-        recombination_rates: PathBuf,
-
-        /// Run the MRCA analysis every n markers
-        #[arg(long)]
-        step_size: usize,
-
-        /// Dont output to csv
-        #[arg(long)]
-        no_csv: bool,
-
-        /// Draw plot
-        #[arg(long)]
-        plot: bool,
-
-        /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
-        threads: usize,
-
-        #[command(flatten)]
-        graph_args: ClapGraphArgs,
-
-        /// Only supports hg38! Mark the centromere to the graph
-        #[arg(long)]
-        mark_centromere: bool,
     },
 }
 
@@ -647,11 +626,11 @@ impl SubCommand {
             | SubCommand::MrcaScan { threads, .. }
             | SubCommand::Uhst { threads, .. }
             | SubCommand::Bhst { threads, .. }
-            | SubCommand::BhstSegregation { threads, .. }
             | SubCommand::BhstScan { threads, .. }
-            | SubCommand::BhstGwas { threads, .. }
-            | SubCommand::BhstQtGwas { threads, .. }
-            | SubCommand::BhstMrcaGwas { threads, .. } => *threads,
+            | SubCommand::ScanSegregate { threads, .. }
+            | SubCommand::ScanBranchMrca { threads, .. }
+            | SubCommand::ScanQuantitative { threads, .. }
+            | SubCommand::ScanNodes { threads, .. } => *threads,
             _ => 1,
         }
     }
@@ -670,10 +649,10 @@ impl SubCommand {
             | SubCommand::Uhst { log_and_verbosity, .. }
             | SubCommand::Bhst { log_and_verbosity, .. }
             | SubCommand::BhstScan { log_and_verbosity,  .. }
-            | SubCommand::BhstSegregation { log_and_verbosity,  .. }
-            | SubCommand::BhstMrcaGwas { log_and_verbosity,  .. }
-            | SubCommand::BhstQtGwas { log_and_verbosity,  .. }
-            | SubCommand::BhstGwas { log_and_verbosity,  .. }
+            | SubCommand::ScanSegregate { log_and_verbosity,  .. }
+            | SubCommand::ScanBranchMrca { log_and_verbosity,  .. }
+            | SubCommand::ScanQuantitative { log_and_verbosity,  .. }
+            | SubCommand::ScanNodes { log_and_verbosity,  .. }
             | SubCommand::Samples { log_and_verbosity, .. }
             | SubCommand::Markers { log_and_verbosity, .. }
             | SubCommand::ToVcf { log_and_verbosity, .. }
@@ -683,13 +662,13 @@ impl SubCommand {
 
     pub fn check_sample_size(&self) -> Result<()> {
         match self {
-            SubCommand::BhstGwas {
+            SubCommand::ScanNodes {
                 min_sample_size, ..
             }
-            | SubCommand::BhstQtGwas {
+            | SubCommand::ScanQuantitative {
                 min_sample_size, ..
             }
-            | SubCommand::BhstMrcaGwas {
+            | SubCommand::ScanBranchMrca {
                 min_sample_size, ..
             } => {
                 ensure!(
@@ -715,10 +694,10 @@ impl SubCommand {
             | SubCommand::Uhst { args: ClapStandardArgs { outdir, .. }, ..}
             | SubCommand::Bhst { args: ClapStandardArgs { outdir, .. }, ..}
             | SubCommand::BhstScan { args: ClapStandardArgs { outdir, .. }, ..}
-            | SubCommand::BhstSegregation { args: ClapConciseArgs { outdir, .. }, ..}
-            | SubCommand::BhstMrcaGwas { args: ClapConciseArgs { outdir, .. }, ..}
-            | SubCommand::BhstQtGwas { args: ClapConciseArgs { outdir, .. }, ..}
-            | SubCommand::BhstGwas { args: ClapConciseArgs { outdir, .. }, ..}
+            | SubCommand::ScanSegregate { args: ClapConciseArgs { outdir, .. }, ..}
+            | SubCommand::ScanBranchMrca { args: ClapConciseArgs { outdir, .. }, ..}
+            | SubCommand::ScanQuantitative { args: ClapConciseArgs { outdir, .. }, ..}
+            | SubCommand::ScanNodes { args: ClapConciseArgs { outdir, .. }, ..}
             | SubCommand::ToVcf { outdir, .. }
             => Some(outdir.clone()),
             SubCommand::Samples { .. }
@@ -803,41 +782,30 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
         SubCommand::BhstScan { args, step_size, .. } => hst_scan::run(args.into(), step_size)?,
 
-        SubCommand::BhstGwas {
-            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, controls, ..
-        } => hst_gwas::run(
-            args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), trees, controls
+        SubCommand::ScanNodes {
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len,  ..
+        } => scan_nodes::run(
+            args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len),
         )?,
 
-        // SubCommand::BhstQtGwas {
-        //     args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, var_data, var_name, ..
-        // } => hst_qt_gwas::run(
-        //         args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), trees, var_data, var_name,
-        //     )?,
+        SubCommand::ScanQuantitative {
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, var_data, var_name, ..
+        } => scan_quantitative::run(
+                args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), var_data, var_name,
+            )?,
 
-        // SubCommand::BhstMrcaGwas {
-        //     args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, recombination_rates, ..
-        // } => hst_mrca_gwas::run(
-        //         args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), trees, recombination_rates,
-        //     )?,
+        SubCommand::ScanBranchMrca {
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, recombination_rates, ..
+        } => scan_branch_mrca::run(
+                args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), recombination_rates,
+            )?,
 
-        // SubCommand::BhstSegregation {
-        //     args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, samples, ..
-        // } => hst_segregation::run(
-        //         args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), trees, samples,
-        //     )?,
+        SubCommand::ScanSegregate {
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, samples, ..
+        } => scan_segregate::run(
+                args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), samples,
+            )?,
 
-        SubCommand::BhstQtGwas {
-            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, var_data, var_name, ..
-        } => todo!(),
-
-        SubCommand::BhstMrcaGwas {
-            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, recombination_rates, ..
-        } => todo!(),
-
-        SubCommand::BhstSegregation {
-            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, trees, samples, ..
-        } => todo!(),
     };
     Ok(())
 }

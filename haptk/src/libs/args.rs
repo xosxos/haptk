@@ -15,7 +15,7 @@ pub struct StandardArgs {
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct ConciseArgs {
-    // pub file: PathBuf,
+    pub file: PathBuf,
     pub output: PathBuf,
     pub prefix: Option<String>,
 }
