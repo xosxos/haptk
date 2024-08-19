@@ -116,9 +116,9 @@ class HST:
     def get_children_idx_amounts(self, node):
         return [len(self.get_node_data(c.name)["indexes"]) for c in node.children]
 
-    def iterate_tree(self, df, output, to_tag=[], min_size=1, hard_cut=False, tree_style = iterate_tree_style(), dpi=600, w=1624, h=1624):
+    def iterate_tree(self, df, optimizer, output, to_tag=[], min_size=1, hard_cut=False, tree_style = iterate_tree_style(), dpi=600, w=1624, h=1624):
         t = create_ete3_tree(self, min_size, hard_cut)
-        t = iterate_tree_inner(self, t, to_tag, df)
+        t = iterate_tree_inner(self, t, to_tag, df, optimizer)
         t.render(output, units="px", w=w, h=h, tree_style=tree_style, dpi=dpi)
 
     def match_tree(self, other_hst, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, proportions=False, dpi=600, tree_style=match_tree_style()): 
