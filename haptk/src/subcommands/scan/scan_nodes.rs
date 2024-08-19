@@ -42,7 +42,7 @@ pub fn run(args: ConciseArgs, limits: Limits) -> Result<()> {
     let args = StandardArgs {
         file: PathBuf::new(),
         output: args.output,
-        info_limit: hsts.metadata.info_limit,
+        info_limit: None,
         coords: hsts.metadata.contig.clone(),
         selection: hsts.metadata.selection.clone(),
         prefix: args.prefix,

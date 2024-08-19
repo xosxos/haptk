@@ -13,7 +13,7 @@ use crate::{
     args::{Selection, StandardArgs},
     io::{get_output, open_csv_writer, push_to_output},
     read_vcf::{get_sample_names, read_vcf_to_matrix},
-    structs::{Coord, CoordDataSlot, HapVariant, PhasedMatrix},
+    structs::{Coord, CoordDataSlot, HapVariant, PhasedMatrix, Ploidy},
     utils::parse_snp_coord,
 };
 
@@ -436,13 +436,6 @@ pub fn find_coord_list(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Vec<Coord> {
     coords
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct Metadata {
-    pub start_coord: String,
-    pub selection: Selection,
-    pub vcf_name: PathBuf,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hst {
     pub coords: Vec<Coord>,
@@ -477,6 +470,33 @@ impl Hst {
     }
 }
 
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct Metadata {
+    pub start_coord: String,
+    pub coords: Vec<Coord>,
+    pub contig: String,
+    pub samples: Vec<String>,
+    pub selection: Selection,
+    pub ploidy: Ploidy,
+    pub vcf_name: PathBuf,
+}
+
+impl Metadata {
+    pub fn new(vcf: &PhasedMatrix, args: &StandardArgs, start_coord: String) -> Self {
+        let samples = vcf.samples().to_vec();
+
+        Self {
+            start_coord,
+            coords: vcf.coords().clone(),
+            contig: vcf.get_contig().clone(),
+            samples,
+            selection: args.selection.clone(),
+            ploidy: vcf.ploidy.clone(),
+            vcf_name: args.file.clone(),
+        }
+    }
+}
+
 pub fn write_hst_file(
     mut hst: Graph<Node, u8>,
     vcf: &PhasedMatrix,
@@ -499,11 +519,7 @@ pub fn write_hst_file(
         coords: vcf.coords().clone(),
         hst,
         samples,
-        metadata: Metadata {
-            start_coord: args.coords,
-            selection: args.selection,
-            vcf_name: args.file,
-        },
+        metadata: Metadata::new(&vcf, &args, args.coords.clone()),
     };
 
     tracing::info!("HST output: {path:?}.");

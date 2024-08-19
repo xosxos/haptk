@@ -14,7 +14,7 @@ use rust_htslib::bam::{
 
 use crate::args::{Selection, StandardArgs};
 use crate::io::push_to_output;
-use crate::structs::{Coord, HapVariant, PhasedMatrix, Ploidy};
+use crate::structs::HapVariant;
 use crate::utils::parse_coords;
 
 use color_eyre::{
@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::io::get_output;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::subcommands::bhst::{construct_bhst, Node};
+use crate::subcommands::bhst::{construct_bhst, Metadata, Node};
 
 #[doc(hidden)]
 pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
@@ -65,7 +65,7 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
         })
         .collect();
 
-    let metadata = Metadata::new(&vcf, args);
+    let metadata = Metadata::new(&vcf, &args, vcf.get_contig().clone());
 
     let trees = HstScan { hsts, metadata };
 
@@ -80,33 +80,6 @@ pub type Limits = (usize, usize, usize, usize);
 pub struct HstScanRow {
     pub idx: usize,
     pub hst: Graph<Node, u8>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Metadata {
-    pub coords: Vec<Coord>,
-    pub contig: String,
-    pub samples: Vec<String>,
-    pub selection: Selection,
-    pub ploidy: Ploidy,
-    pub vcf_name: PathBuf,
-    pub info_limit: Option<f32>,
-}
-
-impl Metadata {
-    fn new(vcf: &PhasedMatrix, args: StandardArgs) -> Self {
-        let samples = vcf.samples().to_vec();
-
-        Self {
-            coords: vcf.coords().clone(),
-            contig: vcf.get_contig().clone(),
-            samples,
-            selection: args.selection,
-            ploidy: vcf.ploidy.clone(),
-            vcf_name: args.file,
-            info_limit: args.info_limit,
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -194,10 +167,9 @@ pub fn read_tree_file(path: PathBuf) -> Result<HstScan> {
     ))?;
 
     tracing::info!(
-        "Read HSTs with the following metadata: \nselection: {:?},\nnsamples:{},\ninfo_limit: {:?}",
+        "Read HSTs with the following metadata: \nselection: {:?},\nnsamples:{},",
         hst_scan.metadata.selection,
         hst_scan.metadata.samples.len(),
-        hst_scan.metadata.info_limit
     );
 
     Ok(hst_scan)
