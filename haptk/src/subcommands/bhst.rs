@@ -438,9 +438,9 @@ pub fn find_coord_list(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Vec<Coord> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hst {
-    pub coords: Vec<Coord>,
+    // pub coords: Vec<Coord>,
     pub hst: Graph<Node, u8>,
-    pub samples: Vec<String>,
+    // pub samples: Vec<String>,
     #[serde(default)]
     pub metadata: Metadata,
 }
@@ -456,17 +456,17 @@ impl Hst {
         (node.start_idx..node.stop_idx + 1)
             .enumerate()
             .map(|(hap_index, coord_index)| HapVariant {
-                contig: self.coords[0].contig.to_string(),
-                pos: self.coords[coord_index].pos,
-                alt: self.coords[coord_index].alt.clone(),
-                reference: self.coords[coord_index].reference.clone(),
+                contig: self.metadata.coords[0].contig.to_string(),
+                pos: self.metadata.coords[coord_index].pos,
+                alt: self.metadata.coords[coord_index].alt.clone(),
+                reference: self.metadata.coords[coord_index].reference.clone(),
                 gt: node.haplotype[hap_index],
             })
             .collect()
     }
 
     pub fn get_pos(&self, idx: usize) -> u64 {
-        self.coords[idx].pos
+        self.metadata.coords[idx].pos
     }
 }
 
@@ -482,9 +482,12 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn new(vcf: &PhasedMatrix, args: &StandardArgs, start_coord: String) -> Self {
-        let samples = vcf.samples().to_vec();
-
+    pub fn new(
+        vcf: &PhasedMatrix,
+        args: &StandardArgs,
+        start_coord: String,
+        samples: Vec<String>,
+    ) -> Self {
         Self {
             start_coord,
             coords: vcf.coords().clone(),
@@ -516,10 +519,10 @@ pub fn write_hst_file(
     }
 
     let hst_export = Hst {
-        coords: vcf.coords().clone(),
+        // coords: vcf.coords().clone(),
         hst,
-        samples,
-        metadata: Metadata::new(&vcf, &args, args.coords.clone()),
+        // samples,
+        metadata: Metadata::new(&vcf, &args, args.coords.clone(), samples),
     };
 
     tracing::info!("HST output: {path:?}.");

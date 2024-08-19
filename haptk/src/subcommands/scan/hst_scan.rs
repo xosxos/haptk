@@ -65,7 +65,7 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
         })
         .collect();
 
-    let metadata = Metadata::new(&vcf, &args, vcf.get_contig().clone());
+    let metadata = Metadata::new(&vcf, &args, vcf.get_contig().clone(), vcf.samples().clone());
 
     let trees = HstScan { hsts, metadata };
 

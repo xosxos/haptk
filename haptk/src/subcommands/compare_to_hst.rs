@@ -37,8 +37,8 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     // VCF read
     let (contig, variant_pos) = parse_snp_coord(&args.coords)?;
     let (start, end) = (
-        hst_import.coords.first().unwrap(),
-        hst_import.coords.last().unwrap(),
+        hst_import.metadata.coords.first().unwrap(),
+        hst_import.metadata.coords.last().unwrap(),
     );
     tracing::info!("Reading coord range: {} - {}", start, end);
 
@@ -82,21 +82,22 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
         Selection::Unphased => unreachable!(),
     };
 
-    if hst_import.coords.len() > vcf.ncoords() {
+    if hst_import.metadata.coords.len() > vcf.ncoords() {
         tracing::warn!(
             "The HST has more variants than the given VCF {} vs {}",
-            hst_import.coords.len(),
+            hst_import.metadata.coords.len(),
             vcf.ncoords()
         );
-    } else if hst_import.coords.len() < vcf.ncoords() {
+    } else if hst_import.metadata.coords.len() < vcf.ncoords() {
         tracing::warn!(
             "The HST has less variants than the given VCF {} vs {}",
-            hst_import.coords.len(),
+            hst_import.metadata.coords.len(),
             vcf.ncoords()
         );
     }
 
     let count = hst_import
+        .metadata
         .coords
         .iter()
         .filter(|r| {
@@ -109,7 +110,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     tracing::info!(
         "The HST and the given VCF have {} variants in common. The HST has {} variants in total.",
         count,
-        hst_import.coords.len(),
+        hst_import.metadata.coords.len(),
     );
 
     let match_hst = create_match_hst(&vcf, hst_import);
