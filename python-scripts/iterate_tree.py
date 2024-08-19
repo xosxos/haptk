@@ -22,7 +22,6 @@ args = parser.parse_args()
 # Read an .hst.gz file
 hst = haptk.read_hst(args.hst)
 
-
 df = pd.read_csv(args.df, sep=",")
 
 # print(hst.metadata)
@@ -114,33 +113,44 @@ if args.ids:
 
         samples_to_tag.append(ids)
 
-def optimizer(hst, node_name, df):
-    indexes = hst.get_node_indexes(node_name)
-    names = []
-    for i in indexes:
-        name = hst.metadata["samples"][i]
-        names.append(name)
+def optimizer(hst, node_name, indexes, df):
+    # print(node_name)
+    if node_name != "0":
+        if hst.metadata['ploidy'] == "Diploid":
+            samples = hst.metadata["samples"]
+            samples = samples + hst.metadata["samples"]
+        else:
+            samples = hst.metadata["samples"]
+        
+        names = []
+        for i in indexes:
+            name = samples[i]
+            names.append(name)
 
-    df["gt"] = df["id"].apply(lambda id: names.count(id))
+        df["gt"] = df["id"].apply(lambda id: names.count(id))
 
-    df = df.drop("id", axis = 1)
-    print(df)
+        df = df.drop("id", axis = 1)
 
-    # Fit the model
-    cph = CoxPHFitter()
 
-    cph.fit(df, duration_col = 'dur', event_col = 'status')
+        # print(list(df["gt"]))
+        hets = list(df["gt"]).count(1)
+        alt_homs = list(df["gt"]).count(2)
+        if hets + alt_homs < 5:
+            return 1.0
 
-    len = len(cph.summary['coef'])
-    for i in range(0,len):
-        covariate = cph.summary['coef'].index[i]
-        if covariate == "gt":
-            coef = round(cph.summary['coef'].iloc[i], 6)
-            p = cph.summary['p'].iloc[i]
-            p = f"{p:.4g}"
-            print(coef, p)
+        # Fit the model
+        cph = CoxPHFitter()
 
-            return p
+        cph.fit(df, duration_col = 'dur', event_col = 'status')
+
+        coef = round(cph.summary['coef'].iloc[5], 6)
+        p = cph.summary['p'].iloc[5]
+        # p = f"{p:.4g}"
+        print(node_name, len(indexes), coef, p)
+
+        return float(p)
+    else:
+        return 1.0
 
 
 

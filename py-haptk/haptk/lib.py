@@ -156,9 +156,9 @@ def read_hst(path):
         json_bytes = f.read()
         hst_struct = json.loads(json_bytes)
         hst = hst_struct["hst"]
-        coords = hst_struct["coords"]
-        samples = hst_struct["samples"]
         metadata = hst_struct["metadata"]
+        coords = metadata["coords"]
+        samples = metadata["samples"]
 
         G = rx.PyDiGraph()
 
