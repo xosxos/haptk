@@ -350,8 +350,8 @@ impl PhasedMatrix {
             .collect::<Vec<usize>>();
 
         match selection {
-            Selection::OnlyAlts => tracing::info!("Selecting {} ALT alleles", indexes.len()),
-            Selection::OnlyRefs => tracing::info!("Selecting {} REF alleles", indexes.len()),
+            Selection::OnlyAlts => tracing::info!("Selected {} ALT alleles", indexes.len()),
+            Selection::OnlyRefs => tracing::info!("Selected {} REF alleles", indexes.len()),
             _ => panic!("Invalid selection method for alleles"),
         };
 

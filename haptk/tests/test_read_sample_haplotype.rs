@@ -14,14 +14,14 @@ fn read_sample_haplotype() {
             file: PathBuf::from(TEST_VCF),
             outdir: PathBuf::from("tests/results"),
             coords: String::from(COORDS),
-            select: ClapSelection::All,
-            info_limit: None,
+            alleles: ClapSelection::All,
             prefix: None,
-            samples: Some(PathBuf::from("tests/data/SAMPLE1.ids")),
+            samples: Some(vec![PathBuf::from("tests/data/SAMPLE1.ids")]),
         },
         log_and_verbosity: haptk::clap::LogAndVerbosity {
             verbosity: 1,
             log_file: None,
+            silent: false,
         },
     };
     haptk::clap::run_cmd(cmd).unwrap();

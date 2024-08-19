@@ -2,7 +2,7 @@ mod common;
 
 use std::path::PathBuf;
 
-use haptk::subcommands::read_sample_names::{self, get_sample_names};
+use haptk::subcommands::list_samples::{self, get_sample_names};
 
 use crate::common::TEST_VCF;
 
@@ -14,6 +14,7 @@ fn samples() {
         log_and_verbosity: haptk::clap::LogAndVerbosity {
             verbosity: 1,
             log_file: None,
+            silent: false,
         },
     };
     haptk::clap::run_cmd(cmd).unwrap();
@@ -32,6 +33,6 @@ fn sample_names_subcommand() {
     assert_eq!(vec, ids);
 
     let path = PathBuf::from("tests/data/samples.fam");
-    let res = read_sample_names::run(path);
+    let res = list_samples::run(path);
     assert!(res.is_ok());
 }
