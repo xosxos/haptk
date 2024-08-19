@@ -132,7 +132,7 @@ impl<'a> MatrixGraph<'a> {
         self.document.append(element);
 
         let mut element = Element::new("text");
-        element.assign("x", self.s.width * 0.33);
+        element.assign("x", self.s.width * 0.25);
         element.assign("y", y);
         element.assign("fill", "black");
         element.assign("font-size", format!("{}px", self.s.font_size));
@@ -140,11 +140,19 @@ impl<'a> MatrixGraph<'a> {
         self.document.append(element);
 
         let mut element = Element::new("text");
-        element.assign("x", self.s.width * 0.56);
+        element.assign("x", self.s.width * 0.45);
         element.assign("y", y);
         element.assign("fill", "black");
         element.assign("font-size", format!("{}px", self.s.font_size));
         element.append(Text::new(format!("markers: {}", self.vcf.ncoords())));
+        self.document.append(element);
+
+        let mut element = Element::new("text");
+        element.assign("x", self.s.width * 0.65);
+        element.assign("y", y);
+        element.assign("fill", "black");
+        element.assign("font-size", format!("{}px", self.s.font_size));
+        element.append(Text::new(format!("haplotypes: {}", self.vcf.nrows())));
         self.document.append(element);
 
         let second_place = self.s.width * 0.86;
@@ -182,6 +190,10 @@ impl<'a> MatrixGraph<'a> {
         let sample = self.vcf.get_sample_name(row_idx);
 
         if var_idx == self.vcf.variant_idx() && p.gt == 1 {
+            return "#000";
+        }
+
+        if row_idx == self.vcf.nrows() / 2 {
             return "#000";
         }
 
