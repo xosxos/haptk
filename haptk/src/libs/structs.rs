@@ -346,7 +346,13 @@ impl PhasedMatrix {
                 _ => panic!("Invalid selection method for alleles"),
             })
             .map(|(i, _)| i)
-            .collect();
+            .collect::<Vec<usize>>();
+
+        match selection {
+            Selection::OnlyAlts => tracing::info!("Selecting {} ALT alleles", indexes.len()),
+            Selection::OnlyRefs => tracing::info!("Selecting {} REF alleles", indexes.len()),
+            _ => panic!("Invalid selection method for alleles"),
+        };
 
         self.select_rows(indexes);
         self.ploidy = Ploidy::Mixed;
@@ -624,9 +630,9 @@ impl PhasedMatrix {
 
 pub trait CoordDataSlot {
     fn get_slot(&self, index: usize) -> ArrayView1<u8>;
-    fn is_contradictory(&self, index: usize, positions: &Vec<usize>) -> bool;
-    fn prev_contradictory(&self, index: usize, positions: &Vec<usize>) -> Option<usize>;
-    fn next_contradictory(&self, index: usize, positions: &Vec<usize>) -> Option<usize>;
+    fn is_contradictory(&self, index: usize, positions: &[usize]) -> bool;
+    fn prev_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize>;
+    fn next_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize>;
 }
 
 impl CoordDataSlot for PhasedMatrix {
@@ -634,14 +640,14 @@ impl CoordDataSlot for PhasedMatrix {
         self.matrix.index_axis(Axis(1), index)
     }
     // Slot is contractory if it contains both 0 and 1.
-    fn is_contradictory(&self, index: usize, positions: &Vec<usize>) -> bool {
+    fn is_contradictory(&self, index: usize, positions: &[usize]) -> bool {
         let slot = self.get_slot(index);
         let mut iter = positions.iter();
         let first = iter.next().unwrap();
         slot.len() > 1 && iter.any(|x| slot[*x] != slot[*first])
     }
 
-    fn prev_contradictory(&self, index: usize, positions: &Vec<usize>) -> Option<usize> {
+    fn prev_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize> {
         if index == 0 || positions.len() < 2 {
             return None;
         }
@@ -655,13 +661,13 @@ impl CoordDataSlot for PhasedMatrix {
         None
     }
 
-    fn next_contradictory(&self, index: usize, positions: &Vec<usize>) -> Option<usize> {
+    fn next_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize> {
         if index == self.matrix.ncols() - 1 || positions.len() < 2 {
             return None;
         }
         let mut idx = index + 1;
         while idx < self.matrix.ncols() {
-            if self.is_contradictory(idx as usize, positions) {
+            if self.is_contradictory(idx, positions) {
                 return Some(idx);
             }
             idx += 1;
