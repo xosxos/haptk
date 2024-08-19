@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::io::read_lines;
 
+use super::bhst::Hst;
+
 #[doc(hidden)]
 fn return_double_extension_filetype(path: &Path, e1: &str) -> Result<String> {
     let stem = path
@@ -63,17 +65,12 @@ pub fn get_sample_names(path: PathBuf) -> Result<Vec<String>> {
     Ok(ids)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct HstSamples {
-    samples: Vec<String>,
-}
-
 pub fn read_hst_samples(path: PathBuf) -> Result<Vec<String>> {
     let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
     let reader = bgzip::BGZFReader::new(file)?;
-    let hst: HstSamples = serde_json::from_reader(reader)?;
+    let hst: Hst = serde_json::from_reader(reader)?;
 
-    Ok(hst.samples)
+    Ok(hst.metadata.samples)
 }
 
 #[doc(hidden)]
