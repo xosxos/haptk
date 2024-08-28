@@ -17,64 +17,9 @@ def iterate_tree_style():
     ts.root_opening_factor = 0
     ts.optimal_scale_level = "mid"
     ts.allow_face_overlap = True
+    # ts.allow_face_overlap = False
 
     return ts
-
-# def iterate_tree_inner(hst, t, samples_to_tag, df):
-#     style = NodeStyle()
-#     style["size"] = 0
-
-#     for n in t.traverse():
-#         n.set_style(style)
-        
-#         indexes = hst.get_node_indexes(n.name)
-
-#         tot_cases, tot_ctrls = 0, 0
-#         n_cases, n_ctrls = [], []
-
-#         for (i, sample_list) in enumerate(samples_to_tag):
-#             if i == 0:
-#                 tot_cases = len(sample_list)
-#                 n_cases = [i for i in indexes if hst.samples[i] in sample_list]
-#             if i == 1:
-#                 tot_ctrls = len(sample_list)
-#                 n_ctrls = [i for i in indexes if hst.samples[i] in sample_list]
-
-#         n_cases = len(n_cases)
-#         n_ctrls = len(n_ctrls)
-#         # res = fisher_exact([[n_cases, n_ctrls], [tot_cases - n_cases, tot_ctrls - n_ctrls]], alternative="greater")
-#         # res = fisher_exact([[n_cases, n_ctrls], [tot_cases - n_cases, tot_ctrls - n_ctrls]], alternative="less")
-#         res = fisher_exact([[n_cases, n_ctrls], [tot_cases - n_cases, tot_ctrls - n_ctrls]])
-        
-#         print(f"{n.name},{res.pvalue},{n_cases},{n_ctrls},{tot_cases},{tot_ctrls}")
-#         if res.pvalue < 0.0005:
-#             label = len(indexes)
-#             F = TextFace(f"{res.pvalue:.4}", tight_text=True, penwidth=30, fsize=8, fgcolor='red')
-#             F.rotation = 270
-#             F.background.color = "#FFF"
-#             F.margin_right = 10
-#             n.add_face(F, column=0)
-
-#         if not n.is_leaf():
-#             label = len(indexes)
-#         else:
-#             label = "o"
-
-#         F = TextFace(label, tight_text=True, penwidth=30, fsize=8, fgcolor="black")
-#         F.rotation = 270
-
-#         mix = res.pvalue * 1000
-#         if mix > 1:
-#             mix = 1
-#         color = utils.color_fader('red', 'blue', mix)
-
-#         F.background.color = color
-#         if mix == 1:
-#             F.fgcolor = "white"
-#         n.add_face(F, column=0)
-        
-
-#     return t
 
 def iterate_tree_inner(hst, t, samples_to_tag, df, optimizer):
     style = NodeStyle()
@@ -85,32 +30,26 @@ def iterate_tree_inner(hst, t, samples_to_tag, df, optimizer):
         
         node_name = n.name
         indexes = hst.get_node_indexes(node_name)
-        optimized_value = optimizer(hst, node_name, indexes, df)
+        optimized_value, label, color, text_color = optimizer(hst, n, indexes, df, samples_to_tag)
         
-        if optimized_value < 0.0005:
-            label = len(indexes)
-            F = TextFace(f"{optimized_value:.4}", tight_text=True, penwidth=30, fsize=8, fgcolor='red')
-            F.rotation = 270
-            F.background.color = "#FFF"
-            F.margin_right = 10
-            n.add_face(F, column=0)
-
-        if not n.is_leaf():
-            label = len(indexes)
-        else:
-            label = "o"
+        # if optimized_value < 0.0005:
+        #     label = len(indexes)
+        #     F = TextFace(f"{optimized_value:.4}", tight_text=True, penwidth=30, fsize=8, fgcolor='red')
+        #     F.rotation = 270
+        #     F.background.color = "#FFF"
+        #     F.margin_right = 10
+        #     n.add_face(F, column=0)
 
         F = TextFace(label, tight_text=True, penwidth=30, fsize=8, fgcolor="black")
         F.rotation = 270
 
-        mix = optimized_value * 100
-        if mix > 1:
-            mix = 1
-        color = utils.color_fader('red', 'blue', mix)
+        # mix = optimized_value * 100
+        # if mix > 1:
+        #     mix = 1
+        # color = utils.color_fader('red', 'blue', mix)
 
         F.background.color = color
-        if mix == 1:
-            F.fgcolor = "white"
+        F.fgcolor = text_color
         n.add_face(F, column=0)
         
 
