@@ -256,33 +256,85 @@ fn sort_indexes_for_diff_graph(
     only_longest: Option<&Vec<usize>>,
     sort_option: SortOption,
 ) -> Vec<usize> {
-    // Take all from start to variant index, reverse and calculate 1 count in parallel
-    // to get the amount of markers shared to the left
+    match sort_option {
+        SortOption::Left => tracing::info!(
+            "Sorting the samples based on haplotype sharing to the left of the starting locus",
+        ),
+        SortOption::Right => tracing::info!(
+            "Sorting the samples based on haplotype sharing to the right of the starting locus",
+        ),
+        SortOption::Total => tracing::info!(
+            "Sorting the samples based on haplotype sharing on both sides of the starting locus",
+        ),
+    }
 
-    let range = match sort_option {
-        SortOption::Left => 0..vcf.variant_idx() + 1,
-        SortOption::Right => vcf.variant_idx()..vcf.nrows(),
-        SortOption::Total => 0..vcf.nrows(),
-    };
-
-    let mut values: Vec<(usize, i32)> = vcf
-        .matrix
-        .slice(s![.., range])
-        .axis_iter(Axis(0))
-        .into_par_iter()
-        .enumerate()
-        .map(|(y, row)| {
-            let mut count = 0;
-            for i in row.iter().rev() {
-                match i {
-                    0 => break,
-                    1 => count += 1,
-                    _ => panic!(),
+    let mut values: Vec<(usize, i32)> = match sort_option {
+        // Take all from start to variant index, reverse and calculate 1 count in parallel
+        // to get the amount of markers shared to the left
+        SortOption::Left => vcf
+            .matrix
+            .slice(s![.., 0..vcf.variant_idx() + 1])
+            .axis_iter(Axis(0))
+            .into_par_iter()
+            .enumerate()
+            .map(|(y, row)| {
+                let mut count = 0;
+                for i in row.iter().rev() {
+                    match i {
+                        0 => break,
+                        1 => count += 1,
+                        _ => panic!(),
+                    }
                 }
-            }
-            (y, count)
-        })
-        .collect();
+                (y, count)
+            })
+            .collect(),
+        SortOption::Right => vcf
+            .matrix
+            .slice(s![.., vcf.variant_idx()..vcf.ncoords()])
+            .axis_iter(Axis(0))
+            .into_par_iter()
+            .enumerate()
+            .map(|(y, row)| {
+                let mut count = 0;
+                for i in row.iter() {
+                    match i {
+                        0 => break,
+                        1 => count += 1,
+                        _ => panic!(),
+                    }
+                }
+                (y, count)
+            })
+            .collect(),
+        SortOption::Total => vcf
+            .matrix
+            .slice(s![.., 0..vcf.ncoords()])
+            .axis_iter(Axis(0))
+            .into_par_iter()
+            .enumerate()
+            .map(|(y, row)| {
+                let mut count = 0;
+                let right = row.into_iter().skip(vcf.variant_idx());
+                let left = row.slice(s![0..vcf.variant_idx() + 1]);
+                for i in right {
+                    match i {
+                        0 => break,
+                        1 => count += 1,
+                        _ => panic!(),
+                    }
+                }
+                for i in left.iter().rev() {
+                    match i {
+                        0 => break,
+                        1 => count += 1,
+                        _ => panic!(),
+                    }
+                }
+                (y, count)
+            })
+            .collect(),
+    };
 
     // Sort shortest alleles to the top
     if mark_shorter_alleles {

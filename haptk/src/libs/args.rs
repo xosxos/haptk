@@ -48,11 +48,11 @@ pub struct ConciseArgs {
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct GraphArgs {
     /// Graph width in px
-    #[arg(long, default_value_t = 2560.0)]
+    #[arg(long, default_value_t = 5000.0)]
     pub width: f32,
 
     /// Graph height in px
-    #[arg(long, default_value_t = 1440.0)]
+    #[arg(long, default_value_t = 7500.0)]
     pub height: f32,
 
     /// Mark the variant coordinate
@@ -60,11 +60,11 @@ pub struct GraphArgs {
     pub mark_locus: bool,
 
     // Font size
-    #[arg(long, default_value_t = 20.0)]
+    #[arg(long, default_value_t = 75.0)]
     pub font_size: f32,
 
     // Line stroke width
-    #[arg(long, default_value_t = 5)]
+    #[arg(long, default_value_t = 7)]
     pub stroke_width: u32,
 
     // Font color
@@ -79,11 +79,11 @@ pub struct GraphArgs {
 impl Default for GraphArgs {
     fn default() -> Self {
         Self {
-            width: 2560.0,
-            height: 1440.0,
+            width: 5000.0,
+            height: 7500.0,
             mark_locus: false,
-            font_size: 20.0,
-            stroke_width: 5,
+            font_size: 75.0,
+            stroke_width: 7,
             color: String::from("black"),
             background_color: String::from("white"),
         }
