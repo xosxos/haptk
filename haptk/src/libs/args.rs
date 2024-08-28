@@ -45,19 +45,33 @@ impl Default for GraphArgs {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq, Eq)]
-pub enum Selection {
-    #[default]
-    All,
-    OnlyAlts,
-    OnlyRefs,
-    OnlyLongest,
-    Unphased,
-    Haploid,
-}
-
 impl AsRef<Selection> for Selection {
     fn as_ref(&self) -> &Selection {
         self
     }
+}
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+pub enum SortOption {
+    Left,
+    Right,
+    Total,
+}
+
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+pub enum Selection {
+    #[default]
+    /// Select all alleles from samples (as of now only diploid or haploid organisms are supported)
+    All,
+    /// Select only the allele per each sample sharing the most haplotype with the haplotypes of the other samples
+    OnlyLongest,
+    /// Select only the alleles containing the REF variant at given a coordinate
+    OnlyRefs,
+    /// Select only the alleles containing the ALT variant at given a coordinate
+    OnlyAlts,
+    /// Use for unphased data (currently not supported for most commands)
+    Unphased,
+    /// Use for haploid genotypes
+    Haploid,
 }

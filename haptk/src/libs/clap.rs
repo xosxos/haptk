@@ -9,7 +9,7 @@ use tracing::Level;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::fmt::time::OffsetTime;
 
-use crate::args::{ConciseArgs, GraphArgs, Selection, StandardArgs};
+use crate::args::{ConciseArgs, GraphArgs, Selection, SortOption, StandardArgs};
 use crate::subcommands::{
     bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst, coverage,
     haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
@@ -367,6 +367,9 @@ pub enum SubCommand {
         /// Output .npy matrix
         #[arg(long)]
         npy: bool,
+
+        #[arg(long = "sort", value_enum)]
+        sort_option: SortOption,
     },
 
     /// Check which haplotypes of the HST are present in samples
@@ -744,7 +747,7 @@ pub fn run_args(args: Arguments) -> Result<()> {
 pub fn run_cmd(cmd: SubCommand) -> Result<()> {
     match cmd {
         SubCommand::CompareToHaplotype { 
-            args, haplotype, mark_samples, mark_shorter_alleles, graph_args, png, npy, .. 
+            args, haplotype, mark_samples, mark_shorter_alleles, graph_args, png, npy, sort_option, .. 
         } => compare_to_haplotype::run(
                 args.into(), haplotype, mark_samples, mark_shorter_alleles, png, npy,
                 GraphArgs {
@@ -756,6 +759,7 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
                     color: graph_args.color.unwrap_or("black".into()),
                     background_color: graph_args.background_color.unwrap_or("white".into()),
                 },
+            sort_option,
             )?,
 
         SubCommand::Bhst { args,  min_size, publish, .. } => bhst::run(args.into(), min_size, publish,)?,

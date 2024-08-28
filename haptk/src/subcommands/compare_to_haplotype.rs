@@ -10,7 +10,7 @@ use ndarray::{s, Axis};
 use ndarray::{Array2, ShapeBuilder};
 
 use crate::{
-    args::{GraphArgs, Selection, StandardArgs},
+    args::{GraphArgs, Selection, SortOption, StandardArgs},
     graphs::MatrixGraph,
     io::{open_csv_writer, push_to_output, read_haplotype_file, read_sample_ids},
     read_vcf::read_vcf_to_matrix,
@@ -28,6 +28,7 @@ pub fn run(
     want_png: bool,
     want_npy: bool,
     graph_args: GraphArgs,
+    sort_option: SortOption,
 ) -> Result<()> {
     if want_png {
         return Err(eyre!("PNG is not supported for matrix graph."));
@@ -160,6 +161,7 @@ pub fn run(
         decoy_samples.as_ref(),
         mark_shorter_alleles,
         only_longest.as_ref(),
+        sort_option,
     );
 
     let shared_ranges = find_shared_haplotype_ranges(&vcf);
@@ -252,12 +254,20 @@ fn sort_indexes_for_diff_graph(
     decoy_samples: Option<&Vec<String>>,
     mark_shorter_alleles: bool,
     only_longest: Option<&Vec<usize>>,
+    sort_option: SortOption,
 ) -> Vec<usize> {
     // Take all from start to variant index, reverse and calculate 1 count in parallel
     // to get the amount of markers shared to the left
+
+    let range = match sort_option {
+        SortOption::Left => 0..vcf.variant_idx() + 1,
+        SortOption::Right => vcf.variant_idx()..vcf.nrows(),
+        SortOption::Total => 0..vcf.nrows(),
+    };
+
     let mut values: Vec<(usize, i32)> = vcf
         .matrix
-        .slice(s![.., 0..vcf.variant_idx()])
+        .slice(s![.., range])
         .axis_iter(Axis(0))
         .into_par_iter()
         .enumerate()
@@ -293,7 +303,8 @@ fn sort_indexes_for_diff_graph(
                 .cmp(&samples.contains(&vcf.get_sample_name(b.0)))
         });
     }
-    // Sort by left side length
+
+    // Sort by length
     values.sort_by(|a, b| a.1.cmp(&b.1));
 
     tracing::debug!("Finished sorting.");
@@ -376,8 +387,8 @@ pub fn print_ranges_to_csv(
             format!("{}", vcf.get_sample_name(*idx)),
             start_pos.to_string(),
             stop_pos.to_string(),
-            (stop_pos - start_pos).to_string(),
-            (stop - start).to_string(),
+            (stop_pos - start_pos + 1).to_string(),
+            (stop - start + 1).to_string(),
         ];
 
         match decoy_samples {
