@@ -34,7 +34,7 @@ pub struct StandardArgs {
     pub info_limit: Option<f32>,
 
     /// Output filename prefix
-    #[arg(short = 'p', long)]
+    #[arg(short = 'p', long, value_parser = clap::builder::ValueParser::new(parse_prefix))]
     pub prefix: Option<String>,
 }
 
