@@ -3,6 +3,19 @@ use color_eyre::Result;
 
 use crate::error::HatkError::{CoordsParseError, PosParseError};
 
+//NOTE: This should be parsed by clap automatically, but Option<String> parsing is not supported out of the box as of now
+pub fn strip_prefix(prefix: Option<String>) -> Option<String> {
+    if let Some(prefix) = prefix {
+        match prefix.as_ref() {
+            "" => None,
+            "\\0" => None,
+            v => Some(v.to_string()),
+        }
+    } else {
+        None
+    }
+}
+
 pub fn parse_snp_coord(coords: &str) -> Result<(&str, u64)> {
     let mut coord_split = coords.split(':');
 

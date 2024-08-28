@@ -16,6 +16,7 @@ use rust_htslib::bcf::{header::HeaderRecord, IndexedReader, Read};
 
 use crate::args::{Selection, StandardArgs};
 use crate::structs::HapVariant;
+use crate::utils::strip_prefix;
 
 pub fn read_variable_data_file(path: PathBuf) -> Result<DataFrame> {
     let df = CsvReader::from_path(path)?
@@ -135,7 +136,7 @@ pub fn read_sample_ids(path: &Option<PathBuf>) -> Result<Option<Vec<String>>> {
 }
 
 pub fn push_to_output(args: &StandardArgs, output: &mut PathBuf, name: &str, suffix: &str) {
-    if let Some(prefix) = &args.prefix {
+    if let Some(prefix) = &strip_prefix(args.prefix.clone()) {
         match args.selection {
             Selection::All => output.push(format!("{prefix}_{name}.{suffix}")),
             Selection::OnlyAlts => output.push(format!("{prefix}_{name}_only_alts.{suffix}")),

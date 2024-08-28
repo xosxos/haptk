@@ -2,15 +2,6 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-pub fn parse_prefix(prefix: &str) -> Result<Option<String>, std::io::Error> {
-    let r = match prefix {
-        "" => None,
-        "\\0" => None,
-        v => Some(v.to_string()),
-    };
-    Ok(r)
-}
-
 #[derive(Debug, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct StandardArgs {
@@ -34,7 +25,7 @@ pub struct StandardArgs {
     pub info_limit: Option<f32>,
 
     /// Output filename prefix
-    #[arg(short = 'p', long, value_parser = clap::builder::ValueParser::new(parse_prefix))]
+    #[arg(short = 'p', long)]
     pub prefix: Option<String>,
 }
 
@@ -49,7 +40,7 @@ pub struct ConciseArgs {
     pub output: PathBuf,
 
     /// Output filename prefix
-    #[arg(short = 'p', long, value_parser = clap::builder::ValueParser::new(parse_prefix))]
+    #[arg(short = 'p', long)]
     pub prefix: Option<String>,
 }
 

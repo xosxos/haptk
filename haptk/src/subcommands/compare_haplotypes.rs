@@ -6,6 +6,7 @@ use termion::color;
 
 use crate::io::{open_csv_writer, read_haplotype_file};
 use crate::structs::HapVariant;
+use crate::utils::strip_prefix;
 
 pub fn run(
     haplotypes: Vec<PathBuf>,
@@ -15,7 +16,7 @@ pub fn run(
     hide_missing: bool,
     tag_rows: bool,
 ) -> Result<()> {
-    match prefix {
+    match strip_prefix(prefix) {
         None => output.push("ht_comparison.csv"),
         Some(prefix) => output.push(format!("{prefix}_ht_comparison.csv")),
     }
