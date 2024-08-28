@@ -19,7 +19,7 @@ pub struct StandardArgs {
     #[arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. )]
     pub samples: Option<Vec<PathBuf>>,
 
-    #[arg(short = 'a', long = "alleles", value_enum)]
+    #[arg(short = 'a', long = "alleles", value_enum, default_value_t = Selection::All)]
     pub selection: Selection,
 
     pub info_limit: Option<f32>,
@@ -95,9 +95,10 @@ impl AsRef<Selection> for Selection {
         self
     }
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum SortOption {
+    #[default]
     Left,
     Right,
     Total,

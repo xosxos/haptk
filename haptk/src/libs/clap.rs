@@ -187,7 +187,7 @@ pub enum SubCommand {
         #[arg(long)]
         npy: bool,
 
-        #[arg(long = "sort", value_enum)]
+        #[arg(long = "sort", value_enum, default_value_t=SortOption::Left)]
         sort_option: SortOption,
     },
 
