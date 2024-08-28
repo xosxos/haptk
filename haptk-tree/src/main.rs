@@ -5,8 +5,9 @@ use clap::Parser;
 use color_eyre::Result;
 use eframe::Theme;
 
+use haptk::args::StandardArgs;
 use haptk::io::read_sample_ids;
-use haptk::libs::clap::{ClapStandardArgs, LogAndVerbosity};
+use haptk::libs::clap::LogAndVerbosity;
 use haptk::subcommands::bhst;
 use haptk::subcommands::uhst;
 
@@ -24,7 +25,7 @@ use crate::app::TreeApp;
 #[command(author, version, about)]
 struct Args {
     #[command(flatten)]
-    pub args: ClapStandardArgs,
+    pub args: StandardArgs,
 
     #[command(flatten)]
     pub log_and_verbosity: LogAndVerbosity,
@@ -61,7 +62,7 @@ fn main() -> Result<()> {
 
     let marked_samples = read_sample_ids(&args.mark_samples)?;
 
-    let vcf = bhst::read_vcf_with_selections(&args.args.into())?;
+    let vcf = bhst::read_vcf_with_selections(&args.args)?;
 
     let bhst = bhst::construct_bhst(&vcf, vcf.variant_idx(), 1);
     let uhst_left =

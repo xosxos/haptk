@@ -34,14 +34,14 @@ pub fn standard_args(selection: Selection) -> StandardArgs {
 }
 
 #[cfg(feature = "clap")]
-pub fn clap_standard_args(select: Selection) -> haptk::clap::ClapStandardArgs {
-    haptk::clap::ClapStandardArgs {
+pub fn clap_standard_args(select: Selection) -> haptk::args::StandardArgs {
+    haptk::args::StandardArgs {
         file: PathBuf::from(TEST_VCF),
-        outdir: PathBuf::from("tests/results"),
+        output: PathBuf::from("tests/results"),
         coords: String::from(COORDS),
-        alleles: select.into(),
+        selection: select,
         samples: None,
-        // info_limit: None,
+        info_limit: None,
         prefix: None,
     }
 }

@@ -18,10 +18,10 @@ fn compare_haplotypes() {
         PathBuf::from("tests/results/uhst_mbah.csv"),
         PathBuf::from("tests/results/uhst_shared_core_haplotype_only_longest.csv"),
     ];
-    let outdir = PathBuf::from(OUTDIR);
+    let output = PathBuf::from(OUTDIR);
     let cmd = haptk::clap::SubCommand::CompareHaplotypes {
         haplotypes: files,
-        outdir,
+        output,
         prefix: None,
         csv: true,
         hide_missing: false,

@@ -7,15 +7,15 @@ use std::path::PathBuf;
 #[cfg(feature = "clap")]
 fn read_haplotypes() {
     use common::COORDS;
-    use haptk::clap::{ClapSelection, ClapStandardArgs};
+    use haptk::args::{Selection, StandardArgs};
 
     let cmd = haptk::clap::SubCommand::Haplotypes {
-        args: ClapStandardArgs {
+        args: StandardArgs {
             file: PathBuf::from(TEST_VCF),
-            outdir: PathBuf::from("tests/results"),
+            output: PathBuf::from("tests/results"),
             coords: String::from(COORDS),
-            alleles: ClapSelection::All,
-            // info_limit: None,
+            selection: Selection::All,
+            info_limit: None,
             prefix: None,
             samples: Some(vec![PathBuf::from("tests/data/SAMPLE1.ids")]),
         },

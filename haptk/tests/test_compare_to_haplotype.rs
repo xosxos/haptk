@@ -12,6 +12,8 @@ use haptk::{
 #[cfg(test)]
 #[cfg(feature = "clap")]
 mod test_compare_to_haplotype {
+    use haptk::args::SortOption;
+
     use super::*;
 
     #[test]
@@ -130,9 +132,10 @@ mod test_compare_to_haplotype {
             mark_samples: None,
             mark_shorter_alleles: mark,
             png,
-            graph_args: haptk::clap::ClapGraphArgs::default(),
+            graph_args: GraphArgs::default(),
             log_and_verbosity: crate::common::silent_verbosity(),
             npy: false,
+            sort_option: SortOption::Left,
         };
         assert_eq!(8, cmd.threads());
         haptk::clap::run_cmd(cmd).unwrap();
@@ -156,9 +159,10 @@ mod test_compare_to_haplotype {
             mark_samples: None,
             mark_shorter_alleles: false,
             png: false,
-            graph_args: haptk::clap::ClapGraphArgs::default(),
+            graph_args: GraphArgs::default(),
             log_and_verbosity: crate::common::silent_verbosity(),
             npy: false,
+            sort_option: SortOption::Left,
         };
         assert!(haptk::clap::run_cmd(cmd).is_err());
     }

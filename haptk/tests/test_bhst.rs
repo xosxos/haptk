@@ -59,13 +59,13 @@ mod test_bhst {
 
     #[test]
     fn test_bhst_core_ht() {
-        let args = haptk::clap::ClapStandardArgs {
+        let args = haptk::args::StandardArgs {
             file: PathBuf::from("tests/data/test_bhst_core_ht.vcf.gz"),
-            outdir: PathBuf::from("tests/results"),
+            output: PathBuf::from("tests/results"),
             coords: String::from("chr9:32"),
-            alleles: haptk::clap::ClapSelection::All,
+            selection: haptk::args::Selection::All,
             samples: None,
-            // info_limit: None,
+            info_limit: None,
             prefix: Some("test_core".to_string()),
         };
 

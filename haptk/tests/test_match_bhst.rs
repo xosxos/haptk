@@ -63,13 +63,13 @@ mod test_bhst {
 
     fn run_compare_to_hst(selection: Selection) {
         // Build match HST
-        let args = haptk::clap::ClapStandardArgs {
+        let args = haptk::args::StandardArgs {
             file: PathBuf::from("tests/data/test.vcf.gz"),
-            outdir: PathBuf::from("tests/results"),
+            output: PathBuf::from("tests/results"),
             coords: String::from("chr9:32"),
-            alleles: selection.clone().into(),
+            selection: selection.clone(),
             samples: None,
-            // info_limit: None,
+            info_limit: None,
             prefix: None,
         };
 
@@ -85,13 +85,13 @@ mod test_bhst {
         haptk::clap::run_cmd(cmd).unwrap();
 
         // Compare vcf to the built HST
-        let args = haptk::clap::ClapStandardArgs {
+        let args = haptk::args::StandardArgs {
             file: PathBuf::from("tests/data/test_match.vcf.gz"),
-            outdir: PathBuf::from("tests/results"),
+            output: PathBuf::from("tests/results"),
             coords: String::from("chr9:32"),
-            alleles: selection.into(),
+            selection,
             samples: None,
-            // info_limit: None,
+            info_limit: None,
             prefix: None,
         };
 

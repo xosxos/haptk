@@ -9,7 +9,7 @@ use tracing::Level;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::fmt::time::OffsetTime;
 
-use crate::args::{ConciseArgs, GraphArgs, Selection, SortOption, StandardArgs};
+use crate::args::{ConciseArgs, GraphArgs, SortOption, StandardArgs};
 use crate::subcommands::{
     bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst, coverage,
     haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
@@ -43,193 +43,12 @@ pub struct LogAndVerbosity {
     pub silent: bool,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug)]
-pub enum ClapSelection {
-    /// Select all alleles from samples (as of now only diploid or haploid organisms are supported)
-    All,
-    /// Select only the allele per each sample sharing the most haplotype with the haplotypes of the other samples
-    LongestHaplotype,
-    /// Select only the alleles containing the REF variant at given a coordinate
-    OnlyRefs,
-    /// Select only the alleles containing the ALT variant at given a coordinate
-    OnlyAlts,
-    /// Use for unphased data (currently not supported for most commands)
-    Unphased,
-    /// Use for haploid genotypes
-    Haploid,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct ClapStandardArgs {
-    pub file: PathBuf,
-
-    /// The starting coordinate, i.e. chr9:27573534
-    #[arg(short = 'c', long)]
-    pub coords: String,
-
-    /// Output directory
-    #[arg(short = 'o', long, default_value_os_t = PathBuf::from("./"))]
-    pub outdir: PathBuf,
-
-    /// List of samples for HST construction (one ID per row)
-    #[arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. )]
-    pub samples: Option<Vec<PathBuf>>,
-
-    #[arg(short = 'a', long, value_enum)]
-    pub alleles: ClapSelection,
-
-    // #[arg(long)]
-    // pub info_limit: Option<f32>,
-    /// Output filename prefix
-    #[arg(short = 'p', long)]
-    pub prefix: Option<String>,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct ClapConciseArgs {
-    /// Bilateral HST file obtained from bhst-scan
-    pub file: PathBuf,
-
-    /// Output directory
-    #[arg(short = 'o', long, default_value_os_t = PathBuf::from("./"))]
-    pub outdir: PathBuf,
-
-    /// Output filename prefix
-    #[arg(short = 'p', long)]
-    pub prefix: Option<String>,
-}
-
-#[derive(Args, Debug, Clone)]
-pub struct ClapIoArgs {
-    pub file: PathBuf,
-
-    /// Output directory
-    #[arg(short = 'o', long, default_value_os_t = PathBuf::from("./"))]
-    pub outdir: PathBuf,
-
-    /// Output filename prefix
-    #[arg(short = 'p', long)]
-    pub prefix: Option<String>,
-}
-
-impl From<ClapStandardArgs> for StandardArgs {
-    fn from(value: ClapStandardArgs) -> Self {
-        let prefix = match value.prefix {
-            Some(v) => match v.as_str() {
-                "" => None,
-                "\\0" => None,
-                v => Some(v.to_string()),
-            },
-            None => None,
-        };
-        Self {
-            file: value.file,
-            coords: value.coords,
-            output: value.outdir,
-            samples: value.samples,
-            selection: value.alleles.into(),
-            info_limit: None,
-            // info_limit: value.info_limit,
-            prefix,
-        }
-    }
-}
-
-impl From<ClapConciseArgs> for ConciseArgs {
-    fn from(value: ClapConciseArgs) -> Self {
-        let prefix = match value.prefix {
-            Some(v) => match v.as_str() {
-                "" => None,
-                "\\0" => None,
-                v => Some(v.to_string()),
-            },
-            None => None,
-        };
-        Self {
-            file: value.file,
-            output: value.outdir,
-            prefix,
-        }
-    }
-}
-
-impl From<ClapSelection> for Selection {
-    fn from(value: ClapSelection) -> Self {
-        match value {
-            ClapSelection::OnlyAlts => Self::OnlyAlts,
-            ClapSelection::OnlyRefs => Self::OnlyRefs,
-            ClapSelection::All => Self::All,
-            ClapSelection::LongestHaplotype => Self::OnlyLongest,
-            ClapSelection::Unphased => Self::Unphased,
-            ClapSelection::Haploid => Self::Haploid,
-        }
-    }
-}
-
-impl From<Selection> for ClapSelection {
-    fn from(value: Selection) -> Self {
-        match value {
-            Selection::OnlyAlts => Self::OnlyAlts,
-            Selection::OnlyRefs => Self::OnlyRefs,
-            Selection::All => Self::All,
-            Selection::OnlyLongest => Self::LongestHaplotype,
-            Selection::Unphased => Self::Unphased,
-            Selection::Haploid => Self::Haploid,
-        }
-    }
-}
-
-#[derive(Args, Debug, Default, Clone)]
-pub struct ClapGraphArgs {
-    /// Graph width in px
-    #[arg(long)]
-    pub width: Option<f32>,
-
-    /// Graph height in px
-    #[arg(long)]
-    pub height: Option<f32>,
-
-    /// Mark the variant coordinate
-    #[arg(long)]
-    pub mark_locus: bool,
-
-    // Font size
-    #[arg(long)]
-    pub font_size: Option<f32>,
-
-    // Line stroke width
-    #[arg(long)]
-    pub stroke_width: Option<u32>,
-
-    // Font color
-    #[arg(long)]
-    pub color: Option<String>,
-
-    // Background color
-    #[arg(long)]
-    pub background_color: Option<String>,
-}
-
-impl From<ClapGraphArgs> for GraphArgs {
-    fn from(value: ClapGraphArgs) -> Self {
-        Self {
-            width: value.width.unwrap_or(2560.0),
-            height: value.height.unwrap_or(1440.0),
-            mark_locus: value.mark_locus,
-            font_size: value.font_size.unwrap_or(20.0),
-            stroke_width: value.stroke_width.unwrap_or(5),
-            color: value.color.unwrap_or("black".to_string()),
-            background_color: value.background_color.unwrap_or("white".to_string()),
-        }
-    }
-}
-
 #[derive(Subcommand, Debug)]
 pub enum SubCommand {
     /// Build unidirectional haplotype sharing trees at a coordinate
     Uhst {
         #[command(flatten)]
-        args: ClapStandardArgs,
+        args: StandardArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -250,7 +69,7 @@ pub enum SubCommand {
     /// Build a bidirectional haplotype sharing tree at a coordinate
     Bhst {
         #[command(flatten)]
-        args: ClapStandardArgs,
+        args: StandardArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -270,7 +89,7 @@ pub enum SubCommand {
     /// Analyze the MRCA based on the Gamma method at a coordinate
     Mrca {
         #[command(flatten)]
-        args: ClapStandardArgs,
+        args: StandardArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -289,7 +108,7 @@ pub enum SubCommand {
     /// Analyze the MRCA every x markers along a given contig
     MrcaScan {
         #[command(flatten)]
-        args: ClapStandardArgs,
+        args: StandardArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -314,7 +133,7 @@ pub enum SubCommand {
         threads: usize,
 
         #[command(flatten)]
-        graph_args: ClapGraphArgs,
+        graph_args: GraphArgs,
 
         /// Only supports hg38! Mark the centromere to the graph
         #[arg(long)]
@@ -324,7 +143,7 @@ pub enum SubCommand {
     /// Check if samples share a given haplotype
     CheckForHaplotype {
         #[command(flatten)]
-        args: ClapStandardArgs,
+        args: StandardArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -336,7 +155,7 @@ pub enum SubCommand {
     /// Check differences between samples and a haplotype
     CompareToHaplotype {
         #[command(flatten)]
-        args: ClapStandardArgs,
+        args: StandardArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -358,7 +177,7 @@ pub enum SubCommand {
         mark_shorter_alleles: bool,
 
         #[command(flatten)]
-        graph_args: ClapGraphArgs,
+        graph_args: GraphArgs,
 
         /// Output .png image
         #[arg(long)]
@@ -375,7 +194,7 @@ pub enum SubCommand {
     /// Check which haplotypes of the HST are present in samples
     CompareToHst {
         #[command(flatten)]
-        args: ClapStandardArgs,
+        args: StandardArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -397,8 +216,8 @@ pub enum SubCommand {
         log_and_verbosity: LogAndVerbosity,
 
         /// Output directory
-        #[arg(short = 'o', long, default_value_os_t = PathBuf::from("./"))]
-        outdir: PathBuf,
+        #[arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("./"))]
+        output: PathBuf,
 
         /// Output filename prefix
         #[arg(long)]
@@ -438,7 +257,7 @@ pub enum SubCommand {
     /// Read the haplotypes of a given sample
     Haplotypes {
         #[command(flatten)]
-        args: ClapStandardArgs,
+        args: StandardArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -465,8 +284,8 @@ pub enum SubCommand {
         #[arg(short = 's', long)]
         sample_name: String,
 
-        #[arg(short = 'o', long, default_value_os_t = PathBuf::from("-"))]
-        outdir: PathBuf,
+        #[arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("-"))]
+        output: PathBuf,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -474,7 +293,7 @@ pub enum SubCommand {
     /// bHST scan
     BhstScan {
         #[command(flatten)]
-        args: ClapStandardArgs,
+        args: StandardArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -490,7 +309,7 @@ pub enum SubCommand {
     /// Scan all nodes of all trees for a node specific value
     ScanNodes {
         #[command(flatten)]
-        args: ClapConciseArgs,
+        args: ConciseArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -519,7 +338,7 @@ pub enum SubCommand {
     /// Scan all nodes of all trees for a difference in a quantative variable
     ScanQuantitative {
         #[command(flatten)]
-        args: ClapConciseArgs,
+        args: ConciseArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -556,7 +375,7 @@ pub enum SubCommand {
     /// Scan all branches of all trees for the smallest MRCA value
     ScanBranchMrca {
         #[command(flatten)]
-        args: ClapConciseArgs,
+        args: ConciseArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -589,7 +408,7 @@ pub enum SubCommand {
     /// Find bHST based segregated haplotypes genome-wide
     ScanSegregate {
         #[command(flatten)]
-        args: ClapConciseArgs,
+        args: ConciseArgs,
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
@@ -687,22 +506,22 @@ impl SubCommand {
     #[rustfmt::skip]
     pub fn output(&self) -> Option<PathBuf> {
         match self {
-            SubCommand::Haplotypes { args: ClapStandardArgs { outdir, .. }, ..}
-            | SubCommand::CheckForHaplotype { args: ClapStandardArgs { outdir, .. }, ..}
-            | SubCommand::CompareToHaplotype { args: ClapStandardArgs { outdir, .. }, ..}
-            | SubCommand::CompareToHst { args: ClapStandardArgs { outdir, .. }, ..}
-            | SubCommand::CompareHaplotypes { outdir, .. }
-            | SubCommand::Mrca { args: ClapStandardArgs { outdir, .. }, ..}
-            | SubCommand::MrcaScan { args: ClapStandardArgs { outdir, .. }, ..}
-            | SubCommand::Uhst { args: ClapStandardArgs { outdir, .. }, ..}
-            | SubCommand::Bhst { args: ClapStandardArgs { outdir, .. }, ..}
-            | SubCommand::BhstScan { args: ClapStandardArgs { outdir, .. }, ..}
-            | SubCommand::ScanSegregate { args: ClapConciseArgs { outdir, .. }, ..}
-            | SubCommand::ScanBranchMrca { args: ClapConciseArgs { outdir, .. }, ..}
-            | SubCommand::ScanQuantitative { args: ClapConciseArgs { outdir, .. }, ..}
-            | SubCommand::ScanNodes { args: ClapConciseArgs { outdir, .. }, ..}
-            | SubCommand::ToVcf { outdir, .. }
-            => Some(outdir.clone()),
+            SubCommand::Haplotypes { args: StandardArgs { output, .. }, ..}
+            | SubCommand::CheckForHaplotype { args: StandardArgs { output, .. }, ..}
+            | SubCommand::CompareToHaplotype { args: StandardArgs { output, .. }, ..}
+            | SubCommand::CompareToHst { args: StandardArgs { output, .. }, ..}
+            | SubCommand::CompareHaplotypes { output, .. }
+            | SubCommand::Mrca { args: StandardArgs { output, .. }, ..}
+            | SubCommand::MrcaScan { args: StandardArgs { output, .. }, ..}
+            | SubCommand::Uhst { args: StandardArgs { output, .. }, ..}
+            | SubCommand::Bhst { args: StandardArgs { output, .. }, ..}
+            | SubCommand::BhstScan { args: StandardArgs { output, .. }, ..}
+            | SubCommand::ScanSegregate { args: ConciseArgs { output, .. }, ..}
+            | SubCommand::ScanBranchMrca { args: ConciseArgs { output, .. }, ..}
+            | SubCommand::ScanQuantitative { args: ConciseArgs { output, .. }, ..}
+            | SubCommand::ScanNodes { args: ConciseArgs { output, .. }, ..}
+            | SubCommand::ToVcf { output, .. }
+            => Some(output.clone()),
             SubCommand::Samples { .. }
             | SubCommand::Coverage { .. }
             | SubCommand::Markers { .. } => None
@@ -749,65 +568,57 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         SubCommand::CompareToHaplotype { 
             args, haplotype, mark_samples, mark_shorter_alleles, graph_args, png, npy, sort_option, .. 
         } => compare_to_haplotype::run(
-                args.into(), haplotype, mark_samples, mark_shorter_alleles, png, npy,
-                GraphArgs {
-                    width: graph_args.width.unwrap_or(5000.0),
-                    height: graph_args.height.unwrap_or(7500.0),
-                    mark_locus: graph_args.mark_locus,
-                    font_size: graph_args.font_size.unwrap_or(75.0),
-                    stroke_width: graph_args.stroke_width.unwrap_or(7),
-                    color: graph_args.color.unwrap_or("black".into()),
-                    background_color: graph_args.background_color.unwrap_or("white".into()),
-                },
-            sort_option,
+                args, haplotype, mark_samples, mark_shorter_alleles, png, npy, graph_args, sort_option,
             )?,
 
-        SubCommand::Bhst { args,  min_size, publish, .. } => bhst::run(args.into(), min_size, publish,)?,
-        SubCommand::Uhst {args,  min_size, publish, .. } => uhst::run(args.into(), min_size, publish,)?,
+        SubCommand::Bhst { args,  min_size, publish, .. } => bhst::run(args, min_size, publish,)?,
+        SubCommand::Uhst {args,  min_size, publish, .. } => uhst::run(args, min_size, publish,)?,
 
-        SubCommand::CompareHaplotypes { haplotypes, outdir, prefix, csv, hide_missing, tag_rows, .. }
-            => compare_haplotypes::run(haplotypes, outdir, prefix, csv, hide_missing, tag_rows)?,
+        SubCommand::CompareHaplotypes { haplotypes, output, prefix, csv, hide_missing, tag_rows, .. }
+            => compare_haplotypes::run(haplotypes, output, prefix, csv, hide_missing, tag_rows)?,
 
-        SubCommand::CompareToHst { args, hst, .. } => compare_to_hst::run(args.into(), hst)?,
-        SubCommand::CheckForHaplotype { args, haplotype, .. } => check_for_haplotype::run(args.into(), haplotype)?,
-        SubCommand::Mrca { args, recombination_rates, start, stop, .. } => mrca::run(args.into(), recombination_rates, start, stop)?,
-        SubCommand::Haplotypes { args, .. } => list_haplotypes::run(args.into())?,
+        SubCommand::CompareToHst { args, hst, .. } => compare_to_hst::run(args, hst)?,
+        SubCommand::CheckForHaplotype { args, haplotype, .. } => check_for_haplotype::run(args, haplotype)?,
+        // SubCommand::Mrca { args, recombination_rates, start, stop, .. } => mrca::run(args.into(), recombination_rates, start, stop)?,
+        SubCommand::Mrca { args, recombination_rates, .. } => mrca::run(args, recombination_rates)?,
+        SubCommand::Haplotypes { args, .. } => list_haplotypes::run(args)?,
+
         SubCommand::Samples { file, .. } => list_samples::run(file)?, 
         SubCommand::Markers { file, .. } => list_markers::run(file)?,
-        SubCommand::ToVcf { file, sample_name, outdir, .. } => haplotype_to_vcf::run(file, sample_name, outdir)?,
+        SubCommand::ToVcf { file, sample_name, output, .. } => haplotype_to_vcf::run(file, sample_name, output)?,
         SubCommand::Coverage { file, bp_per_snp, npipes, .. } => coverage::run(file, bp_per_snp, npipes)?,
 
         // Genome-wide methods
         SubCommand::MrcaScan {
             args, recombination_rates, step_size, no_csv, plot, graph_args, mark_centromere, ..
         } => mrca_scan::run(
-            args.into(), recombination_rates, step_size, no_csv, plot, graph_args.into(), mark_centromere
+            args, recombination_rates, step_size, no_csv, plot, graph_args, mark_centromere
         )?,
 
-        SubCommand::BhstScan { args, step_size, .. } => hst_scan::run(args.into(), step_size)?,
+        SubCommand::BhstScan { args, step_size, .. } => hst_scan::run(args, step_size)?,
 
         SubCommand::ScanNodes {
             args, min_sample_size, max_sample_size, min_ht_len, max_ht_len,  ..
         } => scan_nodes::run(
-            args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len),
+            args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len),
         )?,
 
         SubCommand::ScanQuantitative {
             args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, var_data, var_name, ..
         } => scan_quantitative::run(
-                args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), var_data, var_name,
+                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), var_data, var_name,
             )?,
 
         SubCommand::ScanBranchMrca {
             args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, recombination_rates, ..
         } => scan_branch_mrca::run(
-                args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), recombination_rates,
+                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), recombination_rates,
             )?,
 
         SubCommand::ScanSegregate {
             args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, samples, ..
         } => scan_segregate::run(
-                args.into(), (min_sample_size, max_sample_size, min_ht_len, max_ht_len), samples,
+                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), samples,
             )?,
 
     };
@@ -902,18 +713,6 @@ mod tests {
         assert_eq!(Level::DEBUG, level);
         let (level, _, _) = init_tracing(5, &None, false).unwrap();
         assert_eq!(Level::TRACE, level);
-    }
-
-    #[test]
-    fn test_from_traits() {
-        let clap_args = ClapGraphArgs::default();
-        let gr_args1: GraphArgs = clap_args.into();
-        let gr_args2 = GraphArgs::default();
-        assert_eq!(gr_args1, gr_args2);
-
-        let clap_selection = ClapSelection::All;
-        let selection: Selection = clap_selection.into();
-        assert_eq!(selection, Selection::All)
     }
 
     #[test]
