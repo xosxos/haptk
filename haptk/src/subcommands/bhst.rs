@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     args::{Selection, StandardArgs},
-    io::{get_output, open_csv_writer, push_to_output},
+    io::{get_output, open_csv_writer, push_to_output, write_haplotype},
     read_vcf::{get_sample_names, read_vcf_to_matrix},
     structs::{Coord, CoordDataSlot, HapVariant, PhasedMatrix, Ploidy},
     utils::parse_snp_coord,
@@ -383,24 +383,6 @@ pub fn find_majority_nodes(g: &Graph<Node, u8>, start_idx: NodeIndex) -> Vec<(&N
     majority_nodes
 }
 
-pub fn write_haplotype(
-    haplotype: Vec<HapVariant>,
-    mut writer: csv::Writer<Box<dyn std::io::Write>>,
-) -> Result<()> {
-    writer.write_record(vec!["contig", "pos", "ref", "alt", "gt"])?;
-
-    for coord in haplotype {
-        writer.write_record(vec![
-            coord.contig,
-            coord.pos.to_string(),
-            coord.reference,
-            coord.alt,
-            coord.gt.to_string(),
-        ])?;
-    }
-    Ok(())
-}
-
 pub fn find_lowest_start_idx(g: &Graph<Node, u8>) -> usize {
     let mut start_idx = usize::MAX;
 
@@ -461,6 +443,7 @@ impl Hst {
                 alt: self.metadata.coords[coord_index].alt.clone(),
                 reference: self.metadata.coords[coord_index].reference.clone(),
                 gt: node.haplotype[hap_index],
+                annotation: None,
             })
             .collect()
     }

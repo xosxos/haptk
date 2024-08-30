@@ -12,7 +12,7 @@ use tracing_subscriber::fmt::time::OffsetTime;
 use crate::args::{ConciseArgs, GraphArgs, SortOption, StandardArgs};
 use crate::subcommands::{
     bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst, coverage,
-    haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
+    fasta_to_haplotype, haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
 };
 
 // Genome-wide methods
@@ -278,11 +278,25 @@ pub enum SubCommand {
     },
 
     /// Convert a haplotype CSV into VCF
-    ToVcf {
+    HaplotypeToVcf {
         file: PathBuf,
 
         #[arg(short = 's', long)]
         sample_name: String,
+
+        #[arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("-"))]
+        output: PathBuf,
+
+        #[command(flatten)]
+        log_and_verbosity: LogAndVerbosity,
+    },
+    /// Convert fasta sequences to haplotype csv format
+    FastaToHaplotype {
+        file: PathBuf,
+
+        /// Fasta sequences to transform into a haplotpye
+        #[arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. )]
+        seq_name: Vec<String>,
 
         #[arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("-"))]
         output: PathBuf,
@@ -477,7 +491,8 @@ impl SubCommand {
             | SubCommand::ScanNodes { log_and_verbosity,  .. }
             | SubCommand::Samples { log_and_verbosity, .. }
             | SubCommand::Markers { log_and_verbosity, .. }
-            | SubCommand::ToVcf { log_and_verbosity, .. }
+            | SubCommand::HaplotypeToVcf { log_and_verbosity, .. }
+            | SubCommand::FastaToHaplotype { log_and_verbosity, .. }
             => (log_and_verbosity.verbosity, &log_and_verbosity.log_file, log_and_verbosity.silent),
         }
     }
@@ -520,9 +535,10 @@ impl SubCommand {
             | SubCommand::ScanBranchMrca { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanQuantitative { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanNodes { args: ConciseArgs { output, .. }, ..}
-            | SubCommand::ToVcf { output, .. }
             => Some(output.clone()),
             SubCommand::Samples { .. }
+            | SubCommand::HaplotypeToVcf { .. }
+            | SubCommand::FastaToHaplotype { .. }
             | SubCommand::Coverage { .. }
             | SubCommand::Markers { .. } => None
         }
@@ -585,7 +601,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
         SubCommand::Samples { file, .. } => list_samples::run(file)?, 
         SubCommand::Markers { file, .. } => list_markers::run(file)?,
-        SubCommand::ToVcf { file, sample_name, output, .. } => haplotype_to_vcf::run(file, sample_name, output)?,
+        SubCommand::HaplotypeToVcf { file, sample_name, output, .. } => haplotype_to_vcf::run(file, sample_name, output)?,
+        SubCommand::FastaToHaplotype { file, seq_name, output, .. } => fasta_to_haplotype::run(file, seq_name, output)?,
         SubCommand::Coverage { file, bp_per_snp, npipes, .. } => coverage::run(file, bp_per_snp, npipes)?,
 
         // Genome-wide methods

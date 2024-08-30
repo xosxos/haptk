@@ -9,9 +9,9 @@ use rayon::prelude::*;
 
 use crate::{
     args::{Selection, StandardArgs},
-    io::{open_csv_writer, push_to_output},
+    io::{open_csv_writer, push_to_output, write_haplotype},
     structs::{HapVariant, PhasedMatrix},
-    subcommands::bhst::{self, write_haplotype, write_hst_file, Node},
+    subcommands::bhst::{self, write_hst_file, Node},
 };
 
 #[doc(hidden)]

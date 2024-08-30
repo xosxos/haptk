@@ -28,6 +28,9 @@ pub mod uhst;
 /// Haplotype to VCF
 pub mod haplotype_to_vcf;
 
+/// Fasta to haplotype
+pub mod fasta_to_haplotype;
+
 /// Identify differences to a haplotype
 pub mod compare_to_haplotype;
 

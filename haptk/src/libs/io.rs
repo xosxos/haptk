@@ -384,6 +384,24 @@ pub fn read_tabix(path: &PathBuf) -> Result<HashMap<String, (u64, usize)>> {
     Ok(contigs)
 }
 
+pub fn write_haplotype(
+    haplotype: Vec<HapVariant>,
+    mut writer: csv::Writer<Box<dyn std::io::Write>>,
+) -> Result<()> {
+    writer.write_record(vec!["contig", "pos", "ref", "alt", "gt"])?;
+
+    for coord in haplotype {
+        writer.write_record(vec![
+            coord.contig,
+            coord.pos.to_string(),
+            coord.reference,
+            coord.alt,
+            coord.gt.to_string(),
+        ])?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[rustfmt::skip]
 mod tests {

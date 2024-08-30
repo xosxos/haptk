@@ -2,9 +2,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use haptk::{
-    io::{get_output, get_vcf_writer, open_csv_writer},
+    io::{get_output, get_vcf_writer, open_csv_writer, write_haplotype},
     structs::{PhasedMatrix, Ploidy},
-    subcommands::bhst::{write_haplotype, Node},
+    subcommands::bhst::Node,
     subcommands::haplotype_to_vcf::{header, VcfRow},
 };
 

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 #[test]
 #[cfg(feature = "clap")]
 fn haplotype_to_vcf() {
-    let cmd = haptk::clap::SubCommand::ToVcf {
+    let cmd = haptk::clap::SubCommand::HaplotypeToVcf {
         file: PathBuf::from(TEST_HAPLOTYPE),
         sample_name: String::from("TEST1"),
         log_and_verbosity: crate::common::silent_verbosity(),

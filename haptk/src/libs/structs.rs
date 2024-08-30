@@ -41,6 +41,8 @@ pub struct HapVariant {
     pub reference: String,
     pub alt: String,
     pub gt: u8,
+    #[serde(default)]
+    pub annotation: Option<String>,
 }
 
 impl HapVariant {
@@ -523,6 +525,7 @@ impl PhasedMatrix {
                 alt: self.coords[index].alt.clone(),
                 reference: self.coords[index].reference.clone(),
                 gt: *self.matrix.slice(ndarray::s![sample, index]).into_scalar(),
+                annotation: None,
             })
             .collect()
     }
@@ -732,6 +735,7 @@ mod tests {
             reference: "G".to_string(),
             alt: "T".to_string(),
             gt: 1,
+            annotation: None,
         };
 
         assert_eq!(&"T".to_string(), hv.genotype());
