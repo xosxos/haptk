@@ -1,0 +1,5 @@
+---
+source: haptk/tests/test_list_haplotypes.rs
+expression: res
+---
+"id,ht\nSAMPLE1,0\nSAMPLE2,1\nSAMPLE3,2\nSAMPLE4,3\nSAMPLE5,4\nSAMPLE6,5\nSAMPLE7,6\nSAMPLE8,7\nSAMPLE9,8\nSAMPLE10,9\nSAMPLE11,10\nSAMPLE12,11\nSAMPLE13,12\nSAMPLE14,13/14\n"

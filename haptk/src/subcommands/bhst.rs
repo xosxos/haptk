@@ -443,7 +443,6 @@ impl Hst {
                 alt: self.metadata.coords[coord_index].alt.clone(),
                 reference: self.metadata.coords[coord_index].reference.clone(),
                 gt: node.haplotype[hap_index],
-                annotation: None,
             })
             .collect()
     }

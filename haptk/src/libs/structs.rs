@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::ops::Range;
 use std::ops::RangeBounds;
 
@@ -15,13 +16,45 @@ use crate::subcommands::bhst::find_majority_nodes;
 use crate::subcommands::bhst::Node;
 use crate::subcommands::uhst;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Coord {
     pub contig: String,
     pub pos: u64,
     pub reference: String,
     pub alt: String,
 }
+
+impl Ord for Coord {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.pos.cmp(&other.pos) {
+            Ordering::Less => Ordering::Less,
+            Ordering::Equal => {
+                if self.alt == "-" || other.alt == "-" {
+                    Ordering::Equal
+                } else {
+                    self.alt.cmp(&other.alt)
+                }
+            }
+            Ordering::Greater => Ordering::Greater,
+        }
+        // self.pos.cmp(&other.pos)
+    }
+}
+
+impl PartialOrd for Coord {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Coord {
+    fn eq(&self, other: &Self) -> bool {
+        (&self.contig, self.pos, &self.reference, &self.alt)
+            == (&other.contig, other.pos, &other.reference, &other.alt)
+    }
+}
+
+impl Eq for Coord {}
 
 impl From<HapVariant> for Coord {
     fn from(hap: HapVariant) -> Self {
@@ -34,15 +67,13 @@ impl From<HapVariant> for Coord {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct HapVariant {
     pub contig: String,
     pub pos: u64,
     pub reference: String,
     pub alt: String,
     pub gt: u8,
-    #[serde(default)]
-    pub annotation: Option<String>,
 }
 
 impl HapVariant {
@@ -525,7 +556,6 @@ impl PhasedMatrix {
                 alt: self.coords[index].alt.clone(),
                 reference: self.coords[index].reference.clone(),
                 gt: *self.matrix.slice(ndarray::s![sample, index]).into_scalar(),
-                annotation: None,
             })
             .collect()
     }
@@ -735,7 +765,6 @@ mod tests {
             reference: "G".to_string(),
             alt: "T".to_string(),
             gt: 1,
-            annotation: None,
         };
 
         assert_eq!(&"T".to_string(), hv.genotype());

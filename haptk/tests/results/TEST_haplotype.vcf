@@ -1,5 +1,5 @@
 ##fileformat=VCFv4.2
-##fileDate=2024-08-28 15:30:26.953766 UTC
+##fileDate=2024-09-04 11:55:01.548442267 UTC
 ##source=HAPTK
 ##FILTER=<ID=PASS,Description="All filters passed">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">

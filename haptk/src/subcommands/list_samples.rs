@@ -5,7 +5,6 @@ use color_eyre::{
     eyre::{eyre, WrapErr},
     Result,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::io::read_lines;
 
@@ -52,7 +51,7 @@ pub fn get_sample_names(path: PathBuf) -> Result<Vec<String>> {
             ids.extend(samples);
         }
         "fam" => {
-            for line in read_lines(path)?.flatten() {
+            for line in read_lines(path)?.map_while(Result::ok) {
                 let mut split = line.split('\t');
                 let id = split
                     .nth(1)

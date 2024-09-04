@@ -5,10 +5,9 @@ use color_eyre::{
     Result,
 };
 use rust_htslib::faidx::Reader;
-// use serde::{Deserialize, Serialize};
 
 use crate::error::HatkError::PosParseError;
-use crate::{io::open_csv_writer, structs::HapVariant};
+use crate::io::open_csv_writer;
 
 pub fn parse_seq_name(coords: &str) -> Result<(&str, u64, u64, &str)> {
     let error_msg = format!("Error parsing {coords:?}, make sure the sequence naming is as follows: [contig]:[start]-[stop];[annotation]");
@@ -33,7 +32,7 @@ pub fn parse_seq_name(coords: &str) -> Result<(&str, u64, u64, &str)> {
         .parse::<u64>()
         .wrap_err(eyre!(PosParseError((coords.into(), stop.into()))))?;
 
-    return Ok((contig, start, stop, ann));
+    Ok((contig, start, stop, ann))
 }
 
 pub fn run(path: PathBuf, seq_names: Vec<String>, output: PathBuf) -> Result<()> {
@@ -45,7 +44,7 @@ pub fn run(path: PathBuf, seq_names: Vec<String>, output: PathBuf) -> Result<()>
     let fasta_reader =
         Reader::from_path(&path).wrap_err(eyre!("Could not read the path: {:?}", path))?;
 
-    let mut fasta: Vec<HapVariant> = vec![];
+    let mut fasta: Vec<Vec<String>> = vec![];
 
     for seq_name in seq_names {
         let sequence = fasta_reader.fetch_seq_string(&seq_name, 0, 20000)?;
@@ -55,33 +54,24 @@ pub fn run(path: PathBuf, seq_names: Vec<String>, output: PathBuf) -> Result<()>
             sequence.len()
         );
         for (n, gt) in sequence.chars().enumerate() {
-            let hap_variant = HapVariant {
-                contig: contig.to_string(),
-                pos: start + n as u64,
-                reference: gt.to_string(),
-                alt: "-".to_string(),
-                annotation: Some(annotation.to_string()),
-                gt: 0,
-            };
-            fasta.push(hap_variant);
+            let csv_row = vec![
+                contig.to_string(),
+                (start + n as u64).to_string(),
+                gt.to_string(),
+                "-".to_string(),
+                format!("0"),
+                annotation.to_string(),
+            ];
+            fasta.push(csv_row);
         }
     }
 
     let mut writer = open_csv_writer(output)?;
     println!("contig,pos,ref,alt,gt,ann");
-    fasta
-        .into_iter()
-        .try_for_each(|hap_variant| -> Result<()> {
-            writer.write_record(vec![
-                hap_variant.contig,
-                hap_variant.pos.to_string(),
-                hap_variant.reference,
-                hap_variant.alt,
-                hap_variant.gt.to_string(),
-                format!("{}", hap_variant.annotation.unwrap()),
-            ])?;
-            Ok(())
-        })?;
+    fasta.into_iter().try_for_each(|row| -> Result<()> {
+        writer.write_record(row)?;
+        Ok(())
+    })?;
 
     tracing::debug!("Finished writing the fasta to haplotype");
 

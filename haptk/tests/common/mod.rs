@@ -10,6 +10,7 @@ use haptk::{
 
 pub const TEST_VCF: &str = "tests/data/test.vcf.gz";
 pub const TEST_HAPLOTYPE: &str = "tests/data/test_haplotype.csv";
+pub const TEST_FASTA: &str = "tests/data/unc13a_exons.fa";
 pub const OUTDIR: &str = "tests/results";
 pub const REC_RATES: &str = "tests/data/recombination_rates.tsv";
 pub const TEST_CONTRA: &str = "tests/data/test_contrahomozygote.vcf.gz";

@@ -19,51 +19,51 @@ mod test_check_for_haplotype {
         let vcf = create_test_matrix();
 
         let ht = vec![
-            HapVariant{ pos: 32, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0, annotation: None },
-            HapVariant{ pos: 33, contig: "chr9".into(), reference: "A".into(), alt: "C".into(), gt: 0, annotation: None }
+            HapVariant{ pos: 32, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0 },
+            HapVariant{ pos: 33, contig: "chr9".into(), reference: "A".into(), alt: "C".into(), gt: 0 }
         ];
 
         let matches = check_for_haplotype::identical_haplotype_count(&vcf, &ht);
         assert_eq!(vec![0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24], matches);
 
         let ht = vec![
-            HapVariant{ pos: 32, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0, annotation: None },
-            HapVariant{ pos: 33, contig: "chr9".into(), reference: "A".into(), alt: "C".into(), gt: 0, annotation: None },
-            HapVariant{ pos: 34, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 1, annotation: None },
+            HapVariant{ pos: 32, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0 },
+            HapVariant{ pos: 33, contig: "chr9".into(), reference: "A".into(), alt: "C".into(), gt: 0 },
+            HapVariant{ pos: 34, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 1 },
         ];
 
         let matches = check_for_haplotype::identical_haplotype_count(&vcf, &ht);
         assert_eq!(matches.len(), 1);
 
         let ht = vec![
-            HapVariant{ pos: 32, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0, annotation: None },
-            HapVariant{ pos: 34, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 1, annotation: None },
+            HapVariant{ pos: 32, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0 },
+            HapVariant{ pos: 34, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 1 },
         ];
 
         let matches = check_for_haplotype::identical_haplotype_count(&vcf, &ht);
         assert_eq!(matches.len(), 1);
 
         let ht = vec![
-            HapVariant{ pos: 32, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0, annotation: None },
-            HapVariant{ pos: 34, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 1, annotation: None },
+            HapVariant{ pos: 32, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0 },
+            HapVariant{ pos: 34, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 1 },
             // This does not exist in the test matrix so it will not be taken into account
-            HapVariant{ pos: 35, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 1, annotation: None }
+            HapVariant{ pos: 35, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 1 }
         ];
 
         let matches = check_for_haplotype::identical_haplotype_count(&vcf, &ht);
         assert_eq!(matches.len(), 1);
 
         let ht = vec![
-            HapVariant{ pos: 32, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0, annotation: None },
-            HapVariant{ pos: 34, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 1, annotation: None },
-            HapVariant{ pos: 35, contig: "chr9".into(), reference: "A".into(), alt: "C".into(), gt: 1, annotation: None }
+            HapVariant{ pos: 32, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0 },
+            HapVariant{ pos: 34, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 1 },
+            HapVariant{ pos: 35, contig: "chr9".into(), reference: "A".into(), alt: "C".into(), gt: 1 }
         ];
 
         let matches = check_for_haplotype::identical_haplotype_count(&vcf, &ht);
         assert_eq!(matches.len(), 0);
 
         let ht = vec![
-            HapVariant{ pos: 9999, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0, annotation: None },
+            HapVariant{ pos: 9999, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0 },
         ];
 
         let matches = check_for_haplotype::identical_haplotype_count(&vcf, &ht);

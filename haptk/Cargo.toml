@@ -44,6 +44,7 @@ itertools = "0.11"
 serde_json = "1.0"
 tracing = "0.1"
 tracing-appender = "0.2"
+indexmap = {version = "2.5.0", features = ["serde"]}
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "time"] }
 time = { version = "0.3", default-features = false, features = ["local-offset"] }
 petgraph = { version = "0.6", default-features = false, features = ["serde-1"] }

@@ -19,13 +19,98 @@ fn read_haplotypes() {
             prefix: None,
             samples: Some(vec![PathBuf::from("tests/data/SAMPLE1.ids")]),
         },
+        selection_variant: None,
         log_and_verbosity: crate::common::silent_verbosity(),
     };
     haptk::clap::run_cmd(cmd).unwrap();
 
-    let res = std::fs::read_to_string("tests/results/SAMPLE1_haplotype_1.csv").unwrap();
+    let res = std::fs::read_to_string("tests/results/haplotype_file.csv").unwrap();
     insta::assert_yaml_snapshot!(res);
 
-    let res = std::fs::read_to_string("tests/results/SAMPLE1_haplotype_2.csv").unwrap();
+    let res = std::fs::read_to_string("tests/results/genotype_file.csv").unwrap();
+    insta::assert_yaml_snapshot!(res);
+}
+
+#[test]
+#[cfg(feature = "clap")]
+fn read_haplotypes_only_alt() {
+    use common::COORDS;
+    use haptk::args::{Selection, StandardArgs};
+
+    let cmd = haptk::clap::SubCommand::Haplotypes {
+        args: StandardArgs {
+            file: PathBuf::from(TEST_VCF),
+            output: PathBuf::from("tests/results"),
+            coords: String::from(COORDS),
+            selection: Selection::OnlyAlts,
+            info_limit: None,
+            prefix: None,
+            samples: None,
+        },
+        selection_variant: Some(String::from("chr9:32")),
+        log_and_verbosity: crate::common::silent_verbosity(),
+    };
+    haptk::clap::run_cmd(cmd).unwrap();
+
+    let res = std::fs::read_to_string("tests/results/haplotype_file_only_alts.csv").unwrap();
+    insta::assert_yaml_snapshot!(res);
+
+    let res = std::fs::read_to_string("tests/results/genotype_file_only_alts.csv").unwrap();
+    insta::assert_yaml_snapshot!(res);
+}
+
+#[test]
+#[cfg(feature = "clap")]
+fn read_haplotypes_only_ref() {
+    use common::COORDS;
+    use haptk::args::{Selection, StandardArgs};
+
+    let cmd = haptk::clap::SubCommand::Haplotypes {
+        args: StandardArgs {
+            file: PathBuf::from(TEST_VCF),
+            output: PathBuf::from("tests/results"),
+            coords: String::from(COORDS),
+            selection: Selection::OnlyRefs,
+            info_limit: None,
+            prefix: None,
+            samples: None,
+        },
+        selection_variant: Some(String::from("chr9:32")),
+        log_and_verbosity: crate::common::silent_verbosity(),
+    };
+    haptk::clap::run_cmd(cmd).unwrap();
+
+    let res = std::fs::read_to_string("tests/results/haplotype_file_only_refs.csv").unwrap();
+    insta::assert_yaml_snapshot!(res);
+
+    let res = std::fs::read_to_string("tests/results/genotype_file_only_refs.csv").unwrap();
+    insta::assert_yaml_snapshot!(res);
+}
+
+#[test]
+#[cfg(feature = "clap")]
+fn read_haplotypes_only_longest() {
+    use common::COORDS;
+    use haptk::args::{Selection, StandardArgs};
+
+    let cmd = haptk::clap::SubCommand::Haplotypes {
+        args: StandardArgs {
+            file: PathBuf::from(TEST_VCF),
+            output: PathBuf::from("tests/results"),
+            coords: String::from(COORDS),
+            selection: Selection::OnlyLongest,
+            info_limit: None,
+            prefix: None,
+            samples: None,
+        },
+        selection_variant: Some(String::from("chr9:32")),
+        log_and_verbosity: crate::common::silent_verbosity(),
+    };
+    haptk::clap::run_cmd(cmd).unwrap();
+
+    let res = std::fs::read_to_string("tests/results/haplotype_file_only_longest.csv").unwrap();
+    insta::assert_yaml_snapshot!(res);
+
+    let res = std::fs::read_to_string("tests/results/genotype_file_only_longest.csv").unwrap();
     insta::assert_yaml_snapshot!(res);
 }

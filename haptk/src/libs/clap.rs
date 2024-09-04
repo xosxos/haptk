@@ -261,6 +261,9 @@ pub enum SubCommand {
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
+
+        #[arg(long)]
+        selection_variant: Option<String>,
     },
     /// Output the sample names from FAM / VCF / HST files
     Samples {
@@ -597,8 +600,7 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         SubCommand::CheckForHaplotype { args, haplotype, .. } => check_for_haplotype::run(args, haplotype)?,
         // SubCommand::Mrca { args, recombination_rates, start, stop, .. } => mrca::run(args.into(), recombination_rates, start, stop)?,
         SubCommand::Mrca { args, recombination_rates, .. } => mrca::run(args, recombination_rates)?,
-        SubCommand::Haplotypes { args, .. } => list_haplotypes::run(args)?,
-
+        SubCommand::Haplotypes { args, selection_variant, .. } => list_haplotypes::run(args, selection_variant)?,
         SubCommand::Samples { file, .. } => list_samples::run(file)?, 
         SubCommand::Markers { file, .. } => list_markers::run(file)?,
         SubCommand::HaplotypeToVcf { file, sample_name, output, .. } => haplotype_to_vcf::run(file, sample_name, output)?,

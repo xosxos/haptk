@@ -1,12 +1,134 @@
-use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
+
+use std::collections::{BTreeMap, HashSet};
+use std::io::{self};
 use std::path::PathBuf;
 
-use color_eyre::Result;
+use color_eyre::{eyre::eyre, Result};
+use csv::{Reader, ReaderBuilder};
+use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 use termion::color;
 
-use crate::io::{open_csv_writer, read_haplotype_file};
-use crate::structs::HapVariant;
+use crate::io::{get_input, open_csv_writer};
+use crate::structs::Coord;
 use crate::utils::strip_prefix;
+
+pub fn get_csv_reader<R: io::Read>(input: R) -> Reader<R> {
+    ReaderBuilder::new()
+        .delimiter(b',')
+        .has_headers(true)
+        .flexible(false)
+        .from_reader(input)
+}
+
+#[derive(Debug, Default, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CompareHaplotype {
+    pub contig: String,
+    pub pos: u64,
+    pub ann: Option<String>,
+    pub reference: String,
+    pub alt: String,
+    pub gts: Vec<String>,
+}
+
+impl From<&CompareHaplotype> for Coord {
+    fn from(variant: &CompareHaplotype) -> Self {
+        Coord {
+            contig: variant.contig.clone(),
+            pos: variant.pos,
+            reference: variant.reference.clone(),
+            alt: variant.alt.clone(),
+        }
+    }
+}
+
+impl PartialEq<CompareHaplotype> for Coord {
+    fn eq(&self, other: &CompareHaplotype) -> bool {
+        let clause1 = self.contig == other.contig
+            && self.pos == other.pos
+            && self.reference == other.reference;
+
+        let clause2 = self.alt == other.alt || self.alt == "-" || other.alt == "-";
+
+        clause1 && clause2
+    }
+}
+
+impl PartialEq<Coord> for CompareHaplotype {
+    fn eq(&self, other: &Coord) -> bool {
+        let clause1 = self.contig == other.contig
+            && self.pos == other.pos
+            && self.reference == other.reference;
+
+        let clause2 = self.alt == other.alt || self.alt == "-" || other.alt == "-";
+
+        clause1 && clause2
+    }
+}
+
+impl From<IndexMap<String, String>> for CompareHaplotype {
+    fn from(hm: IndexMap<String, String>) -> Self {
+        CompareHaplotype {
+            contig: hm["contig"].clone(),
+            pos: hm["pos"]
+                .parse::<u64>()
+                .unwrap_or_else(|_| panic!("Pos {:?} is not an integer", hm["pos"])),
+            ann: hm.get("ann").cloned(),
+            reference: hm["ref"].clone(),
+            alt: hm["alt"].clone(),
+            gts: hm
+                .keys()
+                .filter(|k| k.starts_with("ht") || k.starts_with("gt"))
+                .map(|k| hm[k].clone())
+                .collect(),
+        }
+    }
+}
+
+pub fn read_haplotype_file(ht_path: PathBuf) -> Result<(Vec<CompareHaplotype>, Vec<String>)> {
+    let mut rdr = get_csv_reader(get_input(Some(ht_path.clone()))?);
+
+    let mut ht_names: Vec<String> = vec![];
+    let line = rdr.deserialize().next().unwrap();
+    let record: IndexMap<String, String> = line?;
+    ht_names.extend(
+        record
+            .keys()
+            .filter(|k| k.starts_with("ht") || k.starts_with("gt"))
+            // .inspect(|&k| println!("{k:?}"))
+            .cloned(),
+    );
+
+    let mut rdr = get_csv_reader(get_input(Some(ht_path.clone()))?);
+
+    let mut variants: Vec<CompareHaplotype> = vec![];
+
+    for line in rdr.deserialize() {
+        let record: IndexMap<String, String> = line?;
+        let variant: CompareHaplotype = record.into();
+
+        if variant.gts.is_empty() {
+            tracing::info!(
+                "No genotypes at pos: {}, is the column correctly named starting with ht or gt",
+                variant.pos
+            );
+        }
+
+        if let Some(latest) = variants.last() {
+            if latest.pos > variant.pos {
+                return Err(eyre!(
+                    "The haplotype file is not sorted by position. {} is larger than {}",
+                    latest.pos,
+                    variant.pos
+                ));
+            }
+        }
+        variants.push(variant);
+    }
+
+    Ok((variants, ht_names))
+}
 
 pub fn run(
     haplotypes: Vec<PathBuf>,
@@ -16,6 +138,7 @@ pub fn run(
     hide_missing: bool,
     tag_rows: bool,
 ) -> Result<()> {
+    tracing::debug!("Reading in haplotypes: {:?}", haplotypes);
     match strip_prefix(prefix) {
         None => output.push("ht_comparison.csv"),
         Some(prefix) => output.push(format!("{prefix}_ht_comparison.csv")),
@@ -23,12 +146,20 @@ pub fn run(
 
     let mut names = vec![];
     let mut hts = vec![];
+    let mut ht_names = vec![];
     for path in haplotypes {
         names.push(path.display().to_string());
-        hts.push(read_haplotype_file(path)?);
+        let (ht, ht_name_vec) = read_haplotype_file(path)?;
+        ht_names.push(ht_name_vec);
+
+        hts.push(ht);
     }
 
-    let aligner = HaplotypeAligner::new(hts, names);
+    tracing::debug!("Finished reading haplotype files");
+
+    let aligner = HaplotypeAligner::new(hts, names, ht_names);
+
+    tracing::debug!("Finished aligning haplotypes");
 
     match csv {
         true => aligner.to_csv(output)?,
@@ -38,17 +169,22 @@ pub fn run(
 }
 
 pub struct HaplotypeAligner {
-    names: Vec<String>,
-    // alignment: BTreeMap<u64, Vec<Option<String>>>,
-    alignment: BTreeMap<u64, (Vec<Option<String>>, String)>,
+    filenames: Vec<String>,
+    ht_names: Vec<Vec<String>>,
+    alignment: BTreeMap<Coord, (Vec<Option<String>>, String)>,
 }
 
 impl HaplotypeAligner {
-    pub fn new(haplotypes: Vec<Vec<HapVariant>>, names: Vec<String>) -> Self {
+    pub fn new(
+        haplotypes: Vec<Vec<CompareHaplotype>>,
+        filenames: Vec<String>,
+        ht_names: Vec<Vec<String>>,
+    ) -> Self {
+        let n_gts_count: usize = ht_names.iter().map(|v| v.len()).sum();
         let mut last_contig = &haplotypes[0][0].contig;
 
-        // Register all positions first and initalize a vec of None's corresponding to the number of haplotypes to study
-        let mut tree_map: BTreeMap<u64, (Vec<Option<String>>, String)> = BTreeMap::new();
+        // Register all positions first and initialize a vec of None's corresponding to the number of haplotypes to study
+        let mut tree_map: BTreeMap<Coord, (Vec<Option<String>>, String)> = BTreeMap::new();
 
         for ht in &haplotypes {
             let curr_contig = &ht[0].contig;
@@ -58,86 +194,68 @@ impl HaplotypeAligner {
             last_contig = curr_contig;
 
             for variant in ht {
-                tree_map
-                    .entry(variant.pos)
-                    .or_insert_with(|| (vec![None; names.len()], String::new()));
+                match tree_map.entry(variant.into()) {
+                    Entry::Occupied(entry) => {
+                        if entry.key().alt == "-" {
+                            entry.remove_entry();
+                            tree_map
+                                .insert(variant.into(), (vec![None; n_gts_count], String::new()));
+                        }
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert((vec![None; n_gts_count], String::new()));
+                    }
+                };
             }
         }
 
         // Register present or missing genotypes for each position into the vec for each position
-        for (position, (genotypes, annotations)) in tree_map.iter_mut() {
-            for (idx, ht) in haplotypes.iter().enumerate() {
+        for (coord, (genotypes, annotations)) in tree_map.iter_mut() {
+            let mut cum_sum = 0;
+            for ht in haplotypes.iter() {
+                let mut found = false;
                 for hap_variant in ht {
-                    if position == &hap_variant.pos {
+                    if coord == hap_variant {
+                        found = true;
                         // Change a None into Some if the haplotype has a genotype at this position
-                        genotypes[idx] = Some(hap_variant.genotype().to_owned());
+                        for gt in &hap_variant.gts {
+                            genotypes[cum_sum] = Some(gt.clone());
+                            cum_sum += 1;
+                        }
 
-                        if let Some(annotation) = &hap_variant.annotation {
-                            annotations.push_str(" ");
+                        if let Some(annotation) = &hap_variant.ann {
+                            annotations.push(' ');
                             annotations.push_str(annotation);
                         }
+                        break;
                     }
+                }
+                if !found {
+                    cum_sum += ht[0].gts.len();
                 }
             }
         }
 
         Self {
-            names,
+            ht_names,
+            filenames,
             alignment: tree_map,
         }
     }
 
-    // pub fn new_old(haplotypes: Vec<Vec<HapVariant>>, names: Vec<String>) -> Self {
-    //     let mut last_contig = &haplotypes[0][0].contig;
-
-    //     // Register all positions first and initalize a vec of None's corresponding to the number of haplotypes to study
-    //     let mut positions = vec![];
-    //     for ht in &haplotypes {
-    //         let curr_contig = &ht[0].contig;
-    //         if last_contig != curr_contig {
-    //             panic!("Haplotypes are from different contigs {last_contig} vs {curr_contig}")
-    //         }
-    //         last_contig = curr_contig;
-    //         for variant in ht {
-    //             positions.push((variant.pos, vec![None; names.len()]))
-    //         }
-    //     }
-    //     positions.sort();
-    //     positions.dedup();
-
-    //     // Register present or missing genotypes for each position into the vec for each position
-    //     let mut all_positions = BTreeMap::from_iter(positions);
-
-    //     for (position, genotypes) in all_positions.iter_mut() {
-    //         for (idx, ht) in haplotypes.iter().enumerate() {
-    //             for hap_variant in ht {
-    //                 if position == &hap_variant.pos {
-    //                     // Change a None into Some if the haplotype has a genotype at this position
-    //                     genotypes[idx] = Some(hap_variant.genotype().to_owned());
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     Self {
-    //         names,
-    //         alignment: all_positions,
-    //     }
-    // }
-
     pub fn print(&self, hide_missing: bool, tag_rows: bool) {
         // Prepare header
-        let names = self
-            .names
-            .iter()
-            .fold(" pos".to_string(), |s, r| format!("{s} {r}"));
+        let mut header_names = vec![];
+        for (i, name) in self.filenames.iter().enumerate() {
+            for ht_name in &self.ht_names[i] {
+                header_names.push(format!("{name}/{ht_name}"))
+            }
+        }
+        let header_names = header_names.join(" ");
 
-        println!(
-            "{}{names} status",
-            color::Fg(color::AnsiValue::rgb(3, 3, 5))
-        );
+        println!(" pos {header_names} annotation");
 
-        for (pos, (genotypes, ann)) in &self.alignment {
+        for (coord, (genotypes, ann)) in &self.alignment {
             // If missing genotypes present, yellow is true
             // If contradictory genotypes present, red is also true
 
@@ -152,41 +270,48 @@ impl HaplotypeAligner {
             };
 
             // Switch Nones to - and fold the vec into a string
-            let line = genotypes
+            let gts = genotypes
                 .iter()
                 .map(|gt| match gt {
                     None => "-".to_string(),
                     Some(gt) => gt.to_owned(),
                 })
-                .fold(format!("{ann} {pos}"), |s, r| format!("{s} {r}"));
+                .fold(String::new(), |s, r| format!("{s} {r}"));
+
+            let line = format!("{color} {coord} {gts} {ann}");
 
             if !hide_missing || !yellow {
                 if tag_rows {
                     match (yellow, red) {
-                        (_, true) => println!("{color}{line} err"),
-                        (true, false) => println!("{color}{line} mis"),
-                        (false, false) => println!("{color}{line} ok"),
+                        (_, true) => println!("{line} err"),
+                        (true, false) => println!("{line} mis"),
+                        (false, false) => println!("{line} ok"),
                     }
                 } else {
-                    println!("{color}{line}");
+                    println!("{line}");
                 }
             }
         }
     }
 
-    fn find_mismatch(&self, v: &[Option<String>]) -> (bool, bool) {
-        let mut values = v.iter().flatten().collect::<Vec<&String>>();
-        let yellow = values.len() != v.len();
-        values.sort();
-        values.dedup();
-        let red = values.len() > 1;
-        (yellow, red)
+    fn find_mismatch(&self, genotypes: &[Option<String>]) -> (bool, bool) {
+        let mut is_some_count = 0;
+        let hash_set = genotypes
+            .iter()
+            .flatten()
+            .inspect(|_| is_some_count += 1)
+            .collect::<HashSet<_>>();
+
+        let has_missing = is_some_count != genotypes.len();
+        let has_mismatch = hash_set.len() > 1;
+
+        (has_missing, has_mismatch)
     }
 
     pub fn to_csv(&self, path: PathBuf) -> Result<()> {
         let mut wrtr = open_csv_writer(path)?;
         let mut header = vec!["pos".to_string()];
-        header.extend(self.names.clone());
+        header.extend(self.filenames.clone());
 
         wrtr.write_record(&header)?;
         for (pos, (genotypes, _ann)) in &self.alignment {
@@ -198,94 +323,5 @@ impl HaplotypeAligner {
             wrtr.write_record(&record)?;
         }
         Ok(())
-    }
-}
-
-#[cfg(test)]
-#[rustfmt::skip]
-mod tests {
-    use super::*;
-
-    fn get_ref_alt() -> (String, String) {
-        ("A".to_string(), "T".to_string())
-    }
-
-    fn create_haplotype(missing: u64, gt: u64) -> Vec<HapVariant> {
-        let mut haps = vec![];
-        for i in 0..50 {
-            if i % missing != 0 {
-                let (reference, alt) = get_ref_alt();
-                let gt = match i % gt == 0 {
-                    true => 1,
-                    false => 0,
-                };
-                let hap = HapVariant {
-                    contig: "".to_string(),
-                    pos: i,
-                    reference,
-                    alt,
-                    gt,
-                    annotation: None,
-                };
-                haps.push(hap);
-            }
-        }
-        haps
-    }
-
-    #[test]
-    fn test_aligner_alignment() {
-        let hap1 = create_haplotype(11, 9);
-        let hap2 = create_haplotype(2, 10);
-        let hap3 = create_haplotype(5, 11);
-        let aligner = HaplotypeAligner::new(
-            vec![hap1, hap2, hap3],
-            vec!["hap1".to_string(), "hap2".to_string(), "hap3".to_string()],
-        );
-        let pos: Vec<u64> = (1..50).collect();
-        let colors = [(false, false),
-            (true, false),
-            (false, false),
-            (true, false),
-            (true, false),
-            (true, false),
-            (false, false),
-            (true, false),
-            (false, true),
-            (true, false)];
-
-        for (i, (align_pos, (genotypes, _ann))) in aligner.alignment.iter().enumerate() {
-            assert_eq!(&pos[i], align_pos);
-            assert_eq!(colors[i], aligner.find_mismatch(genotypes));
-
-            if i == 9 {
-                break;
-            }
-        }
-    }
-
-    #[test]
-    fn test_aligner_mismatch() {
-        let aligner = HaplotypeAligner { names : vec![], alignment: BTreeMap::new() };
-
-        let foo: Vec<Option<String>> = vec![Some("A".into()), None, Some("T".into())];
-        let (yellow, red) = aligner.find_mismatch(&foo);
-        assert_eq!((yellow, red), (true, true));
-
-        let foo: Vec<Option<String>> = vec![Some("A".into()), Some("A".into()), Some("T".into())];
-        let (yellow, red) = aligner.find_mismatch(&foo);
-        assert_eq!((yellow, red), (false, true));
-
-        let foo: Vec<Option<String>> = vec![Some("A".into()), None, None];
-        let (yellow, red) = aligner.find_mismatch(&foo);
-        assert_eq!((yellow, red), (true, false));
-
-        let foo: Vec<Option<String>> = vec![None, None, None];
-        let (yellow, red) = aligner.find_mismatch(&foo);
-        assert_eq!((yellow, red), (true, false));
-
-        let foo: Vec<Option<String>> = vec![Some("A".into()), Some("A".into()), Some("A".into())];
-        let (yellow, red) = aligner.find_mismatch(&foo);
-        assert_eq!((yellow, red), (false, false));
     }
 }
