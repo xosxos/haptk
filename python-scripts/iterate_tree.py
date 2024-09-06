@@ -34,6 +34,8 @@ mask = df['id'].isin(samples)
 df = df[mask]
 
 
+# print(df)
+
 calculate_dur = True
 # Calculate disease duration for those not deceased
 if calculate_dur:
@@ -58,33 +60,6 @@ df["site"] = df["site"].apply(lambda x: 0 if x == "SPINAL" else 1)
 df["sex"] = df["sex"].apply(lambda x: 0 if x == "M" else 1)
 
 # print(df)
-
-# df = df.drop("id", axis = 1)
-
-# # Fit the model
-# cph = CoxPHFitter()
-
-# cph.fit(df, duration_col = 'dur', event_col = 'status')
-
-# coefs = len(cph.summary['coef'])
-
-# print(f"covariate,coef,exp_coef,se_coef,coef_lower_95,coef_upper_95,exp_coef_lower_95,exp_coef_upper_95,cmp_to,z,p,minus_log2_p")
-# for i in range(0,coefs):
-#     covariate = cph.summary['coef'].index[i]
-#     coef = round(cph.summary['coef'].iloc[i], 6)
-#     exp_coef = round(cph.summary['exp(coef)'].iloc[i], 6)
-#     se_coef = round(cph.summary['se(coef)'].iloc[i], 6)
-#     coef_lower_95 = round(cph.summary['coef lower 95%'].iloc[i], 6)
-#     coef_upper_95 = round(cph.summary['coef upper 95%'].iloc[i], 6)
-#     exp_coef_lower_95 = round(cph.summary['exp(coef) lower 95%'].iloc[i], 6)
-#     exp_coef_upper_95 = round(cph.summary['exp(coef) upper 95%'].iloc[i], 6)
-#     cmp_to = round(cph.summary['cmp to'].iloc[i], 6)
-#     z = round(cph.summary['z'].iloc[i], 6)
-#     p = cph.summary['p'].iloc[i]
-#     p = f"{p:.4g}"
-#     minus_log2_p = round(cph.summary['-log2(p)'].iloc[i], 6)
-
-#     print(f"{covariate},{coef},{exp_coef},{se_coef},{coef_lower_95},{coef_upper_95},{exp_coef_lower_95},{exp_coef_upper_95},{cmp_to},{z},{p},{minus_log2_p}")
 
 def tree_style():
     ts = TreeStyle()
@@ -157,19 +132,11 @@ def optimizer(hst, n, indexes, df, _samples_to_tag):
 
     # print(node_name)
     if n.name != "0":
-        if hst.metadata['ploidy'] == "Diploid":
-            samples = hst.metadata["samples"]
-            samples = samples + hst.metadata["samples"]
-        else:
-            samples = hst.metadata["samples"]
-        
-        names = []
-        for i in indexes:
-            name = samples[i]
-            names.append(name)
+        names = [hst.samples[x] for x in indexes]
 
         df["gt"] = df["id"].apply(lambda id: names.count(id))
 
+         # # Additive model
         hets = list(df["gt"]).count(1)
         alt_homs = list(df["gt"]).count(2)
 
@@ -178,15 +145,13 @@ def optimizer(hst, n, indexes, df, _samples_to_tag):
 
         # Recessive model
         # df["gt"] = df["gt"].apply(lambda x: 0 if x < 2 else 1)
+        # hets = list(df["gt"]).count(0)
         # alt_homs = list(df["gt"]).count(1)
+
         # if alt_homs < 5:
-            # return (1.0, "NA", color, text_color)
+        #     return (1.0, "NA", color, text_color)
 
-        if n.name == "40":
-            tmp = df.loc[df["gt"] == 2]
-            print(tmp)
-
-
+        # Drop IDs before fitting the model
         df = df.drop("id", axis = 1)
 
         # Fit the model
@@ -214,7 +179,7 @@ def optimizer(hst, n, indexes, df, _samples_to_tag):
 
         return (float(p), label, color, text_color)
     else:
-        return (1.0, "1.16", "darkviolet", "white")
+        return (1.0, "ROOT", "blue", "white")
 
 
 
