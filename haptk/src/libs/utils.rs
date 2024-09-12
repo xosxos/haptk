@@ -1,4 +1,4 @@
-use color_eyre::eyre::{eyre, WrapErr};
+use color_eyre::eyre::{eyre, OptionExt, WrapErr};
 use color_eyre::Result;
 
 use crate::error::HatkError::{CoordsParseError, PosParseError};
@@ -16,6 +16,7 @@ pub fn strip_prefix(prefix: Option<String>) -> Option<String> {
     }
 }
 
+// Coords are in the format [contig]:[position]
 pub fn parse_snp_coord(coords: &str) -> Result<(&str, u64)> {
     let mut coord_split = coords.split(':');
 
@@ -30,34 +31,34 @@ pub fn parse_snp_coord(coords: &str) -> Result<(&str, u64)> {
     }
 }
 
+// Coords are in the format [contig] or [contig]:[start]-[stop]
 pub fn parse_coords(coords: &str) -> Result<(&str, Option<u64>, Option<u64>)> {
     let mut coord_split = coords.split(':');
 
-    match (coord_split.next(), coord_split.next()) {
-        (Some(contig), Some(value)) => {
-            let mut pos_split = value.split('-');
-            match (pos_split.next(), pos_split.next()) {
-                (None, None) => Ok((contig, None, None)),
-                (Some(start), None) => {
-                    let start = start
-                        .parse::<u64>()
-                        .wrap_err(eyre!(PosParseError((coords.into(), start.into()))))?;
-                    Ok((contig, Some(start), None))
-                }
-                (Some(start), Some(stop)) => {
-                    let start = start
-                        .parse::<u64>()
-                        .wrap_err(eyre!(PosParseError((coords.into(), start.into()))))?;
-                    let stop = stop
-                        .parse::<u64>()
-                        .wrap_err(eyre!(PosParseError((coords.into(), stop.into()))))?;
-                    Ok((contig, Some(start), Some(stop)))
-                }
-                _ => panic!(),
-            }
-        }
-        (Some(contig), None) => Ok((contig, None, None)),
-        _ => Err(eyre!(CoordsParseError(coords.into()))),
+    let contig = coord_split
+        .next()
+        .ok_or_eyre(CoordsParseError(coords.into()))?;
+
+    let positions = coord_split.next();
+
+    if positions.is_none() {
+        return Ok((contig, None, None));
+    }
+
+    let mut pos_split = positions.unwrap().split('-');
+    let (start, stop) = (pos_split.next(), pos_split.next());
+
+    if let (Some(start), Some(stop)) = (start, stop) {
+        let start = start
+            .parse::<u64>()
+            .wrap_err(eyre!(PosParseError((coords.into(), start.into()))))?;
+        let stop = stop
+            .parse::<u64>()
+            .wrap_err(eyre!(PosParseError((coords.into(), stop.into()))))?;
+
+        Ok((contig, Some(start), Some(stop)))
+    } else {
+        Err(eyre!(CoordsParseError(coords.into())))
     }
 }
 
@@ -150,14 +151,15 @@ mod tests {
         assert_eq!(contig, "chr9");
         assert_eq!(start, None);
         assert_eq!(stop, None);
-        let (contig, start, stop) = parse_coords("chr9:1920").unwrap();
-        assert_eq!(contig, "chr9");
-        assert_eq!(start, Some(1920));
-        assert_eq!(stop, None);
+
+        let res = parse_coords("chr9:1920");
+        assert!(res.is_err());
+
         let (contig, start, stop) = parse_coords("chr9:1920-2500").unwrap();
         assert_eq!(contig, "chr9");
         assert_eq!(start, Some(1920));
         assert_eq!(stop, Some(2500));
+
         let result = parse_coords("chr9:1920--2500");
         assert!(result.is_err())
     }

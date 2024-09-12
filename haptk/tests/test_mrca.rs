@@ -11,8 +11,6 @@ fn mrca() {
         args,
         recombination_rates: PathBuf::from(common::REC_RATES),
         log_and_verbosity: crate::common::silent_verbosity(),
-        start: None,
-        stop: None,
     };
     haptk::clap::run_cmd(cmd).unwrap();
 

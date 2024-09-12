@@ -38,13 +38,7 @@ pub fn run(
 
     let (contig, start, stop) = parse_coords(&args.coords)?;
 
-    let range = match (start, stop) {
-        (Some(start), Some(stop)) => Some((start, stop)),
-        (None, None) => None,
-        _ => panic!("Open ended ranges are not supported for now"),
-    };
-
-    let vcf = read_vcf_to_matrix(&args, contig, 0, range, None)?;
+    let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None)?;
 
     let rates = read_recombination_file(rec_rates)?;
 

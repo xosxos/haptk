@@ -6,14 +6,14 @@ use std::path::PathBuf;
 #[test]
 #[cfg(feature = "clap")]
 fn read_haplotypes() {
-    use common::COORDS;
+    use common::COORD_RANGE;
     use haptk::args::{Selection, StandardArgs};
 
     let cmd = haptk::clap::SubCommand::Haplotypes {
         args: StandardArgs {
             file: PathBuf::from(TEST_VCF),
             output: PathBuf::from("tests/results"),
-            coords: String::from(COORDS),
+            coords: String::from(COORD_RANGE),
             selection: Selection::All,
             info_limit: None,
             prefix: None,
@@ -34,14 +34,14 @@ fn read_haplotypes() {
 #[test]
 #[cfg(feature = "clap")]
 fn read_haplotypes_only_alt() {
-    use common::COORDS;
+    use common::COORD_RANGE;
     use haptk::args::{Selection, StandardArgs};
 
     let cmd = haptk::clap::SubCommand::Haplotypes {
         args: StandardArgs {
             file: PathBuf::from(TEST_VCF),
             output: PathBuf::from("tests/results"),
-            coords: String::from(COORDS),
+            coords: String::from(COORD_RANGE),
             selection: Selection::OnlyAlts,
             info_limit: None,
             prefix: None,
@@ -62,14 +62,14 @@ fn read_haplotypes_only_alt() {
 #[test]
 #[cfg(feature = "clap")]
 fn read_haplotypes_only_ref() {
-    use common::COORDS;
+    use common::COORD_RANGE;
     use haptk::args::{Selection, StandardArgs};
 
     let cmd = haptk::clap::SubCommand::Haplotypes {
         args: StandardArgs {
             file: PathBuf::from(TEST_VCF),
             output: PathBuf::from("tests/results"),
-            coords: String::from(COORDS),
+            coords: String::from(COORD_RANGE),
             selection: Selection::OnlyRefs,
             info_limit: None,
             prefix: None,
@@ -90,14 +90,14 @@ fn read_haplotypes_only_ref() {
 #[test]
 #[cfg(feature = "clap")]
 fn read_haplotypes_only_longest() {
-    use common::COORDS;
+    use common::COORD_RANGE;
     use haptk::args::{Selection, StandardArgs};
 
     let cmd = haptk::clap::SubCommand::Haplotypes {
         args: StandardArgs {
             file: PathBuf::from(TEST_VCF),
             output: PathBuf::from("tests/results"),
-            coords: String::from(COORDS),
+            coords: String::from(COORD_RANGE),
             selection: Selection::OnlyLongest,
             info_limit: None,
             prefix: None,

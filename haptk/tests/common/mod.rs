@@ -15,6 +15,7 @@ pub const OUTDIR: &str = "tests/results";
 pub const REC_RATES: &str = "tests/data/recombination_rates.tsv";
 pub const TEST_CONTRA: &str = "tests/data/test_contrahomozygote.vcf.gz";
 pub const COORDS: &str = "chr9:32";
+pub const COORD_RANGE: &str = "chr9:0-70";
 
 pub fn create_test_matrix() -> PhasedMatrix {
     let args = StandardArgs {

@@ -39,12 +39,7 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
 
     let (contig, start, stop) = parse_coords(&args.coords)?;
 
-    let vcf = match (start, stop) {
-        (Some(start), Some(stop)) => {
-            read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None)?
-        }
-        _ => read_vcf_to_matrix(&args, contig, 0, None, None)?,
-    };
+    let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None)?;
 
     // Create a Vec because par_iter cannot be used with pure ranges and par_bridge does not
     // return in ordered fashion with .collect()

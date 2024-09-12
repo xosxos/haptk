@@ -97,15 +97,9 @@ pub enum SubCommand {
         /// Recombination rate file
         #[arg(short = 'r', long)]
         recombination_rates: PathBuf,
-
-        #[arg(long)]
-        start: Option<u64>,
-
-        #[arg(long)]
-        stop: Option<u64>,
     },
 
-    /// Analyze the MRCA every x markers along a given contig
+    ///  (experimental) Analyze the MRCA every x markers along a given contig
     MrcaScan {
         #[command(flatten)]
         args: StandardArgs,
@@ -307,7 +301,7 @@ pub enum SubCommand {
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
     },
-    /// bHST scan
+    /// (experimental) bHST scan
     BhstScan {
         #[command(flatten)]
         args: StandardArgs,
@@ -323,7 +317,7 @@ pub enum SubCommand {
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
     },
-    /// Scan all nodes of all trees for a node specific value
+    /// (experimental) Scan all nodes of all trees for a node specific value
     ScanNodes {
         #[command(flatten)]
         args: ConciseArgs,
@@ -352,7 +346,7 @@ pub enum SubCommand {
         threads: usize,
     },
 
-    /// Scan all nodes of all trees for a difference in a quantative variable
+    /// (experimental) Scan all nodes of all trees for a difference in a quantative variable
     ScanQuantitative {
         #[command(flatten)]
         args: ConciseArgs,
@@ -389,7 +383,7 @@ pub enum SubCommand {
         var_name: String,
     },
 
-    /// Scan all branches of all trees for the smallest MRCA value
+    /// (experimental) Scan all branches of all trees for the smallest MRCA value
     ScanBranchMrca {
         #[command(flatten)]
         args: ConciseArgs,
@@ -422,7 +416,7 @@ pub enum SubCommand {
         recombination_rates: PathBuf,
     },
 
-    /// Find bHST based segregated haplotypes genome-wide
+    /// (experimental) Find bHST based segregated haplotypes genome-wide
     ScanSegregate {
         #[command(flatten)]
         args: ConciseArgs,
@@ -598,7 +592,6 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
         SubCommand::CompareToHst { args, hst, .. } => compare_to_hst::run(args, hst)?,
         SubCommand::CheckForHaplotype { args, haplotype, .. } => check_for_haplotype::run(args, haplotype)?,
-        // SubCommand::Mrca { args, recombination_rates, start, stop, .. } => mrca::run(args.into(), recombination_rates, start, stop)?,
         SubCommand::Mrca { args, recombination_rates, .. } => mrca::run(args, recombination_rates)?,
         SubCommand::Haplotypes { args, selection_variant, .. } => list_haplotypes::run(args, selection_variant)?,
         SubCommand::Samples { file, .. } => list_samples::run(file)?, 

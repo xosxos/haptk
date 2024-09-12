@@ -35,9 +35,7 @@ pub fn run(args: StandardArgs, selection_variant: Option<String>) -> Result<()> 
     // };
 
     let mut vcf = match (start, stop) {
-        (Some(start), Some(stop)) => {
-            read_vcf_to_matrix(&args, contig, pos, Some((start, stop)), None)?
-        }
+        (Some(_), Some(_)) => read_vcf_to_matrix(&args, contig, pos, Some((start, stop)), None)?,
         _ => read_vcf_to_matrix(&args, contig, pos, None, None)?,
     };
 
