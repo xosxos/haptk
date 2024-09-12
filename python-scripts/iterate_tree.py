@@ -15,6 +15,8 @@ parser.add_argument('hst', type=str)
 parser.add_argument('--df', type=str)
 parser.add_argument('--min-size', type=int, default=1)    
 parser.add_argument('--hard-cut', action="store_true")    
+parser.add_argument('--min-start', type=int, default=None)    
+parser.add_argument('--max-stop', type=int, default=None)    
 parser.add_argument('--ids', nargs="+", type=str)
 parser.add_argument('--w', type=int)
 parser.add_argument('--h', type=int)
@@ -67,8 +69,8 @@ def tree_style():
     ts.rotation = 90
     ts.show_leaf_name = False
     ts.show_scale = False
-    ts.min_leaf_separation = 35
-    # ts.branch_vertical_margin = 10
+    # ts.min_leaf_separation = 10
+    ts.branch_vertical_margin = 30
     ts.optimal_scale_level = "mid"
     ts.allow_face_overlap = False
 
@@ -120,7 +122,10 @@ def optimizer_fisher(hst, _node_name, indexes, _df, samples_to_tag):
 
     return res.pvalue
 
-def optimizer(hst, n, indexes, df, _samples_to_tag):
+def optimizer(hst, n, df, _samples_to_tag):
+    indexes = hst.get_node_indexes(n.name)
+    haplotype = hst.get_node_haplotype(n.name)
+
     label = "o"
     if not n.is_leaf():
         label = len(indexes)
@@ -140,8 +145,13 @@ def optimizer(hst, n, indexes, df, _samples_to_tag):
         hets = list(df["gt"]).count(1)
         alt_homs = list(df["gt"]).count(2)
 
+        sum = hets + alt_homs * 2
+        freq = sum / (df.shape[0] * 2)
+
         if hets + alt_homs < 5:
-            return (1.0, "NA", color, text_color)
+            label = f"NA NA {haplotype} {freq:.2g} "
+            # return (1.0, "NA", color, text_color)
+            return (1.0, label, color, text_color)
 
         # Recessive model
         # df["gt"] = df["gt"].apply(lambda x: 0 if x < 2 else 1)
@@ -162,7 +172,7 @@ def optimizer(hst, n, indexes, df, _samples_to_tag):
         coef = round(cph.summary['coef'].iloc[5], 6)
         e_coef = round(cph.summary['exp(coef)'].iloc[5], 6)
         p = cph.summary['p'].iloc[5]
-        label = f"{e_coef:.3g}"
+        label = f"{e_coef:.3g} {p:.2g} {haplotype} {freq:.2g}"
         print(n.name, len(indexes), hets, alt_homs, coef, e_coef, p)
 
         if p < 0.05:
@@ -184,8 +194,7 @@ def optimizer(hst, n, indexes, df, _samples_to_tag):
 
 
 # # Render the tree
-hst.iterate_tree(df, optimizer, args.output, w=args.w, h=args.h, to_tag=samples_to_tag, min_size=args.min_size, hard_cut=args.hard_cut, tree_style=tree_style())
-
+hst.iterate_tree(df, optimizer, args.output, w=args.w, h=args.h, to_tag=samples_to_tag, min_size=args.min_size, hard_cut=args.hard_cut, min_start=args.min_start, max_stop=args.max_stop, tree_style=tree_style())
 
 
 

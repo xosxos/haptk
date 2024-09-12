@@ -116,37 +116,37 @@ class HST:
     def get_children_idx_amounts(self, node):
         return [len(self.get_node_data(c.name)["indexes"]) for c in node.children]
 
-    def iterate_tree(self, df, optimizer, output, to_tag=[], min_size=1, hard_cut=False, tree_style = iterate_tree_style(), dpi=600, w=1624, h=1624):
-        t = create_ete3_tree(self, min_size, hard_cut)
+    def iterate_tree(self, df, optimizer, output, to_tag=[], min_size=1, hard_cut=False, min_start=None, max_stop=None, tree_style = iterate_tree_style(), dpi=600, w=1624, h=1624):
+        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop)
         t = iterate_tree_inner(self, t, to_tag, df, optimizer)
         t.render(output, units="px", w=w, h=h, tree_style=tree_style, dpi=dpi)
 
-    def match_tree(self, other_hst, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, proportions=False, dpi=600, tree_style=match_tree_style()): 
-        other_t = create_ete3_tree(other_hst, min_size, hard_cut)
+    def match_tree(self, other_hst, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=match_tree_style()): 
+        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop)
         t = draw_match_tree(self.G, other_t, output, self.samples, to_tag, colors, proportions)
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
 
-    def index_tree(self, output, min_size=1, hard_cut=False, dpi=600, tree_style=index_tree_style()): 
-        t = create_ete3_tree(self, min_size, hard_cut)
+    def index_tree(self, output, min_size=1, hard_cut=False, min_start=None, max_stop=None, dpi=600, tree_style=index_tree_style()): 
+        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop)
         t = draw_index_tree(t, output)
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
 
-    def circle_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, w=1624, h=1624, dpi=600, tree_style=circle_tree_style(), branch_length_as_majority = 999999999, branch_point_size = 999999999): 
+    def circle_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, w=1624, h=1624, dpi=600, tree_style=circle_tree_style(), branch_length_as_majority = 999999999, branch_point_size = 999999999): 
         if len(to_tag) > len(colors):
             raise ValueError("more samples to tag than available colors")
 
-        t = create_ete3_tree(self, min_size, hard_cut)
+        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop)
         t = draw_circle_tree(self, t, to_tag, colors, branch_point_size, branch_length_as_majority)
 
         t.render(output, w=w, h=h, units="px", tree_style=tree_style, dpi=dpi)
 
-    def normal_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, proportions=False, dpi=600, tree_style=normal_tree_style(), branch_length_as_majority = 999999999, branch_point_size = 999999999): 
+    def normal_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=normal_tree_style(), branch_length_as_majority = 999999999, branch_point_size = 999999999): 
         if len(to_tag) > len(colors):
             raise ValueError("more samples to tag than available colors")
 
-        t = create_ete3_tree(self, min_size, hard_cut)
+        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop)
         t = draw_normal_tree(self, t, to_tag, colors, proportions, branch_point_size, branch_length_as_majority)
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
@@ -176,9 +176,9 @@ def read_hst(path):
 
         return hst
 
-def create_ete3_tree(hst, min_size, hard_cut):
+def create_ete3_tree(hst, min_size, hard_cut, min_start, max_stop):
     graph_dict = utils.hst_to_graph_dict(hst.G)
-    newick = utils.newickify(hst.G, graph_dict, min_size, hard_cut)
+    newick = utils.newickify(hst, graph_dict, min_size, hard_cut, min_start, max_stop)
     return Tree(newick, format=1)
 
 

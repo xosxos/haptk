@@ -74,14 +74,34 @@ def hst_to_graph_dict(hst):
     return graph_dict
 
 # Originally from https://stackoverflow.com/questions/50003007/how-to-convert-python-dictionary-to-newick-form-format
-def newickify(hst, graph_dict, min_samples, hard_cut) -> str:
+def newickify(hst, graph_dict, min_samples, hard_cut, min_start, max_stop) -> str:
     visited_nodes = set()
 
     # Recursion
     def newick_render_node(node_idx, node_data) -> str:
         assert node_idx not in visited_nodes, "Error: The tree may not be circular!"
 
-        if node_idx not in graph_dict or len(node_data["indexes"]) < min_samples:
+        start_stop_clause = False
+
+        if min_start or max_stop:
+            # parents = hst.G.predecessors(node_idx)
+            # if len(parents) > 0:
+                # parent_node = parents[0]
+                # start = hst.coords[parent_node['start_idx']]['pos']
+                # stop = hst.coords[parent_node['stop_idx']]['pos']
+                # print(start, stop, len(parent_node['haplotype']), min_start, max_stop)
+            start = hst.coords[node_data['start_idx']]['pos']
+            stop = hst.coords[node_data['stop_idx']]['pos']
+
+            print(start, stop, len(node_data['haplotype']), min_start, max_stop)
+
+            if min_start and start <= min_start:
+                start_stop_clause = True
+
+            if max_stop and stop >= max_stop:
+                start_stop_clause = True              
+
+        if node_idx not in graph_dict or len(node_data["indexes"]) < min_samples or start_stop_clause:
             # Leaf node string
             return F'{node_idx}:0'
         else:
@@ -92,7 +112,7 @@ def newickify(hst, graph_dict, min_samples, hard_cut) -> str:
             children = graph_dict[node_idx]
 
             # Sort keys by size
-            keys_and_size = [(child, len(hst.get_node_data(child)["indexes"])) for child in children.keys()]
+            keys_and_size = [(child, len(hst.G.get_node_data(child)["indexes"])) for child in children.keys()]
             keys_and_size.sort(key = lambda x: x[1], reverse=False)
 
             if hard_cut:
@@ -101,7 +121,7 @@ def newickify(hst, graph_dict, min_samples, hard_cut) -> str:
                 if len(keys_and_size) == 0:
                     return F'{node_idx}:0'
 
-            # Children strings
+            # Children strings recursion
             children_strings = [newick_render_node(child, children[child]) for (child, _) in keys_and_size]
             children_strings = ",".join(children_strings)
 
@@ -110,7 +130,7 @@ def newickify(hst, graph_dict, min_samples, hard_cut) -> str:
 
     # Root node is 0
     root_node = 0
-    node_data = hst.get_node_data(root_node)
+    node_data = hst.G.get_node_data(root_node)
     newick_string = newick_render_node(root_node, node_data) + ';'
 
     # assert visited_nodes == set(graph_dict.keys()), "Error: some nodes aren't in the tree"

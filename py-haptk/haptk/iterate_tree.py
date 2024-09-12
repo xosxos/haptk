@@ -28,25 +28,10 @@ def iterate_tree_inner(hst, t, samples_to_tag, df, optimizer):
     for n in t.traverse():
         n.set_style(style)
         
-        node_name = n.name
-        indexes = hst.get_node_indexes(node_name)
-        optimized_value, label, color, text_color = optimizer(hst, n, indexes, df, samples_to_tag)
-        
-        # if optimized_value < 0.0005:
-        #     label = len(indexes)
-        #     F = TextFace(f"{optimized_value:.4}", tight_text=True, penwidth=30, fsize=8, fgcolor='red')
-        #     F.rotation = 270
-        #     F.background.color = "#FFF"
-        #     F.margin_right = 10
-        #     n.add_face(F, column=0)
+        optimized_value, label, color, text_color = optimizer(hst, n, df, samples_to_tag)      
 
         F = TextFace(label, tight_text=True, penwidth=30, fsize=8, fgcolor="black")
         F.rotation = 270
-
-        # mix = optimized_value * 100
-        # if mix > 1:
-        #     mix = 1
-        # color = utils.color_fader('red', 'blue', mix)
 
         F.background.color = color
         F.fgcolor = text_color
