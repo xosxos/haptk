@@ -8,7 +8,7 @@ use std::sync::mpsc::Receiver;
 use std::thread::{self, JoinHandle};
 
 use bgzip::tabix::Tabix;
-use color_eyre::eyre::{eyre, WrapErr};
+use color_eyre::eyre::{eyre, OptionExt, WrapErr};
 use color_eyre::Result;
 use csv::{QuoteStyle, Reader, ReaderBuilder, Writer, WriterBuilder};
 use polars::prelude::*;
@@ -109,7 +109,7 @@ pub fn read_multiple_sample_ids(path: &Option<Vec<PathBuf>>) -> Result<Option<Ve
         Some(paths) => {
             let mut samples = vec![];
             for path in paths {
-                for line in read_lines(path)?.flatten() {
+                for line in read_lines(path)?.map_while(Result::ok) {
                     let line = line.trim();
                     samples.push(line.to_string());
                 }
@@ -125,7 +125,7 @@ pub fn read_sample_ids(path: &Option<PathBuf>) -> Result<Option<Vec<String>>> {
         Some(path) => {
             let mut samples = vec![];
 
-            for line in read_lines(path)?.flatten() {
+            for line in read_lines(path)?.map_while(Result::ok) {
                 let line = line.trim();
                 samples.push(line.to_string());
             }
@@ -195,12 +195,12 @@ pub fn get_htslib_bcf_contigs(path: &PathBuf) -> Result<Vec<(String, i64)>> {
             HeaderRecord::Contig { values, .. } => {
                 let id = values
                     .get("ID")
-                    .expect("The input VCF has no ID for some contig record in the header");
+                    .ok_or_eyre("The input VCF has no ID for some contig record in the header")?;
                 Ok((
                     id.clone(),
                     values
                         .get("length")
-                        .expect(&format!("VCF header has no contig length for {id}"))
+                        .ok_or_eyre("VCF header has no contig length for {id}")?
                         .parse::<i64>()?,
                 ))
             }

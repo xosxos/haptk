@@ -7,7 +7,7 @@ use crate::{
     io::{open_csv_writer, push_to_output},
     read_vcf::read_vcf_to_matrix,
     structs::{HapVariant, PhasedMatrix},
-    utils::parse_snp_coord,
+    utils::{parse_snp_coord, precision_f64},
 };
 
 #[doc(hidden)]
@@ -42,9 +42,10 @@ pub fn run(args: StandardArgs, haplotype_path: PathBuf) -> Result<()> {
     write_matches_to_csv(&matching_indexes, &mut writer, &vcf)?;
 
     tracing::debug!(
-        "Haplotype found in {}/{} of alleles.",
+        "Haplotype found in {}/{} (freq: {}) of alleles.",
         matching_indexes.len(),
-        vcf.samples().len()
+        vcf.nhaplotypes(),
+        precision_f64(matching_indexes.len() as f64 / vcf.nhaplotypes() as f64, 3),
     );
 
     Ok(())

@@ -21,6 +21,7 @@ fn read_haplotypes() {
         },
         selection_variant: None,
         log_and_verbosity: crate::common::silent_verbosity(),
+        nucleotides: false,
     };
     haptk::clap::run_cmd(cmd).unwrap();
 
@@ -49,6 +50,7 @@ fn read_haplotypes_only_alt() {
         },
         selection_variant: Some(String::from("chr9:32")),
         log_and_verbosity: crate::common::silent_verbosity(),
+        nucleotides: false,
     };
     haptk::clap::run_cmd(cmd).unwrap();
 
@@ -77,6 +79,7 @@ fn read_haplotypes_only_ref() {
         },
         selection_variant: Some(String::from("chr9:32")),
         log_and_verbosity: crate::common::silent_verbosity(),
+        nucleotides: false,
     };
     haptk::clap::run_cmd(cmd).unwrap();
 
@@ -105,6 +108,7 @@ fn read_haplotypes_only_longest() {
         },
         selection_variant: Some(String::from("chr9:32")),
         log_and_verbosity: crate::common::silent_verbosity(),
+        nucleotides: false,
     };
     haptk::clap::run_cmd(cmd).unwrap();
 

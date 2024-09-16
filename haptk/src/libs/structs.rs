@@ -218,6 +218,10 @@ impl PhasedMatrix {
         self.samples.len()
     }
 
+    pub fn nhaplotypes(&self) -> usize {
+        self.samples.len() * *self.ploidy
+    }
+
     pub fn nrows(&self) -> usize {
         self.matrix.nrows()
     }
@@ -334,13 +338,6 @@ impl PhasedMatrix {
 
     pub fn get_sample_names(&self, indexes: &[usize]) -> Vec<String> {
         indexes.iter().map(|i| self.get_sample_name(*i)).collect()
-    }
-
-    pub fn get_sample_idx(&self, sample: &str) -> Result<usize> {
-        self.samples
-            .iter()
-            .position(|s| s == sample)
-            .ok_or_else(|| eyre!("sample {sample} not found in the vcf"))
     }
 
     pub fn get_sample_idxs(&self, samples: &[String]) -> Result<Vec<usize>> {

@@ -18,7 +18,6 @@ use crate::{
     error::HatkError::{NormalizeError, PloidyError, SamplesNotFoundError},
     io::{get_htslib_contig_len, read_multiple_sample_ids},
     structs::{Coord, PhasedMatrix, Ploidy},
-    utils::filter_samples,
 };
 
 pub fn get_reader(
@@ -40,6 +39,25 @@ pub fn get_reader(
     };
 
     Ok(reader)
+}
+
+pub fn filter_samples(samples: &[String], wanted: Option<Vec<String>>) -> Vec<usize> {
+    if let Some(wanted) = wanted {
+        for i in &wanted {
+            if !samples.contains(i) {
+                tracing::warn!("Wanted sample {i} is not in the VCF");
+            }
+        }
+
+        samples
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| wanted.contains(s))
+            .map(|(i, _)| i)
+            .collect()
+    } else {
+        (0..samples.len()).collect()
+    }
 }
 
 pub fn get_samples(header: &HeaderView) -> Result<Vec<String>> {
@@ -136,9 +154,6 @@ fn read_vcf_to_matrix_single_batch(
 
         tracing::trace!("Reading record at position {pos}");
 
-        // NOTE: this info_limit filter has not been tested
-        // if _check_info_limit(args, &record, contig, pos)? {
-
         ensure!(record.alleles().len() == 2, NormalizeError(pos));
 
         let gts = record.genotypes_shared_buffer(&mut gt_buffer)?;
@@ -152,13 +167,13 @@ fn read_vcf_to_matrix_single_batch(
         let diff = markers.len() - markers_len_before;
         let gts_per_sample = diff / sample_indexes.len();
         let gts_mod = diff % sample_indexes.len();
+
         ensure!(
             check_ploidy(gts_per_sample, gts_mod, args),
             PloidyError((pos, gts_per_sample))
         );
 
         coords.push(construct_coord(&record, contig, pos));
-        // }
     }
 
     Ok((markers, coords))
@@ -276,7 +291,7 @@ fn genotype_to_u8(g: &GenotypeAllele) -> Option<u8> {
 
 fn construct_coord(record: &rust_htslib::bcf::Record, contig: &str, pos: u64) -> Coord {
     let alleles = record.alleles();
-    let reference = String::from_utf8_lossy(alleles.get(0).unwrap()).to_string();
+    let reference = String::from_utf8_lossy(alleles.first().unwrap()).to_string();
     let alt = String::from_utf8_lossy(alleles.get(1).unwrap()).to_string();
 
     Coord {
@@ -295,5 +310,32 @@ fn _check_info_limit(args: &StandardArgs, record: &Record, contig: &str, pos: u6
         }
     } else {
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sample_filtering() {
+        let samples = vec!["foo".to_string(), "fii".to_string()];
+        let wanted = vec!["foo".to_string(), "fii".to_string()];
+        let sample_indexes = filter_samples(&samples, Some(wanted));
+        assert_eq!(sample_indexes, vec![0,1]);
+
+        let samples = vec!["foo".to_string(), "fii".to_string()];
+        let wanted = vec!["fee".to_string(), "foo".to_string(), "fii".to_string()];
+        let sample_indexes = filter_samples(&samples, Some(wanted));
+        assert_eq!(sample_indexes, vec![0,1]);
+
+        let samples = vec!["faa".to_string(), "foo".to_string(), "fii".to_string()];
+        let wanted = vec!["fee".to_string(), "foo".to_string(), "fii".to_string()];
+        let sample_indexes = filter_samples(&samples, Some(wanted));
+        assert_eq!(sample_indexes, vec![1,2]);
+
+        let sample_indexes = filter_samples(&samples, None);
+        assert_eq!(sample_indexes, vec![0,1,2]);
     }
 }

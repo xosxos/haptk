@@ -228,6 +228,9 @@ pub enum SubCommand {
         /// Tag with ok for matching, err for mismatching and mis for mismatching to null rows
         #[arg(long)]
         tag_rows: bool,
+
+        #[arg(short = 'n', long)]
+        nucleotides: bool,
     },
     /// Show coverage levels per contig of a VCF
     Coverage {
@@ -258,6 +261,9 @@ pub enum SubCommand {
 
         #[arg(long)]
         selection_variant: Option<String>,
+
+        #[arg(short = 'n', long)]
+        nucleotides: bool,
     },
     /// Output the sample names from FAM / VCF / HST files
     Samples {
@@ -587,13 +593,13 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         SubCommand::Bhst { args,  min_size, publish, .. } => bhst::run(args, min_size, publish,)?,
         SubCommand::Uhst {args,  min_size, publish, .. } => uhst::run(args, min_size, publish,)?,
 
-        SubCommand::CompareHaplotypes { haplotypes, output, prefix, csv, hide_missing, tag_rows, .. }
-            => compare_haplotypes::run(haplotypes, output, prefix, csv, hide_missing, tag_rows)?,
+        SubCommand::CompareHaplotypes { haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides, .. }
+            => compare_haplotypes::run(haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides)?,
 
         SubCommand::CompareToHst { args, hst, .. } => compare_to_hst::run(args, hst)?,
         SubCommand::CheckForHaplotype { args, haplotype, .. } => check_for_haplotype::run(args, haplotype)?,
         SubCommand::Mrca { args, recombination_rates, .. } => mrca::run(args, recombination_rates)?,
-        SubCommand::Haplotypes { args, selection_variant, .. } => list_haplotypes::run(args, selection_variant)?,
+        SubCommand::Haplotypes { args, selection_variant, nucleotides, .. } => list_haplotypes::run(args, selection_variant, nucleotides)?,
         SubCommand::Samples { file, .. } => list_samples::run(file)?, 
         SubCommand::Markers { file, .. } => list_markers::run(file)?,
         SubCommand::HaplotypeToVcf { file, sample_name, output, .. } => haplotype_to_vcf::run(file, sample_name, output)?,

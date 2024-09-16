@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::io::get_output;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::subcommands::bhst::{construct_bhst, Metadata, Node};
+use crate::subcommands::bhst::{construct_bhst, HstType, Metadata, Node};
 
 #[doc(hidden)]
 pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
@@ -60,7 +60,7 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
         })
         .collect();
 
-    let metadata = Metadata::new(&vcf, &args, vcf.get_contig().clone(), vcf.samples().clone());
+    let metadata = Metadata::new(&vcf, &args, vcf.samples().clone(), HstType::Bhst);
 
     let trees = HstScan { hsts, metadata };
 
@@ -227,7 +227,7 @@ where
     F: Fn(Arc<HstScan>, usize, Limits) -> Option<(usize, NodeIndex, f64)> + Sync + Send + Clone,
     U: Fn(Arc<HstScan>, usize, NodeIndex, f64) -> AssocRow + Sync + Send,
 {
-    let tx = get_sender(write_bam, &args, hsts.clone());
+    let tx = get_sender(write_bam, args, hsts.clone());
 
     hsts.hsts
         .par_iter()
@@ -275,6 +275,7 @@ pub struct AssocRow {
     pub hashmap: BTreeMap<String, String>,
 }
 
+#[allow(dead_code)]
 impl AssocRow {
     pub fn new(
         hsts: Arc<HstScan>,

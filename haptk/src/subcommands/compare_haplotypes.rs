@@ -10,8 +10,8 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use termion::color;
 
-use crate::io::{get_input, open_csv_writer};
-use crate::structs::Coord;
+use crate::io::{get_csv_writer, get_input};
+use crate::structs::{Coord, HapVariant};
 use crate::utils::strip_prefix;
 
 pub fn get_csv_reader<R: io::Read>(input: R) -> Reader<R> {
@@ -29,7 +29,7 @@ pub struct CompareHaplotype {
     pub ann: Option<String>,
     pub reference: String,
     pub alt: String,
-    pub gts: Vec<String>,
+    pub gts: Vec<u8>,
 }
 
 impl From<&CompareHaplotype> for Coord {
@@ -80,13 +80,15 @@ impl From<IndexMap<String, String>> for CompareHaplotype {
             gts: hm
                 .keys()
                 .filter(|k| k.starts_with("ht") || k.starts_with("gt"))
-                .map(|k| hm[k].clone())
+                .map(|k| hm[k].parse::<u8>().expect("cannot parse genotype to u8"))
                 .collect(),
         }
     }
 }
 
-pub fn read_haplotype_file(ht_path: PathBuf) -> Result<(Vec<CompareHaplotype>, Vec<String>)> {
+pub fn read_haplotype_file(
+    ht_path: PathBuf,
+) -> Result<(Vec<CompareHaplotype>, Vec<String>, Vec<String>, Vec<String>)> {
     let mut rdr = get_csv_reader(get_input(Some(ht_path.clone()))?);
 
     let mut ht_names: Vec<String> = vec![];
@@ -103,31 +105,57 @@ pub fn read_haplotype_file(ht_path: PathBuf) -> Result<(Vec<CompareHaplotype>, V
     let mut rdr = get_csv_reader(get_input(Some(ht_path.clone()))?);
 
     let mut variants: Vec<CompareHaplotype> = vec![];
+    let mut freq: Vec<String> = vec![];
+    let mut n: Vec<String> = vec![];
 
     for line in rdr.deserialize() {
         let record: IndexMap<String, String> = line?;
-        let variant: CompareHaplotype = record.into();
 
-        if variant.gts.is_empty() {
-            tracing::info!(
-                "No genotypes at pos: {}, is the column correctly named starting with ht or gt",
-                variant.pos
+        if record["contig"] == "freq" {
+            freq.extend(
+                record
+                    .keys()
+                    .filter(|k| k.starts_with("ht") || k.starts_with("gt"))
+                    .map(|k| record[k].to_string()),
             );
-        }
+        } else if record["contig"] == "n" {
+            n.extend(
+                record
+                    .keys()
+                    .filter(|k| k.starts_with("ht") || k.starts_with("gt"))
+                    .map(|k| record[k].to_string()),
+            );
+        } else {
+            let variant: CompareHaplotype = record.into();
 
-        if let Some(latest) = variants.last() {
-            if latest.pos > variant.pos {
-                return Err(eyre!(
-                    "The haplotype file is not sorted by position. {} is larger than {}",
-                    latest.pos,
+            if variant.gts.is_empty() {
+                tracing::info!(
+                    "No genotypes at pos: {}, is the column correctly named starting with ht or gt",
                     variant.pos
-                ));
+                );
             }
+
+            if let Some(latest) = variants.last() {
+                if latest.pos > variant.pos {
+                    return Err(eyre!(
+                        "The haplotype file is not sorted by position. {} is larger than {}",
+                        latest.pos,
+                        variant.pos
+                    ));
+                }
+            }
+            variants.push(variant);
         }
-        variants.push(variant);
+    }
+    if n.is_empty() {
+        n.extend(ht_names.iter().map(|_| "NA".to_string()));
     }
 
-    Ok((variants, ht_names))
+    if freq.is_empty() {
+        freq.extend(ht_names.iter().map(|_| "NA".to_string()));
+    }
+
+    Ok((variants, ht_names, n, freq))
 }
 
 pub fn run(
@@ -137,6 +165,7 @@ pub fn run(
     csv: bool,
     hide_missing: bool,
     tag_rows: bool,
+    nucleotides: bool,
 ) -> Result<()> {
     tracing::debug!("Reading in haplotypes: {:?}", haplotypes);
     match strip_prefix(prefix) {
@@ -147,23 +176,25 @@ pub fn run(
     let mut names = vec![];
     let mut hts = vec![];
     let mut ht_names = vec![];
+    let mut freq_data = vec![];
     for path in haplotypes {
         names.push(path.display().to_string());
-        let (ht, ht_name_vec) = read_haplotype_file(path)?;
+        let (ht, ht_name_vec, n, freq) = read_haplotype_file(path)?;
         ht_names.push(ht_name_vec);
 
         hts.push(ht);
+        freq_data.push((n, freq));
     }
 
     tracing::debug!("Finished reading haplotype files");
 
-    let aligner = HaplotypeAligner::new(hts, names, ht_names);
+    let aligner = HaplotypeAligner::new(hts, names, ht_names, freq_data);
 
     tracing::debug!("Finished aligning haplotypes");
 
     match csv {
-        true => aligner.to_csv(output)?,
-        false => aligner.print(hide_missing, tag_rows),
+        true => aligner.to_csv(output, nucleotides)?,
+        false => aligner.print(hide_missing, tag_rows, nucleotides),
     }
     Ok(())
 }
@@ -171,7 +202,8 @@ pub fn run(
 pub struct HaplotypeAligner {
     filenames: Vec<String>,
     ht_names: Vec<Vec<String>>,
-    alignment: BTreeMap<Coord, (Vec<Option<String>>, String)>,
+    freq_data: Vec<(Vec<String>, Vec<String>)>,
+    alignment: BTreeMap<Coord, (Vec<Option<HapVariant>>, String)>,
 }
 
 impl HaplotypeAligner {
@@ -179,12 +211,13 @@ impl HaplotypeAligner {
         haplotypes: Vec<Vec<CompareHaplotype>>,
         filenames: Vec<String>,
         ht_names: Vec<Vec<String>>,
+        freq_data: Vec<(Vec<String>, Vec<String>)>,
     ) -> Self {
         let n_gts_count: usize = ht_names.iter().map(|v| v.len()).sum();
         let mut last_contig = &haplotypes[0][0].contig;
 
         // Register all positions first and initialize a vec of None's corresponding to the number of haplotypes to study
-        let mut tree_map: BTreeMap<Coord, (Vec<Option<String>>, String)> = BTreeMap::new();
+        let mut tree_map: BTreeMap<Coord, (Vec<Option<HapVariant>>, String)> = BTreeMap::new();
 
         for ht in &haplotypes {
             let curr_contig = &ht[0].contig;
@@ -219,7 +252,15 @@ impl HaplotypeAligner {
                         found = true;
                         // Change a None into Some if the haplotype has a genotype at this position
                         for gt in &hap_variant.gts {
-                            genotypes[cum_sum] = Some(gt.clone());
+                            let gt = HapVariant {
+                                contig: hap_variant.contig.clone(),
+                                pos: hap_variant.pos,
+                                reference: hap_variant.reference.clone(),
+                                alt: hap_variant.alt.clone(),
+                                gt: *gt,
+                            };
+
+                            genotypes[cum_sum] = Some(gt);
                             cum_sum += 1;
                         }
 
@@ -238,22 +279,30 @@ impl HaplotypeAligner {
 
         Self {
             ht_names,
+            freq_data,
             filenames,
             alignment: tree_map,
         }
     }
 
-    pub fn print(&self, hide_missing: bool, tag_rows: bool) {
-        // Prepare header
+    fn header_names(&self) -> Vec<String> {
         let mut header_names = vec![];
         for (i, name) in self.filenames.iter().enumerate() {
             for ht_name in &self.ht_names[i] {
                 header_names.push(format!("{name}/{ht_name}"))
             }
         }
-        let header_names = header_names.join(" ");
+        header_names
+    }
 
-        println!(" pos {header_names} annotation");
+    pub fn print(&self, hide_missing: bool, tag_rows: bool, yes_nucleotides: bool) {
+        // Prepare header
+        let mut header = self.header(yes_nucleotides);
+        header.extend(self.header_names());
+        header.push("annotation".to_string());
+
+        let header = header.join(" ");
+        println!("{header}");
 
         for (coord, (genotypes, ann)) in &self.alignment {
             // If missing genotypes present, yellow is true
@@ -274,11 +323,14 @@ impl HaplotypeAligner {
                 .iter()
                 .map(|gt| match gt {
                     None => "-".to_string(),
-                    Some(gt) => gt.to_owned(),
+                    Some(gt) => gt.gt.to_string(),
                 })
                 .fold(String::new(), |s, r| format!("{s} {r}"));
 
-            let line = format!("{color} {coord} {gts} {ann}");
+            let line = format!(
+                "{color} {} {} {} {} {gts} {ann}",
+                coord.contig, coord.pos, coord.reference, coord.alt
+            );
 
             if !hide_missing || !yellow {
                 if tag_rows {
@@ -292,9 +344,26 @@ impl HaplotypeAligner {
                 }
             }
         }
+
+        let (mut freq_line, mut n_line) = self.freq_and_n_line(yes_nucleotides);
+
+        for (ns, freqs) in &self.freq_data {
+            for freq in freqs {
+                freq_line.push(freq.clone());
+            }
+            for n in ns {
+                n_line.push(n.clone());
+            }
+        }
+        freq_line.push("-".to_string());
+        n_line.push("-".to_string());
+        let freq_line = freq_line.join(" ");
+        let n_line = n_line.join(" ");
+        println!("{freq_line}");
+        println!("{n_line}");
     }
 
-    fn find_mismatch(&self, genotypes: &[Option<String>]) -> (bool, bool) {
+    fn find_mismatch(&self, genotypes: &[Option<HapVariant>]) -> (bool, bool) {
         let mut is_some_count = 0;
         let hash_set = genotypes
             .iter()
@@ -308,18 +377,81 @@ impl HaplotypeAligner {
         (has_missing, has_mismatch)
     }
 
-    pub fn to_csv(&self, path: PathBuf) -> Result<()> {
-        let mut wrtr = open_csv_writer(path)?;
-        let mut header = vec!["pos".to_string()];
-        header.extend(self.filenames.clone());
+    fn header(&self, yes_nucleotides: bool) -> Vec<String> {
+        match yes_nucleotides {
+            true => ["contig", "pos", "ref"].map(String::from).to_vec(),
+            false => ["contig", "pos", "ref", "alt"].map(String::from).to_vec(),
+        }
+    }
+
+    fn freq_and_n_line(&self, yes_nucleotides: bool) -> (Vec<String>, Vec<String>) {
+        let freq_line = match yes_nucleotides {
+            true => ["freq", "", ""].map(String::from).to_vec(),
+            false => ["freq", "", "", ""].map(String::from).to_vec(),
+        };
+        let n_line = match yes_nucleotides {
+            true => ["n", "", ""].map(String::from).to_vec(),
+            false => ["n", "", "", ""].map(String::from).to_vec(),
+        };
+
+        (freq_line, n_line)
+    }
+
+    pub fn to_csv(&self, _path: PathBuf, yes_nucleotides: bool) -> Result<()> {
+        // let mut wrtr = open_csv_writer(path)?;
+        let mut wrtr = get_csv_writer(Box::new(std::io::stdout()));
+
+        let mut header = self.header(yes_nucleotides);
+        header.extend(self.header_names());
+        header.push("annotation".to_string());
 
         wrtr.write_record(&header)?;
-        for (pos, (genotypes, _ann)) in &self.alignment {
-            let mut record = vec![format!("{pos}")];
-            genotypes.iter().for_each(|gt| match gt {
+
+        let (mut freq_line, mut n_line) = self.freq_and_n_line(yes_nucleotides);
+
+        for (ns, freqs) in &self.freq_data {
+            for freq in freqs {
+                freq_line.push(freq.clone());
+            }
+            for n in ns {
+                n_line.push(n.clone());
+            }
+        }
+        freq_line.push("".to_string());
+        n_line.push("".to_string());
+
+        wrtr.write_record(&freq_line)?;
+        wrtr.write_record(&n_line)?;
+
+        for (coord, (genotypes, ann)) in &self.alignment {
+            let mut record = match yes_nucleotides {
+                true => vec![
+                    coord.contig.to_string(),
+                    coord.pos.to_string(),
+                    coord.reference.to_string(),
+                ],
+
+                false => vec![
+                    coord.contig.to_string(),
+                    coord.pos.to_string(),
+                    coord.reference.to_string(),
+                    coord.alt.to_string(),
+                ],
+            };
+
+            genotypes.iter().for_each(|hap_var| match hap_var {
                 None => record.push("-".to_string()),
-                Some(gt) => record.push(gt.to_owned()),
+                Some(hap_var) => match yes_nucleotides {
+                    true => match hap_var.gt {
+                        0 => record.push(hap_var.reference.clone()),
+                        1 => record.push(hap_var.alt.clone()),
+                        _ => panic!("multiallelic haplotypes not yet allowed"),
+                    },
+                    false => record.push(hap_var.gt.to_string()),
+                },
             });
+
+            record.push(ann.to_string());
             wrtr.write_record(&record)?;
         }
         Ok(())

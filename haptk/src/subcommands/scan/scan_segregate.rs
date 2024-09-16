@@ -165,6 +165,7 @@ fn optimizer_inner(
     Some((hst_idx, top_node_idx, optimized_value))
 }
 
+#[allow(dead_code)]
 fn segregation_optimizer(
     case_list: &[String],
     names: Vec<String>,

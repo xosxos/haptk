@@ -3,6 +3,19 @@ use color_eyre::Result;
 
 use crate::error::HatkError::{CoordsParseError, PosParseError};
 
+// Round to n significant digits
+// https://stackoverflow.com/questions/28655362/how-does-one-round-a-floating-point-number-to-a-specified-number-of-digits
+pub fn precision_f64(x: f64, decimals: u32) -> f64 {
+    if x == 0. || decimals == 0 {
+        0.
+    } else {
+        let shift = decimals as i32 - x.abs().log10().ceil() as i32;
+        let shift_factor = 10_f64.powi(shift);
+
+        (x * shift_factor).round() / shift_factor
+    }
+}
+
 //NOTE: This should be parsed by clap automatically, but Option<String> parsing is not supported out of the box as of now
 pub fn strip_prefix(prefix: Option<String>) -> Option<String> {
     if let Some(prefix) = prefix {
@@ -92,50 +105,10 @@ pub fn centromeres_hg38(chr: &str) -> (u64, u64) {
     }
 }
 
-pub fn filter_samples(samples: &[String], wanted: Option<Vec<String>>) -> Vec<usize> {
-    if let Some(wanted) = wanted {
-        for i in &wanted {
-            if !samples.contains(i) {
-                tracing::warn!("Wanted sample {i} is not in the VCF");
-            }
-        }
-
-        samples
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| wanted.contains(s))
-            .map(|(i, _)| i)
-            .collect()
-    } else {
-        (0..samples.len()).collect()
-    }
-}
-
 #[cfg(test)]
 #[rustfmt::skip]
 mod tests {
     use super::*;
-
-    #[test]
-    fn sample_filtering() {
-        let samples = vec!["foo".to_string(), "fii".to_string()];
-        let wanted = vec!["foo".to_string(), "fii".to_string()];
-        let sample_indexes = filter_samples(&samples, Some(wanted));
-        assert_eq!(sample_indexes, vec![0,1]);
-
-        let samples = vec!["foo".to_string(), "fii".to_string()];
-        let wanted = vec!["fee".to_string(), "foo".to_string(), "fii".to_string()];
-        let sample_indexes = filter_samples(&samples, Some(wanted));
-        assert_eq!(sample_indexes, vec![0,1]);
-
-        let samples = vec!["faa".to_string(), "foo".to_string(), "fii".to_string()];
-        let wanted = vec!["fee".to_string(), "foo".to_string(), "fii".to_string()];
-        let sample_indexes = filter_samples(&samples, Some(wanted));
-        assert_eq!(sample_indexes, vec![1,2]);
-
-        let sample_indexes = filter_samples(&samples, None);
-        assert_eq!(sample_indexes, vec![0,1,2]);
-    }
 
 
     #[test]

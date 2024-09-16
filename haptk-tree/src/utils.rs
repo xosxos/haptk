@@ -48,7 +48,7 @@ where
     write_haplotype(ht, writer).unwrap();
 }
 
-pub fn _write_tp_ht_to_vcf<S, T>(name: S, node: &Node, vcf: Rc<PhasedMatrix>)
+pub fn _write_tp_ht_to_vcf<S>(name: S, node: &Node, vcf: Rc<PhasedMatrix>)
 where
     S: AsRef<str>,
 {

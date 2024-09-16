@@ -113,12 +113,14 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
         hst_import.metadata.coords.len(),
     );
 
+    let hst_type = hst_import.metadata.hst_type.clone();
     let match_hst = create_match_hst(&vcf, hst_import);
 
     // Write .hst to file
     let mut hst_output = args.output.clone();
     push_to_output(&args, &mut hst_output, "match_hst", "hst.gz");
-    write_hst_file(match_hst, &vcf, hst_output, false, args)?;
+
+    write_hst_file(match_hst, &vcf, hst_output, false, args, hst_type)?;
 
     Ok(())
 }

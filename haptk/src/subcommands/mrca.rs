@@ -55,15 +55,15 @@ pub fn get_sums(
     variant_pos: u64,
     rec_rates: &BTreeMap<u64, f32>,
 ) -> (Vec<f64>, Vec<f64>) {
-    // let l_sum = shared_lengths
-    //     .iter()
-    //     .map(|(lnode, _)| vcf.get_pos(lnode.stop_idx) - vcf.get_pos(lnode.start_idx))
-    //     .sum::<u64>();
-    // let r_sum = shared_lengths
-    //     .iter()
-    //     .map(|(_, rnode)| vcf.get_pos(rnode.stop_idx) - vcf.get_pos(rnode.start_idx))
-    //     .sum::<u64>();
-    // tracing::debug!("Sums bp: left {l_sum:.3}, right {r_sum:.3})",);
+    let l_sum = shared_lengths
+        .iter()
+        .map(|(lnode, _)| vcf.get_pos(lnode.stop_idx) - vcf.get_pos(lnode.start_idx))
+        .sum::<u64>();
+    let r_sum = shared_lengths
+        .iter()
+        .map(|(_, rnode)| vcf.get_pos(rnode.stop_idx) - vcf.get_pos(rnode.start_idx))
+        .sum::<u64>();
+    tracing::debug!("Sums bp: left {l_sum:.3}, right {r_sum:.3})",);
 
     let variant_cm = match rec_rates.range(variant_pos..).next() {
         None => {
@@ -74,7 +74,7 @@ pub fn get_sums(
         Some(variant_cm) => variant_cm,
     };
 
-    let mut l_lengths = shared_lengths
+    let l_lengths = shared_lengths
         .iter()
         .map(|(lnode, _)| vcf.get_pos(lnode.start_idx))
         .map(|start| {

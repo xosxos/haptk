@@ -11,11 +11,11 @@ use crate::{
     args::{Selection, StandardArgs},
     io::{open_csv_writer, push_to_output, write_haplotype},
     structs::{HapVariant, PhasedMatrix},
-    subcommands::bhst::{self, write_hst_file, Node},
+    subcommands::bhst::{self, write_hst_file, HstType, Node},
 };
 
 #[doc(hidden)]
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum LocDirection {
     Left,
     Right,
@@ -84,7 +84,13 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool) -> Result<()> {
                 &format!("uhst_{direction}"),
                 "hst.gz",
             );
-            write_hst_file(uhst, &vcf, hst_output, publish, args.clone())?;
+
+            let hst_type = match direction {
+                LocDirection::Left => HstType::UhstLeft,
+                LocDirection::Right => HstType::UhstRight,
+            };
+
+            write_hst_file(uhst, &vcf, hst_output, publish, args.clone(), hst_type)?;
 
             Ok((first_maj_node, last_node))
         })

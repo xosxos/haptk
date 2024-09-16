@@ -72,7 +72,7 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool) -> Result<()> {
     // Write to .hst
     let mut hst_output = args.output.clone();
     push_to_output(&args, &mut hst_output, "bhst", "hst.gz");
-    write_hst_file(bhst, &vcf, hst_output, publish, args)?;
+    write_hst_file(bhst, &vcf, hst_output, publish, args, HstType::Bhst)?;
 
     Ok(())
 }
@@ -423,7 +423,7 @@ pub struct Hst {
     // pub coords: Vec<Coord>,
     pub hst: Graph<Node, u8>,
     // pub samples: Vec<String>,
-    #[serde(default)]
+    // #[serde(default)]
     pub metadata: Metadata,
 }
 
@@ -452,9 +452,18 @@ impl Hst {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum HstType {
+    UhstLeft,
+    UhstRight,
+    Bhst,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Metadata {
     pub start_coord: String,
+    pub hst_type: HstType,
+    pub start_idx: usize,
     pub coords: Vec<Coord>,
     pub contig: String,
     pub samples: Vec<String>,
@@ -467,14 +476,16 @@ impl Metadata {
     pub fn new(
         vcf: &PhasedMatrix,
         args: &StandardArgs,
-        start_coord: String,
         samples: Vec<String>,
+        hst_type: HstType,
     ) -> Self {
         Self {
-            start_coord,
+            start_coord: format!("{}:{}", vcf.get_contig(), vcf.variant_idx_pos()),
+            start_idx: vcf.variant_idx(),
             coords: vcf.coords().clone(),
             contig: vcf.get_contig().clone(),
             samples,
+            hst_type,
             selection: args.selection.clone(),
             ploidy: vcf.ploidy.clone(),
             vcf_name: args.file.clone(),
@@ -488,6 +499,7 @@ pub fn write_hst_file(
     path: PathBuf,
     publish: bool,
     args: StandardArgs,
+    hst_type: HstType,
 ) -> Result<()> {
     let samples = match publish {
         true => vec!["r".to_string()],
@@ -504,7 +516,7 @@ pub fn write_hst_file(
         // coords: vcf.coords().clone(),
         hst,
         // samples,
-        metadata: Metadata::new(&vcf, &args, args.coords.clone(), samples),
+        metadata: Metadata::new(vcf, &args, samples, hst_type),
     };
 
     tracing::info!("HST output: {path:?}.");
