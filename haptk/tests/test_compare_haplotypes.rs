@@ -27,6 +27,7 @@ fn compare_haplotypes() {
         hide_missing: false,
         tag_rows: false,
         log_and_verbosity: crate::common::silent_verbosity(),
+        nucleotides: false,
     };
 
     haptk::clap::run_cmd(cmd).unwrap();

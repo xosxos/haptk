@@ -1,9 +1,6 @@
 /// Identify whether hapotype is present in samples
 pub mod check_for_haplotype;
 
-/// Check for vcf coverage
-pub mod coverage;
-
 /// Find the most recent common ancestor. The original R algorithm by Gandolfo et al translated to Rust. <https://github.com/bahlolab/DatingRareMutations>
 pub mod mrca;
 

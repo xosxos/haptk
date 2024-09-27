@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use color_eyre::{
-    eyre::{eyre, OptionExt},
+    eyre::eyre,
     Result,
 };
 

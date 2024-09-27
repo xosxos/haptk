@@ -1,16 +1,16 @@
 use statrs::distribution::{ContinuousCDF, Normal, StudentsT};
 use statrs::statistics::Statistics;
 
-#[cfg(feature = "linear-regression")]
-pub fn linear_regression(x: Vec<f64>, y: Vec<f64>) -> f64 {
-    use ndarray_glm::{Linear, ModelBuilder};
-    let y = ndarray::Array1::from_vec(y);
-    let x = ndarray::Array2::from_shape_vec((y.len(), 1), x).unwrap();
+// #[cfg(feature = "linear-regression")]
+// pub fn linear_regression(x: Vec<f64>, y: Vec<f64>) -> f64 {
+//     use ndarray_glm::{Linear, ModelBuilder};
+//     let y = ndarray::Array1::from_vec(y);
+//     let x = ndarray::Array2::from_shape_vec((y.len(), 1), x).unwrap();
 
-    let model = ModelBuilder::<Linear>::data(&y, &x).build().unwrap();
-    let fit = model.fit().unwrap();
-    fit.lr_test()
-}
+//     let model = ModelBuilder::<Linear>::data(&y, &x).build().unwrap();
+//     let fit = model.fit().unwrap();
+//     fit.lr_test()
+// }
 
 pub fn two_tail_welch_t_test2(x: &[f64], y: &[f64]) -> f64 {
     let n1 = x.len() as f64;

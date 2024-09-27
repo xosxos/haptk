@@ -6,15 +6,9 @@ use std::sync::mpsc::Sender;
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
 use rayon::prelude::*;
-use rust_htslib::bam::{
-    header::HeaderRecord,
-    record::{Aux, AuxArray, Cigar, CigarString},
-    Format, Header, Record, Writer,
-};
 
 use crate::args::{Selection, StandardArgs};
 use crate::io::push_to_output;
-use crate::structs::HapVariant;
 use crate::utils::parse_coords;
 
 use color_eyre::{
@@ -189,6 +183,7 @@ pub fn read_tree_file(path: PathBuf) -> Result<HstScan> {
 //     }
 // }
 
+#[allow(unused_variables)]
 pub fn get_sender(
     write_bam: bool,
     args: &StandardArgs,
@@ -196,17 +191,14 @@ pub fn get_sender(
 ) -> Option<Sender<(usize, NodeIndex, f64)>> {
     match write_bam {
         true => {
-            let mut bam_output = args.output.clone();
-            push_to_output(args, &mut bam_output, "hst_scan", "bam");
-            let header = return_header(&hsts.metadata.contig);
-            let mut out = Writer::from_path(bam_output, &header, Format::Bam).unwrap();
             let (tx, rx) = std::sync::mpsc::channel();
 
             std::thread::spawn(move || {
                 while let Ok((tree_idx, top_node_idx, optimized_value)) = rx.recv() {
-                    let record =
-                        create_bam_record(hsts.clone(), tree_idx, top_node_idx, optimized_value);
-                    out.write(&record).unwrap();
+                    todo!()
+                    // let record =
+                    // create_bam_record(hsts.clone(), tree_idx, top_node_idx, optimized_value);
+                    // out.write(&record).unwrap();
                 }
             });
             Some(tx)
@@ -382,92 +374,6 @@ pub fn get_marker_id<T: Borrow<HstScan>>(top_node: &Node, hsts: T) -> String {
     hasher.write(ht.as_bytes());
 
     format!("{:02x}", hasher.finish())
-}
-
-/// BAM creator
-pub fn return_header(contig: &str) -> Header {
-    let mut header = Header::new();
-    let mut header_record = HeaderRecord::new(b"SQ");
-    header_record.push_tag(b"SN", contig);
-    header_record.push_tag(b"LN", 0);
-    header.push_record(&header_record);
-    header
-}
-
-pub fn u8_to_hapvariant(hsts: Arc<HstScan>, ht: &[u8]) -> Vec<HapVariant> {
-    panic!("unimplented")
-}
-
-pub fn create_bam_record(
-    hsts: Arc<HstScan>,
-    tree_idx: usize,
-    top_node_idx: NodeIndex,
-    lowest_pvalue: f64,
-) -> Record {
-    let hst = &hsts.hsts[tree_idx].hst;
-    let top_node = hst.node_weight(top_node_idx).unwrap();
-    let mut record = record_from_ht(u8_to_hapvariant(hsts.clone(), &top_node.haplotype));
-    add_aux_data(&mut record, lowest_pvalue, top_node);
-    record
-}
-
-fn add_aux_data(record: &mut Record, lowest_pvalue: f64, top_node: &Node) {
-    // Add an integer field
-    let aux_integer_field = Aux::Float(lowest_pvalue as f32);
-    record.push_aux(b"PV", aux_integer_field).unwrap();
-
-    let aux_array: &Vec<u32> = &top_node.indexes.iter().map(|v| *v as u32).collect();
-    let aux_array: AuxArray<u32> = aux_array.into();
-    let aux_array_field = Aux::ArrayU32(aux_array);
-    record.push_aux(b"ID", aux_array_field).unwrap();
-}
-
-fn record_from_ht(ht: Vec<HapVariant>) -> Record {
-    let start = ht.first().unwrap().pos;
-    let stop = ht.last().unwrap().pos;
-
-    let hash_str = ht
-        .iter()
-        .map(|ht| ht.genotype())
-        .fold(format!("{}_{}_{}_", "chr9", start, stop), |acc, e| {
-            format!("{acc}{e}")
-        });
-
-    let mut hasher = DefaultHasher::new();
-    hasher.write(hash_str.as_bytes());
-
-    let qname = format!("{:02x}", hasher.finish());
-
-    let mut cigar = vec![];
-    let mut seq = vec![];
-
-    for (i, item) in ht.iter().enumerate() {
-        let curr_pos = ht[i].pos;
-        let last_pos = ht.get(i - 1).map_or(0, |last| last.pos);
-
-        if last_pos != 0 {
-            let distance = curr_pos as u32 - last_pos as u32 - 1;
-            cigar.push(Cigar::RefSkip(distance));
-        }
-
-        seq.push(item.genotype().as_bytes()[0]);
-
-        match item.gt {
-            0 => cigar.push(Cigar::Equal(1)),
-            1 => cigar.push(Cigar::Diff(1)),
-            _ => unreachable!(),
-        }
-    }
-
-    let mut record = Record::new();
-    record.set_pos(start as i64);
-    record.set(
-        qname.as_bytes(),
-        Some(&CigarString(cigar)),
-        &seq,
-        &vec![255; seq.len()],
-    );
-    record
 }
 
 pub fn top_node_from_hsts(hsts: &Arc<HstScan>, hst_idx: usize, top_node_idx: NodeIndex) -> &Node {

@@ -11,7 +11,7 @@ use tracing_subscriber::fmt::time::OffsetTime;
 
 use crate::args::{ConciseArgs, GraphArgs, SortOption, StandardArgs};
 use crate::subcommands::{
-    bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst, coverage,
+    bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst,
     fasta_to_haplotype, haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
 };
 
@@ -232,25 +232,6 @@ pub enum SubCommand {
         #[arg(short = 'n', long)]
         nucleotides: bool,
     },
-    /// Show coverage levels per contig of a VCF
-    Coverage {
-        file: PathBuf,
-
-        #[command(flatten)]
-        log_and_verbosity: LogAndVerbosity,
-
-        /// Minimum amount of basepairs on avg per a single snp
-        #[arg(short = 'b', long, default_value_t = 10000)]
-        bp_per_snp: i64,
-
-        /// Number of pipes
-        #[arg(short = 'p', long, default_value_t = 100)]
-        npipes: i64,
-
-        /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
-        threads: usize,
-    },
     /// Read the haplotypes of a given sample
     Haplotypes {
         #[command(flatten)]
@@ -461,7 +442,6 @@ impl SubCommand {
         match self {
             SubCommand::CompareToHaplotype { threads, .. }
             | SubCommand::CompareToHst { threads, .. }
-            | SubCommand::Coverage { threads, .. }
             | SubCommand::MrcaScan { threads, .. }
             | SubCommand::Uhst { threads, .. }
             | SubCommand::Bhst { threads, .. }
@@ -482,7 +462,6 @@ impl SubCommand {
             | SubCommand::CompareToHaplotype { log_and_verbosity, .. }
             | SubCommand::CompareToHst { log_and_verbosity, .. }
             | SubCommand::CompareHaplotypes { log_and_verbosity, .. }
-            | SubCommand::Coverage { log_and_verbosity, .. }
             | SubCommand::Mrca { log_and_verbosity, .. }
             | SubCommand::MrcaScan { log_and_verbosity, .. }
             | SubCommand::Uhst { log_and_verbosity, .. }
@@ -542,7 +521,6 @@ impl SubCommand {
             SubCommand::Samples { .. }
             | SubCommand::HaplotypeToVcf { .. }
             | SubCommand::FastaToHaplotype { .. }
-            | SubCommand::Coverage { .. }
             | SubCommand::Markers { .. } => None
         }
     }
@@ -604,7 +582,6 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         SubCommand::Markers { file, .. } => list_markers::run(file)?,
         SubCommand::HaplotypeToVcf { file, sample_name, output, .. } => haplotype_to_vcf::run(file, sample_name, output)?,
         SubCommand::FastaToHaplotype { file, seq_name, output, .. } => fasta_to_haplotype::run(file, seq_name, output)?,
-        SubCommand::Coverage { file, bp_per_snp, npipes, .. } => coverage::run(file, bp_per_snp, npipes)?,
 
         // Genome-wide methods
         SubCommand::MrcaScan {
@@ -745,19 +722,5 @@ mod tests {
         };
 
         assert_eq!(1, subcommand.threads());
-
-        let subcommand = SubCommand::Coverage {
-            file: PathBuf::new(),
-            bp_per_snp: 0,
-            npipes: 0,
-            threads: 8,
-            log_and_verbosity: LogAndVerbosity {
-                verbosity: 0,
-                log_file: None,
-                silent: false,
-            },
-        };
-
-        assert_eq!(8, subcommand.threads());
     }
 }
