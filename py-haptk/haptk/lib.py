@@ -63,11 +63,25 @@ class HST:
             node_samples = []
 
             for index in data['indexes']:
-                node_samples.append(self.samples[index])
+                node_samples.append(self.get_sample_name(index))
 
             list_of_samples.append(node_samples)
         return list_of_samples
 
+    def get_sample_name(self, index):
+        # This division always results in whole numbers on the Rust side
+        return self.samples[int(index / self.ploidy_int())]
+
+    def ploidy_int(self):
+        match self.metadata['ploidy']:
+            case "Mixed":
+                return 1
+            case "Haploid":
+                return 1
+            case "Diploid":
+                return 2
+        
+    
     def get_nodes_data(self, nodes):
         data = []
 
@@ -116,19 +130,19 @@ class HST:
     def get_children_idx_amounts(self, node):
         return [len(self.get_node_data(c.name)["indexes"]) for c in node.children]
 
-    def iterate_tree(self, df, optimizer, output, to_tag=[], min_size=1, hard_cut=False, min_start=None, max_stop=None, tree_style = iterate_tree_style(), dpi=600, w=1624, h=1624):
-        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop)
+    def iterate_tree(self, df, optimizer, output, to_tag=[], min_size=1, hard_cut=False, min_start=None, max_stop=None, right_up=False, tree_style = iterate_tree_style(), dpi=600, w=1624, h=1624):
+        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up)
         t = iterate_tree_inner(self, t, to_tag, df, optimizer)
         t.render(output, units="px", w=w, h=h, tree_style=tree_style, dpi=dpi)
 
     def match_tree(self, other_hst, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=match_tree_style()): 
-        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop)
+        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up=False)
         t = draw_match_tree(self.G, other_t, output, self.samples, to_tag, colors, proportions)
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
 
     def index_tree(self, output, min_size=1, hard_cut=False, min_start=None, max_stop=None, dpi=600, tree_style=index_tree_style()): 
-        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop)
+        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up=False)
         t = draw_index_tree(t, output)
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
@@ -137,7 +151,7 @@ class HST:
         if len(to_tag) > len(colors):
             raise ValueError("more samples to tag than available colors")
 
-        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop)
+        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up=False)
         t = draw_circle_tree(self, t, to_tag, colors, branch_point_size, branch_length_as_majority)
 
         t.render(output, w=w, h=h, units="px", tree_style=tree_style, dpi=dpi)
@@ -146,7 +160,7 @@ class HST:
         if len(to_tag) > len(colors):
             raise ValueError("more samples to tag than available colors")
 
-        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop)
+        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up=False)
         t = draw_normal_tree(self, t, to_tag, colors, proportions, branch_point_size, branch_length_as_majority)
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
@@ -159,6 +173,8 @@ def read_hst(path):
         metadata = hst_struct["metadata"]
         coords = metadata["coords"]
         samples = metadata["samples"]
+        del metadata["coords"]
+        del metadata["samples"]
 
         G = rx.PyDiGraph()
 
@@ -169,16 +185,16 @@ def read_hst(path):
         G.add_nodes_from(hst["nodes"])
         G.add_edges_from(edges_tuple_vec)
 
-        if metadata["selection"] == "All":
-            samples = [val for val in samples for _ in (0, 1)]
+        # if metadata["selection"] == "All":
+            # samples = [val for val in samples for _ in (0, 1)]
 
         hst = HST(G, coords, samples, metadata)
 
         return hst
 
-def create_ete3_tree(hst, min_size, hard_cut, min_start, max_stop):
+def create_ete3_tree(hst, min_size, hard_cut, min_start, max_stop, right_up):
     graph_dict = utils.hst_to_graph_dict(hst.G)
-    newick = utils.newickify(hst, graph_dict, min_size, hard_cut, min_start, max_stop)
+    newick = utils.newickify(hst, graph_dict, min_size, hard_cut, min_start, max_stop, right_up)
     return Tree(newick, format=1)
 
 

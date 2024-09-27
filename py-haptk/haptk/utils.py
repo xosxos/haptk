@@ -74,7 +74,7 @@ def hst_to_graph_dict(hst):
     return graph_dict
 
 # Originally from https://stackoverflow.com/questions/50003007/how-to-convert-python-dictionary-to-newick-form-format
-def newickify(hst, graph_dict, min_samples, hard_cut, min_start, max_stop) -> str:
+def newickify(hst, graph_dict, min_samples, hard_cut, min_start, max_stop, right_up) -> str:
     visited_nodes = set()
 
     # Recursion
@@ -93,7 +93,7 @@ def newickify(hst, graph_dict, min_samples, hard_cut, min_start, max_stop) -> st
             start = hst.coords[node_data['start_idx']]['pos']
             stop = hst.coords[node_data['stop_idx']]['pos']
 
-            print(start, stop, len(node_data['haplotype']), min_start, max_stop)
+            # print(start, stop, len(node_data['haplotype']), min_start, max_stop)
 
             if min_start and start <= min_start:
                 start_stop_clause = True
@@ -113,7 +113,10 @@ def newickify(hst, graph_dict, min_samples, hard_cut, min_start, max_stop) -> st
 
             # Sort keys by size
             keys_and_size = [(child, len(hst.G.get_node_data(child)["indexes"])) for child in children.keys()]
-            keys_and_size.sort(key = lambda x: x[1], reverse=False)
+            if right_up:
+                keys_and_size.sort(key = lambda x: x[1], reverse=True)
+            else:
+                keys_and_size.sort(key = lambda x: x[1], reverse=False)
 
             if hard_cut:
                 keys_and_size = list(filter(lambda x: x[1] >= min_samples, keys_and_size))

@@ -98,19 +98,31 @@ impl std::fmt::Display for HapVariant {
 
 impl PartialEq<HapVariant> for Coord {
     fn eq(&self, other: &HapVariant) -> bool {
-        self.contig == other.contig
-            && self.pos == other.pos
-            && self.reference == other.reference
-            && self.alt == other.alt
+        if other.alt == "-" && other.gt == 0 {
+            self.contig == other.contig
+                && self.pos == other.pos
+                && self.reference == other.reference
+        } else {
+            self.contig == other.contig
+                && self.pos == other.pos
+                && self.reference == other.reference
+                && self.alt == other.alt
+        }
     }
 }
 
 impl PartialEq<Coord> for HapVariant {
     fn eq(&self, other: &Coord) -> bool {
-        self.contig == other.contig
-            && self.pos == other.pos
-            && self.reference == other.reference
-            && self.alt == other.alt
+        if self.alt == "-" && self.gt == 0 {
+            self.contig == other.contig
+                && self.pos == other.pos
+                && self.reference == other.reference
+        } else {
+            self.contig == other.contig
+                && self.pos == other.pos
+                && self.reference == other.reference
+                && self.alt == other.alt
+        }
     }
 }
 

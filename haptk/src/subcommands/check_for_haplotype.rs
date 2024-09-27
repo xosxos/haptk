@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::{
+    eyre::{eyre, OptionExt},
+    Result,
+};
 
 use crate::{
     args::{Selection, StandardArgs},
@@ -18,8 +21,11 @@ pub fn run(args: StandardArgs, haplotype_path: PathBuf) -> Result<()> {
     push_to_output(&args, &mut csv_output, "haplotype_check", "csv");
     let mut writer = open_csv_writer(csv_output)?;
 
-    let ht = crate::io::read_haplotype_file(haplotype_path)?;
-    let start = ht.first().unwrap();
+    let ht = crate::io::read_haplotype_file(haplotype_path.clone())?;
+    let start = ht.first().ok_or_else(|| eyre!( 
+        "Failed to get the first variant of the haplotype at {haplotype_path:?}. Is the haplotype file empty?"),
+    )?;
+
     let end = ht.last().unwrap();
 
     let mut vcf = read_vcf_to_matrix(

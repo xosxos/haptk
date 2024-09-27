@@ -16,7 +16,7 @@ def iterate_tree_style():
     ts.min_leaf_separation = 0
     ts.root_opening_factor = 0
     ts.optimal_scale_level = "mid"
-    ts.allow_face_overlap = True
+    ts.allow_face_overlap = False
     # ts.allow_face_overlap = False
 
     return ts
@@ -28,13 +28,8 @@ def iterate_tree_inner(hst, t, samples_to_tag, df, optimizer):
     for n in t.traverse():
         n.set_style(style)
         
-        optimized_value, label, color, text_color = optimizer(hst, n, df, samples_to_tag)      
+        F = optimizer(hst, n, df, samples_to_tag)      
 
-        F = TextFace(label, tight_text=True, penwidth=30, fsize=8, fgcolor="black")
-        F.rotation = 270
-
-        F.background.color = color
-        F.fgcolor = text_color
         n.add_face(F, column=0)
         
 
