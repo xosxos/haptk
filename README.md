@@ -1,6 +1,14 @@
+# HAPTK
+
+A toolkit for haplotype analysis using haplotype sharing trees, haplotype windowing and long-read assemblied haplotypes
+
+[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+![Rust 1.69](https://img.shields.io/badge/rust-1.69-green.svg)
+![Rust 1.81](https://img.shields.io/badge/rust-1.81-green.svg)
+[![Crates.io](https://img.shields.io/crates/v/haptk.svg)](https://crates.io/crates/haptk)
+
 ## How to install
 ```bash
-# HAPTK has been tested with Rust 1.69 and higher
 
 # Install Rust and the Cargo package manager
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
