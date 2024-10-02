@@ -30,5 +30,5 @@ if args.ids:
         samples_to_tag.append(ids)
 
 # Render the tree
-hst.normal_tree(args.output, to_tag=samples_to_tag, min_size=args.min_size, hard_cut=args.hard_cut, proportions=args.proportions, branch_point_size=args.branch_point_size, branch_length_as_majority=args.branch_length)
+hst.normal_tree(args.output, to_tag=samples_to_tag, min_size=args.min_size, hard_cut=args.hard_cut, proportions=args.proportions, branch_point_size=args.branch_point_size, branch_length_as_majority=args.branch_length, show_haplotype=True, n_markers=3, show_pos=True)
 

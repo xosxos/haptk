@@ -5,7 +5,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from lifelines import CoxPHFitter
 from ete3 import TreeStyle, TextFace
-import math
 
 # Import the HAPTK python library
 import haptk
@@ -141,63 +140,6 @@ def optimizer_fisher(hst, _node_name, indexes, _df, samples_to_tag):
 
     return res.pvalue
 
-def haplotype_string(node_data, hst):
-    def gt_to_str(gt):
-        if gt == 0:
-            return 'reference'
-        if gt == 1:
-            return 'alt'
-        else:
-            print('error at iterate_tree script')
-            return 'error'
-        
-    start = node_data['start_idx']
-    stop = node_data['stop_idx']
-
-    haplotype = [hst.coords[start + i][gt_to_str(gt)] for i, gt in enumerate(node_data['haplotype'])]
-
-    # print(start, stop)
-    # print(hst.coords[hst.metadata['start_idx']])
-    size = 5
-
-    if len(haplotype) > size:
-        between_len = len(haplotype) - size - 1
-        if between_len < 2:
-            ht_string = '-'.join(str(x) for x in haplotype)
-
-            return f'{ht_string}'
-            
-        if hst.metadata['hst_type'] == 'UhstLeft':
-            ending = haplotype[-size:]
-            ending = '-'.join(str(x) for x in ending)
-
-            return f'{haplotype[0]}..({between_len})..{ending}'
-
-        elif hst.metadata['hst_type'] == 'UhstRight':
-            beginning = haplotype[0:size]
-            beginning = '-'.join(str(x) for x in beginning)
-
-            return f'{beginning}..({between_len})..{haplotype[-1]}'
-
-        elif hst.metadata['hst_type'] == 'Bhst':
-            left = int(math.floor(size/2))
-            right = int(math.floor(size/2))
-            between_len = len(haplotype) - left - right
-
-            beginning = haplotype[0:left]
-            ending = haplotype[-right:]
-            beginning = '-'.join(str(x) for x in beginning)
-            ending = '-'.join(str(x) for x in ending)
-
-            return f'{beginning}..({between_len})..{ending}'
-
-        else:
-            print(f"hst_type {hst.metadata['hst_type']} is not supported")
-    else:
-        haplotype_string = '-'.join(str(x) for x in haplotype)
-
-        return f'{haplotype_string}'
-
 
 def optimizer(hst, n, df, _samples_to_tag):
     node_data = hst.get_node_data(n.name)
@@ -241,7 +183,7 @@ def optimizer(hst, n, df, _samples_to_tag):
             clause = alt_homs < 5
 
         if clause:
-            label = f" N={freq:.2g} AVG={avg}\n{haplotype_string(node_data, hst)}"
+            label = f" N={freq:.2g} AVG={avg}\n{hst.haplotype_string(node_data, 5)}"
             return create_text_face(label, hst, color, text_color)
 
 
@@ -264,7 +206,7 @@ def optimizer(hst, n, df, _samples_to_tag):
         coef = round(cph.summary['coef'].iloc[4], 6)
         e_coef = round(cph.summary['exp(coef)'].iloc[4], 6)
         p = cph.summary['p'].iloc[4]
-        label = f"N={freq:.3g} AVG={avg}\nHR={e_coef:.3g} P={p:.2g}\n{haplotype_string(node_data, hst)}"
+        label = f"N={freq:.3g} AVG={avg}\nHR={e_coef:.3g} P={p:.2g}\n{hst.haplotype_string(node_data, 5)}"
         # print(n.name, len(indexes), hets, alt_homs, coef, e_coef, p)
 
         if p < 0.05:

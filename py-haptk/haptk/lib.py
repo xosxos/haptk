@@ -3,6 +3,7 @@ import json
 import argparse
 import rustworkx as rx
 import gzip
+import math
 
 from haptk import utils
 from haptk.circle_tree import draw_circle_tree, circle_tree_style
@@ -37,6 +38,9 @@ class HST:
         idx = int(idx)
         data = self.G.get_node_data(idx)
         return data["start_idx"]
+
+    def get_pos(self, idx):
+        return self.coords[idx]['pos']
 
     def get_node_stop_idx(self, idx):
         idx = int(idx)
@@ -90,6 +94,63 @@ class HST:
 
         return data
 
+    def haplotype_string(self, node_data, size):
+
+        def gt_to_str(gt):
+            if gt == 0:
+                return 'reference'
+            if gt == 1:
+                return 'alt'
+            else:
+                print('error at iterate_tree script')
+                return 'error'
+        
+        start = node_data['start_idx']
+
+        haplotype = [self.coords[start + i][gt_to_str(gt)] for i, gt in enumerate(node_data['haplotype'])]
+
+        # print(start, stop)
+        # print(hst.coords[hst.metadata['start_idx']])
+
+        if len(haplotype) > size:
+            between_len = len(haplotype) - size - 1
+            if between_len < 2:
+                ht_string = '-'.join(str(x) for x in haplotype)
+
+                return f'{ht_string}'
+            
+            if self.metadata['hst_type'] == 'UhstLeft':
+                ending = haplotype[-size:]
+                ending = '-'.join(str(x) for x in ending)
+
+                return f'{haplotype[0]}..({between_len})..{ending}'
+
+            elif self.metadata['hst_type'] == 'UhstRight':
+                beginning = haplotype[0:size]
+                beginning = '-'.join(str(x) for x in beginning)
+
+                return f'{beginning}..({between_len})..{haplotype[-1]}'
+
+            elif self.metadata['hst_type'] == 'Bhst':
+                left = int(math.floor(size/2))
+                right = int(math.floor(size/2))
+                between_len = len(haplotype) - left - right
+
+                beginning = haplotype[0:left]
+                ending = haplotype[-right:]
+                beginning = '-'.join(str(x) for x in beginning)
+                ending = '-'.join(str(x) for x in ending)
+
+                return f'{beginning}..({between_len})..{ending}'
+
+            else:
+                print(f"hst_type {self.metadata['hst_type']} is not supported")
+        else:
+            haplotype_string = '-'.join(str(x) for x in haplotype)
+
+            return f'{haplotype_string}'
+
+
     def is_maj_up_to(self, node, value):
         iter_node = node
         # print(f"checking {iter_node.name} for majority")
@@ -136,7 +197,7 @@ class HST:
         t.render(output, units="px", w=w, h=h, tree_style=tree_style, dpi=dpi)
 
     def match_tree(self, other_hst, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=match_tree_style()): 
-        t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up=False)
+        other_t = create_ete3_tree(other_hst, min_size, hard_cut, min_start, max_stop, right_up=False)
         t = draw_match_tree(self.G, other_t, output, self.samples, to_tag, colors, proportions)
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
@@ -156,12 +217,12 @@ class HST:
 
         t.render(output, w=w, h=h, units="px", tree_style=tree_style, dpi=dpi)
 
-    def normal_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=normal_tree_style(), branch_length_as_majority = 999999999, branch_point_size = 999999999): 
+    def normal_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=normal_tree_style(), show_haplotype=False, n_markers=3, show_pos=False, branch_length_as_majority = 999999999, branch_point_size = 999999999): 
         if len(to_tag) > len(colors):
             raise ValueError("more samples to tag than available colors")
 
         t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up=False)
-        t = draw_normal_tree(self, t, to_tag, colors, proportions, branch_point_size, branch_length_as_majority)
+        t = draw_normal_tree(self, t, to_tag, colors, proportions, show_haplotype, n_markers, show_pos, branch_point_size, branch_length_as_majority)
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
 
