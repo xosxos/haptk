@@ -2,15 +2,14 @@ use color_eyre::{
     eyre::{ensure, eyre},
     Result,
 };
-use ndarray::s;
 use petgraph::graph::NodeIndex;
-use petgraph::{Direction, Graph};
+use petgraph::Graph;
 use rayon::prelude::*;
 
 use crate::{
     args::{Selection, StandardArgs},
     io::{open_csv_writer, push_to_output, write_haplotype},
-    structs::{HapVariant, PhasedMatrix},
+    structs::{CoordDataSlot, HapVariant, PhasedMatrix},
     subcommands::bhst::{self, write_hst_file, HstType, Node},
 };
 
@@ -139,155 +138,121 @@ pub fn construct_uhst(
     min_size: usize,
     only_majority: bool,
 ) -> Graph<Node, u8> {
-    let mut uhst = Graph::<_, _>::new();
-
-    uhst.add_node(Node {
-        start_idx: idx,
-        stop_idx: idx,
-        indexes: (0..vcf.matrix.nrows()).collect(),
-        haplotype: vec![],
-    });
+    let mut hst = bhst::initiate_hst(vcf, idx);
 
     let mut min_size_blacklist = vec![];
     loop {
-        // Filter indices
-        let indices = uhst
-            .node_indices()
-            .filter(|node_idx| !min_size_blacklist.contains(node_idx))
-            .filter(|node_idx| {
-                let node = uhst.node_weight(*node_idx).unwrap();
-                let count = uhst
-                    .neighbors_directed(*node_idx, Direction::Outgoing)
-                    .count();
-                count == 0 && node.indexes.len() > 1
-            })
-            .collect::<Vec<NodeIndex>>();
+        // From all nodes find all leaf nodes with more indexes than min_size
+        let indices = bhst::find_leaf_nodes(&hst, min_size, &min_size_blacklist);
 
-        // Multithread horizontally all childless nodes
+        // Iterate through the filtered leaf nodes in parallel to find new nodes to add
         let nodes = indices
             .into_par_iter()
             .filter_map(|node_idx| {
-                find_contradictory_gt(vcf, &uhst, idx, node_idx, direction)
-                    .unwrap()
+                find_contradictory_gt(vcf, &hst, idx, node_idx, direction)
                     .map(|(node1, node2)| (node_idx, node1, node2))
             })
             .collect::<Vec<(NodeIndex, Node, Node)>>();
 
-        // Terminate if no new nodes will be added to the tree
         if nodes.is_empty() {
             break;
         }
 
         if only_majority {
-            // This is only used for VCF struct only-longest selection
+            // This path is only used for the `--select longest-haplotype` pre-selection
             for (idx, node1, node2) in nodes {
                 match node1.indexes.len().cmp(&node2.indexes.len()) {
                     std::cmp::Ordering::Greater | std::cmp::Ordering::Equal => {
-                        let node_idx = uhst.add_node(node1);
-                        uhst.add_edge(idx, node_idx, 0);
+                        let node_idx = hst.add_node(node1);
+                        hst.add_edge(idx, node_idx, 0);
                     }
                     std::cmp::Ordering::Less => {
-                        let node_idx = uhst.add_node(node2);
-                        uhst.add_edge(idx, node_idx, 0);
+                        let node_idx = hst.add_node(node2);
+                        hst.add_edge(idx, node_idx, 0);
                     }
                 }
             }
         } else {
             // Add nodes to the tree
             for (idx, node1, node2) in nodes {
-                let uhst_node_count_before = uhst.node_count();
+                let hst_node_count_before = hst.node_count();
 
                 if node1.indexes.len() >= min_size {
-                    let node_idx1 = uhst.add_node(node1);
-                    uhst.add_edge(idx, node_idx1, 0);
+                    let node_idx1 = hst.add_node(node1);
+                    hst.add_edge(idx, node_idx1, 0);
                 }
 
                 if node2.indexes.len() >= min_size {
-                    let node_idx2 = uhst.add_node(node2);
-                    uhst.add_edge(idx, node_idx2, 0);
+                    let node_idx2 = hst.add_node(node2);
+                    hst.add_edge(idx, node_idx2, 0);
                 }
 
-                if uhst.node_count() == uhst_node_count_before {
+                if hst.node_count() == hst_node_count_before {
                     min_size_blacklist.push(idx);
                 }
             }
         }
     }
-    uhst
+    hst
 }
 
 #[doc(hidden)]
 fn find_contradictory_gt(
     vcf: &PhasedMatrix,
     uhst: &Graph<Node, u8>,
-    idx: usize,
+    tree_start_idx: usize,
     node_idx: NodeIndex,
     direction: &LocDirection,
-) -> Result<Option<(Node, Node)>> {
+) -> Option<(Node, Node)> {
     let node = uhst.node_weight(node_idx).unwrap();
 
-    let mut var_idx = node.start_idx;
+    let next_contradictory_idx = match direction {
+        LocDirection::Left => vcf.prev_contradictory(node.start_idx, &node.indexes),
+        LocDirection::Right => vcf.next_contradictory(node.start_idx, &node.indexes),
+    };
 
-    if node_idx == NodeIndex::new(0) {
-        var_idx = match direction {
-            LocDirection::Left => idx + 1,
-            LocDirection::Right => idx.saturating_sub(1),
-        };
-    }
+    if let Some(next_idx) = next_contradictory_idx {
+        let genotypes = vcf.get_slot(next_idx);
 
-    let (mut z, mut o);
-    loop {
-        (z, o) = (vec![], vec![]);
-        match direction {
-            LocDirection::Left => {
-                var_idx = var_idx.saturating_sub(1);
-            }
-            LocDirection::Right => {
-                if var_idx < vcf.matrix.ncols() - 1 {
-                    var_idx += 1;
-                }
+        let (mut ones, mut zeroes) = (vec![], vec![]);
+
+        for i in &node.indexes {
+            match genotypes[*i] == 1 {
+                true => ones.push(*i),
+                false => zeroes.push(*i),
             }
         }
 
-        for i in node.indexes.iter() {
-            let gt = vcf.matrix.slice(s![*i, var_idx]);
-
-            match gt.into_scalar() {
-                0 => z.push(*i),
-                1 => o.push(*i),
-                _ => unreachable!("Other genotypes than 0 and 1 are present in the matrix"),
-            }
-        }
-
-        if (!z.is_empty() && !o.is_empty()) || var_idx == vcf.matrix.ncols() - 1 || var_idx == 0 {
-            break;
-        }
-    }
-
-    if !z.is_empty() && !o.is_empty() {
         let (start_idx, stop_idx) = match direction {
-            LocDirection::Left => (var_idx, idx),
-            LocDirection::Right => (idx, var_idx),
+            LocDirection::Left => (next_idx, tree_start_idx),
+            LocDirection::Right => (tree_start_idx, next_idx),
         };
 
         let n1 = Node {
             start_idx,
             stop_idx,
-            haplotype: vcf.find_u8_haplotype_for_sample(start_idx..stop_idx + 1, z[0]),
-            indexes: z,
+            haplotype: vcf.find_u8_haplotype_for_sample(start_idx..stop_idx + 1, zeroes[0]),
+            indexes: zeroes,
         };
 
         let n2 = Node {
             start_idx,
             stop_idx,
-            haplotype: vcf.find_u8_haplotype_for_sample(start_idx..stop_idx + 1, o[0]),
-            indexes: o,
+            haplotype: vcf.find_u8_haplotype_for_sample(start_idx..stop_idx + 1, ones[0]),
+            indexes: ones,
         };
 
-        return Ok(Some((n1, n2)));
+        return Some((n1, n2));
     }
 
-    Ok(None)
+    tracing::warn!(
+        "Genotyping data ran out on {} side for samples {:?} starting from position {}",
+        direction,
+        vcf.get_sample_names(&node.indexes),
+        vcf.get_pos(node.start_idx)
+    );
+
+    None
 }
 
 pub fn combine_node_haplotypes(nodes: &[Node], vcf: &PhasedMatrix) -> Vec<HapVariant> {

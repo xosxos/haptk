@@ -107,64 +107,113 @@ impl std::fmt::Display for Node {
 
 #[doc(hidden)]
 pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<Node, u8> {
-    let mut bhst = Graph::<_, _>::new();
-
-    bhst.add_node(Node {
-        start_idx: idx,
-        stop_idx: idx,
-        indexes: (0..vcf.matrix.nrows()).collect(),
-        haplotype: vec![],
-    });
+    let mut hst = initiate_hst(vcf, idx);
 
     let mut min_size_blacklist = vec![];
     loop {
-        // Filter out non leaf nodes and nodes with less indexes than min_size.max(2)
-        let indices = bhst
-            .node_indices()
-            .filter(|node_idx| !min_size_blacklist.contains(node_idx))
-            .filter(|node_idx| {
-                let node = bhst.node_weight(*node_idx).unwrap();
-                let count = bhst
-                    .neighbors_directed(*node_idx, Direction::Outgoing)
-                    .count();
+        // From all nodes find all leaf nodes with more indexes than min_size
+        let indices = find_leaf_nodes(&hst, min_size, &min_size_blacklist);
 
-                // Children count is 0, but there are still over min_size samples left
-                // Collect such nodes into the `indices` vector
-                count == 0 && node.indexes.len() >= min_size.max(2)
-            })
-            .collect::<Vec<NodeIndex>>();
-
-        // Iterate through the filtered leaf nodes in parallel
+        // Iterate through the filtered leaf nodes in parallel to find new nodes to add
         let nodes = indices
             .into_par_iter()
             .filter_map(|node_idx| {
-                find_contradictory_gt(vcf, &bhst, node_idx).map(|nodes| (node_idx, nodes))
+                find_contradictory_gt(vcf, &hst, node_idx).map(|nodes| (node_idx, nodes))
             })
             .collect::<Vec<(NodeIndex, Vec<Node>)>>();
 
-        // Terminate if no new nodes will be added to the tree
         if nodes.is_empty() {
             break;
         }
 
         // Add new nodes to the tree
         for (node_idx, new_nodes) in nodes {
-            let bhst_node_count_before = bhst.node_count();
+            let hst_node_count_before = hst.node_count();
 
-            for new_node in new_nodes {
+            for new_node in new_nodes.into_iter() {
                 if new_node.indexes.len() >= min_size {
-                    let new_node_idx = bhst.add_node(new_node.clone());
+                    let new_node_idx = hst.add_node(new_node);
 
-                    bhst.add_edge(node_idx, new_node_idx, 0);
+                    hst.add_edge(node_idx, new_node_idx, 0);
                 }
             }
 
-            if bhst.node_count() == bhst_node_count_before {
+            if hst.node_count() == hst_node_count_before {
                 min_size_blacklist.push(node_idx);
             }
         }
     }
-    bhst
+    hst
+}
+
+pub fn initiate_hst(vcf: &PhasedMatrix, idx: usize) -> Graph<Node, u8> {
+    let mut hst = Graph::<_, _>::new();
+
+    let indexes: Vec<usize> = (0..vcf.matrix.nrows()).collect();
+
+    hst.add_node(Node {
+        start_idx: idx,
+        stop_idx: idx,
+        indexes: indexes.clone(),
+        haplotype: vec![],
+    });
+
+    // If the first variant is already contradictory, split into two nodes
+    if vcf.is_contradictory(idx, &indexes) {
+        let genotypes = vcf.get_slot(idx);
+        let (mut ones, mut zeroes) = (vec![], vec![]);
+
+        for i in indexes.iter() {
+            match genotypes[*i] == 1 {
+                true => ones.push(*i),
+                false => zeroes.push(*i),
+            }
+        }
+
+        let node1 = Node {
+            start_idx: idx,
+            stop_idx: idx,
+            haplotype: vcf.find_u8_haplotype_for_sample(idx..idx + 1, ones[0]),
+            indexes: ones,
+        };
+
+        let node2 = Node {
+            start_idx: idx,
+            stop_idx: idx,
+            haplotype: vcf.find_u8_haplotype_for_sample(idx..idx + 1, zeroes[0]),
+            indexes: zeroes,
+        };
+
+        let node1 = hst.add_node(node1);
+        let node2 = hst.add_node(node2);
+
+        hst.add_edge(NodeIndex::new(0), node1, 0);
+        hst.add_edge(NodeIndex::new(0), node2, 0);
+    }
+
+    hst
+}
+
+pub fn find_leaf_nodes(
+    hst: &Graph<Node, u8>,
+    min_size: usize,
+    min_size_blacklist: &[NodeIndex],
+) -> Vec<NodeIndex> {
+    hst.node_indices()
+        .filter(|node_idx| !min_size_blacklist.contains(node_idx))
+        .filter(|node_idx| {
+            let node = hst.node_weight(*node_idx).unwrap();
+
+            let count = hst
+                .neighbors_directed(*node_idx, Direction::Outgoing)
+                .count();
+
+            // Children count is 0, but there are still over min_size samples left
+            // Collect such nodes into the `indices` vector
+            // min_size.max(2) means use min_size if it's higher than 2, if lower, use 2
+            count == 0 && node.indexes.len() >= min_size.max(2)
+        })
+        .collect()
 }
 
 #[doc(hidden)]
@@ -174,13 +223,11 @@ fn find_contradictory_gt(
     node_idx: NodeIndex,
 ) -> Option<Vec<Node>> {
     let node = bhst.node_weight(node_idx).unwrap();
-    let (left_idx, mut right_idx) = (node.start_idx, node.stop_idx);
+    let (left_idx, right_idx) = (node.start_idx, node.stop_idx);
 
-    // Minus 1 to account for the starting variant itself as well in the root node
-    if node_idx == NodeIndex::new(0) {
-        right_idx = right_idx.saturating_sub(1);
-    }
-
+    // Use the CoordDataSlot trait from structs.rs to access the genotype matrix
+    // Accessing the matrix has to be behind an interface to allow for the back end logic
+    // to be switched out in the future
     let prev = vcf.prev_contradictory(left_idx, &node.indexes);
     let next = vcf.next_contradictory(right_idx, &node.indexes);
 
@@ -192,13 +239,17 @@ fn find_contradictory_gt(
         Vec::with_capacity(node.indexes.len()),
         Vec::with_capacity(node.indexes.len()),
     );
+
+    // Fill the genotype buckets and then create HST nodes from the buckets
     match (prev, next) {
         (Some(left), Some(right)) => {
             let left_vec = vcf.get_slot(left);
             let right_vec = vcf.get_slot(right);
+
             for i in node.indexes.iter() {
                 let left_bit = left_vec[*i] == 1;
                 let right_bit = right_vec[*i] == 1;
+
                 match (left_bit, right_bit) {
                     (false, false) => zz.push(*i),
                     (false, true) => zo.push(*i),
@@ -217,6 +268,7 @@ fn find_contradictory_gt(
             );
 
             let left_vec = vcf.get_slot(left);
+
             for i in node.indexes.iter() {
                 match left_vec[*i] == 1 {
                     true => oz.push(*i),
@@ -234,6 +286,7 @@ fn find_contradictory_gt(
             );
 
             let right_vec = vcf.get_slot(right);
+
             for i in node.indexes.iter() {
                 match right_vec[*i] == 1 {
                     true => zo.push(*i),
@@ -299,6 +352,8 @@ fn create_nodes_from_buckets(
     nodes
 }
 
+// HST UTILS
+
 pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Result<Vec<HapVariant>> {
     let start_idx = NodeIndex::new(0);
     let nodes = find_majority_nodes(g, start_idx);
@@ -342,8 +397,6 @@ pub fn find_shared_haplotype(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Vec<Hap
         second_node.indexes[0],
     )
 }
-
-// HST UTILS
 
 pub fn calculate_block_len(vcf: &PhasedMatrix, node: &Node) -> u64 {
     match node.stop_idx.cmp(&node.start_idx) {
