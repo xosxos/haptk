@@ -1,4 +1,3 @@
-#![allow(clippy::comparison_chain)]
 use std::{collections::HashMap, path::PathBuf};
 
 use color_eyre::{
@@ -14,7 +13,7 @@ use crate::{
     io::push_to_output,
     read_vcf::read_vcf_to_matrix,
     structs::PhasedMatrix,
-    subcommands::bhst::{read_hst_file, write_hst_file, Hst, Node},
+    subcommands::bhst_shard::{read_hst_file, write_hst_file, Hst, Node},
     utils::parse_snp_coord,
 };
 
@@ -73,7 +72,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
             if stop != vcf.ncoords() {
                 stop += 1;
             }
-            vcf.select_columns_by_range(
+            vcf.select_columns_by_range_idx(
                 // inclusive range not possible due to ndarray range generics being so difficult
                 start..stop,
             );
@@ -88,7 +87,9 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
             hst_import.metadata.coords.len(),
             vcf.ncoords()
         );
-    } else if hst_import.metadata.coords.len() < vcf.ncoords() {
+    }
+
+    if hst_import.metadata.coords.len() < vcf.ncoords() {
         tracing::warn!(
             "The HST has less variants than the given VCF {} vs {}",
             hst_import.metadata.coords.len(),
@@ -114,7 +115,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     );
 
     let hst_type = hst_import.metadata.hst_type.clone();
-    let match_hst = create_match_hst(&vcf, hst_import);
+    let match_hst = create_match_hst(&vcf, &hst_import);
 
     // Write .hst to file
     let mut hst_output = args.output.clone();
@@ -125,14 +126,14 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn init_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> {
+pub fn init_match_hst<'graph>(vcf: &PhasedMatrix, hst: &'graph Hst) -> Graph<Node<'graph>, u8> {
     let mut match_hst: Graph<Node, u8> = Graph::new();
     let node_idx = NodeIndex::new(0);
     let node = hst.hst.node_weight(node_idx).unwrap();
 
     let new_node = Node {
-        start_idx: node.start_idx,
-        stop_idx: node.stop_idx,
+        start: node.start.clone(),
+        stop: node.stop.clone(),
         indexes: vec![],
         haplotype: vec![],
     };
@@ -140,11 +141,11 @@ pub fn init_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> {
 
     recursive_copy(copy_idx, node_idx, hst, &mut match_hst, vcf);
 
-    fn recursive_copy(
+    fn recursive_copy<'graph>(
         copy_idx: NodeIndex,
         node_idx: NodeIndex,
-        hst: &Hst,
-        match_hst: &mut Graph<Node, u8>,
+        hst: &'graph Hst,
+        match_hst: &mut Graph<Node<'graph>, u8>,
         _vcf: &PhasedMatrix,
     ) {
         let children = hst.hst.neighbors_directed(node_idx, Direction::Outgoing);
@@ -153,8 +154,8 @@ pub fn init_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> {
 
             // let ref_samples = vec!["s".to_string(); child.indexes.len()];
             let new_node = Node {
-                start_idx: child.start_idx,
-                stop_idx: child.stop_idx,
+                start: child.start.clone(),
+                stop: child.stop.clone(),
                 indexes: vec![],
                 haplotype: vec![],
             };
@@ -167,20 +168,23 @@ pub fn init_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> {
     match_hst
 }
 
-pub fn create_match_hst(vcf: &PhasedMatrix, hst: Hst) -> Graph<Node, u8> {
+pub fn create_match_hst<'graph>(
+    vcf: &PhasedMatrix,
+    hst: &'graph Hst<'graph>,
+) -> Graph<Node<'graph>, u8> {
     let node_idx = NodeIndex::new(0);
 
-    let node_idx_vecs = (0..vcf.nrows())
+    let node_idx_vecs = (0..vcf.nhaplotypes())
         .into_par_iter()
         .map(|sample_idx| {
             // Return a list of node_idxs where the haplotype has no contradictory genotypes for the sample
             let mut node_idxs = vec![];
-            recursive_haplotype_comparison(vcf, node_idx, &hst, sample_idx, &mut node_idxs);
+            recursive_haplotype_comparison(vcf, node_idx, hst, sample_idx, &mut node_idxs);
             node_idxs
         })
         .collect::<Vec<Vec<NodeIndex>>>();
 
-    let mut match_hst = init_match_hst(vcf, &hst);
+    let mut match_hst = init_match_hst(vcf, hst);
 
     let mut map = HashMap::new();
     for (sample_idx, vec) in node_idx_vecs.into_iter().enumerate() {
@@ -226,21 +230,22 @@ pub fn haplotype_has_contradictory_genotypes(
     let child = hst.hst.node_weight(node_idx).unwrap();
 
     // How to handle direction and missing variants here?
-    let start_idx = child.start_idx;
-    let stop_idx = child.stop_idx;
+    let start_idx = child.start.as_ref();
+    let stop_idx = child.stop.as_ref();
     if start_idx == stop_idx {
         return false;
     }
 
-    let start_pos = hst.get_pos(child.start_idx);
-    let stop_pos = hst.get_pos(child.stop_idx);
+    let start_pos = child.start.pos;
+    let stop_pos = child.stop.pos;
     let start = vcf.get_first_idx_on_left_by_pos(start_pos);
     let mut stop = vcf.get_first_idx_on_right_by_pos(stop_pos);
     if stop != vcf.ncoords() {
         stop += 1;
     }
 
-    let sample_haplotype = vcf.find_haplotype_for_sample(vcf.get_contig(), start..stop, sample_idx);
+    let sample_haplotype =
+        vcf.find_haplotype_for_sample_idx(vcf.get_contig(), start..stop, sample_idx);
 
     let ref_haplotype = hst.get_haplotype(node_idx);
     // for ht in &ref_haplotype {

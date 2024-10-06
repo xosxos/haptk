@@ -1,20 +1,23 @@
 use std::cmp::Ordering;
-use std::ops::Range;
+use std::collections::BTreeSet;
+use std::ops::Bound;
 use std::ops::RangeBounds;
 
 use color_eyre::{
     eyre::{ensure, eyre, WrapErr},
     Result,
 };
+use ndarray::iter::AxisIter;
+use ndarray::ArrayView2;
 use ndarray::{s, Array2, ArrayView1, Axis};
 use petgraph::graph::NodeIndex;
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::args::Selection;
-use crate::subcommands::bhst::find_majority_nodes;
-use crate::subcommands::bhst::Node;
-use crate::subcommands::uhst;
+use crate::subcommands::bhst_shard::find_majority_nodes;
+use crate::subcommands::bhst_shard::Node;
+use crate::subcommands::uhst_shard;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Coord {
@@ -195,15 +198,21 @@ impl From<Selection> for Ploidy {
     }
 }
 
+pub enum MatrixSlice {
+    All,
+    Point(usize),
+}
+
 //TODO: Most of these fields, if not all, should be private to ensure the correctness of
 // for example common selects and slicings performed by the user
 // Slice indexing matrices is also an anti-pattern in Polars
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PhasedMatrix {
+    pub start_coord: Coord,
     pub variant_idx: usize,
-    pub matrix: Array2<u8>,
+    matrix: Array2<u8>,
     samples: Vec<String>,
-    coords: Vec<Coord>,
+    coords: BTreeSet<Coord>,
     clinical_data: Option<DataFrame>,
     pub ploidy: Ploidy,
 }
@@ -211,13 +220,15 @@ pub struct PhasedMatrix {
 impl PhasedMatrix {
     pub fn new<T: AsRef<Selection>>(
         variant_idx: usize,
+        start_coord: Coord,
         matrix: Array2<u8>,
         samples: Vec<String>,
-        coords: Vec<Coord>,
+        coords: BTreeSet<Coord>,
         selection: T,
     ) -> Self {
         Self {
             variant_idx,
+            start_coord,
             matrix,
             samples,
             coords,
@@ -234,8 +245,47 @@ impl PhasedMatrix {
         self.samples.len() * *self.ploidy
     }
 
-    pub fn nrows(&self) -> usize {
+    pub fn matrix_nrows(&self) -> usize {
         self.matrix.nrows()
+    }
+
+    pub fn matrix_ncols(&self) -> usize {
+        self.matrix.ncols()
+    }
+
+    pub fn matrix_point(&self, x: usize, y: usize) -> u8 {
+        self.matrix[[x, y]]
+    }
+
+    pub fn matrix_slice(&self, row: MatrixSlice, col: MatrixSlice) -> ArrayView1<u8> {
+        let slice = match (row, col) {
+            (MatrixSlice::Point(x), MatrixSlice::All) => self.matrix.slice(s![x, ..]),
+            (MatrixSlice::All, MatrixSlice::Point(y)) => self.matrix.slice(s![.., y]),
+            _ => panic!(),
+        };
+        slice
+    }
+
+    pub fn matrix_axis_iter(&self, axis: usize) -> AxisIter<'_, u8, ndarray::Dim<[usize; 1]>> {
+        self.matrix.axis_iter(Axis(axis))
+    }
+
+    pub fn slice_cols<R: RangeBounds<usize>>(&self, col_range: R) -> ArrayView2<u8> {
+        let (col_first_idx, col_last_idx) = match (col_range.start_bound(), col_range.end_bound()) {
+            (Bound::Included(first), Bound::Excluded(last)) => (*first, last.saturating_sub(1)),
+            (Bound::Included(first), Bound::Included(last)) => (*first, *last),
+            _ => panic!("Range problem"),
+        };
+
+        self.matrix.slice(s![.., col_first_idx..=col_last_idx])
+    }
+
+    pub fn matrix(&self) -> &Array2<u8> {
+        &self.matrix
+    }
+
+    pub fn set_matrix(&mut self, matrix: Array2<u8>) {
+        self.matrix = matrix;
     }
 
     pub fn ncoords(&self) -> usize {
@@ -250,50 +300,69 @@ impl PhasedMatrix {
         &self.clinical_data
     }
 
-    pub fn coords(&self) -> &Vec<Coord> {
-        &self.coords
-    }
-
-    pub fn coords_mut(&mut self) -> &mut Vec<Coord> {
-        &mut self.coords
-    }
-
-    pub fn set_coords(&mut self, coords: Vec<Coord>) {
-        self.coords = coords;
-    }
-
     pub fn variant_idx(&self) -> usize {
         self.variant_idx
     }
 
     pub fn set_variant_idx(&mut self, variant_idx: usize) {
+        let new_start_coord = self.get_coord(variant_idx).clone();
+        self.set_start_coord(new_start_coord);
+
         self.variant_idx = variant_idx;
     }
 
     pub fn variant_idx_pos(&self) -> u64 {
         if !self.coords.is_empty() {
-            self.coords[self.variant_idx].pos
+            self.start_coord.pos
         } else {
             0
         }
     }
 
-    pub fn get_coord(&self, idx: usize) -> &Coord {
-        &self.coords[idx]
+    pub fn get_pos(&self, idx: usize) -> u64 {
+        self.coords.iter().nth(idx).unwrap().pos
     }
 
-    pub fn get_pos(&self, idx: usize) -> u64 {
-        self.coords[idx].pos
+    pub fn get_coord(&self, idx: usize) -> &Coord {
+        self.coords.iter().nth(idx).unwrap()
+    }
+
+    pub fn coords(&self) -> &BTreeSet<Coord> {
+        &self.coords
+    }
+
+    pub fn coords_mut(&mut self) -> &mut BTreeSet<Coord> {
+        &mut self.coords
+    }
+
+    pub fn set_coords(&mut self, coords: BTreeSet<Coord>) {
+        self.coords = coords;
+    }
+
+    pub fn start_coord(&self) -> &Coord {
+        &self.start_coord
+    }
+
+    pub fn get_coord_idx(&self, coord: &Coord) -> usize {
+        self.coords.iter().position(|c| c == coord).unwrap()
+    }
+
+    pub fn try_coord_by_hapvariant(&self, hv: &HapVariant) -> Option<usize> {
+        self.coords.iter().position(|c| c == hv)
+    }
+
+    pub fn set_start_coord(&mut self, coord: Coord) {
+        self.start_coord = coord;
     }
 
     pub fn get_contig(&self) -> &String {
-        &self.coords[0].contig
+        &self.coords.get(&self.start_coord).unwrap().contig
     }
 
     pub fn get_first_idx_on_right_by_pos(&self, pos: u64) -> usize {
         match self.coords.iter().position(|c| c.pos >= pos) {
             Some(idx) => idx,
-            None => self.coords.len(),
+            None => self.coords.len() - 1,
         }
     }
 
@@ -304,26 +373,23 @@ impl PhasedMatrix {
         }
     }
 
-    pub fn get_nearest_idx_by_pos(&self, pos: u64) -> usize {
+    pub fn get_nearest_coord_by_pos(&self, pos: u64) -> &Coord {
         if let Some(idx) = self.coords.iter().position(|c| c.pos >= pos) {
-            if idx == 0 {
-                return idx;
-            }
-            if self.get_pos(idx) == pos {
-                return idx;
+            let coord = self.coords.iter().nth(idx).unwrap();
+
+            if idx == 0 || coord.pos == pos {
+                return coord;
             }
 
-            let one_before_idx = idx - 1;
-            let before = self.get_pos(one_before_idx);
-            let after = self.get_pos(idx);
-            if pos - before >= after - pos {
-                idx
-            } else {
-                one_before_idx
+            let before = self.coords.iter().nth(idx - 1).unwrap();
+
+            match pos - before.pos >= coord.pos - pos {
+                true => coord,
+                false => before,
             }
         } else {
             // return last element if no element is larger
-            self.coords.len() - 1
+            self.coords.last().unwrap()
         }
     }
 
@@ -337,10 +403,6 @@ impl PhasedMatrix {
 
     pub fn idx_by_hapvariant(&self, hap: &HapVariant) -> Option<usize> {
         self.coords.iter().position(|coord| coord == hap)
-    }
-
-    pub fn matrix(&self) -> &Array2<u8> {
-        &self.matrix
     }
 
     pub fn get_sample_name(&self, index: usize) -> String {
@@ -376,9 +438,10 @@ impl PhasedMatrix {
             "Cannot select variant carriers: no variant at position {variant_pos}"
         );
 
-        let slice = self
-            .matrix
-            .slice(s![0..self.matrix.nrows(), self.variant_idx]);
+        let coord = self.get_nearest_coord_by_pos(variant_pos);
+        let coord_idx = self.get_coord_idx(coord);
+
+        let slice = self.matrix.slice(s![0..self.matrix.nrows(), coord_idx]);
 
         let indexes = slice
             .iter()
@@ -404,10 +467,19 @@ impl PhasedMatrix {
         Ok(())
     }
 
-    pub fn get_lengths_from_uhst(&self, variant_idx: usize) -> Vec<(Node, Node)> {
-        let uhst_right =
-            uhst::construct_uhst(self, &uhst::LocDirection::Right, variant_idx, 1, true);
-        let uhst_left = uhst::construct_uhst(self, &uhst::LocDirection::Left, variant_idx, 1, true);
+    pub fn get_lengths_from_uhst<'matrix>(
+        &'matrix self,
+        start_coord: &'matrix Coord,
+    ) -> Vec<(Node<'matrix>, Node<'matrix>)> {
+        let uhst_right = uhst_shard::construct_uhst(
+            self,
+            &uhst_shard::LocDirection::Right,
+            start_coord,
+            1,
+            true,
+        );
+        let uhst_left =
+            uhst_shard::construct_uhst(self, &uhst_shard::LocDirection::Left, start_coord, 1, true);
 
         let start_idx = NodeIndex::new(0);
         let lmaj_branch = find_majority_nodes(&uhst_left, start_idx);
@@ -455,14 +527,19 @@ impl PhasedMatrix {
     }
 
     pub fn only_longest_indexes(&self) -> Vec<usize> {
-        let lengths = self.get_lengths_from_uhst(self.variant_idx());
+        let lengths = self.get_lengths_from_uhst(self.start_coord());
         let lengths = lengths
             .iter()
             .map(|(lnode, rnode)| {
-                if lnode.start_idx == rnode.stop_idx {
+                if lnode.start == rnode.stop {
                     0
                 } else {
-                    self.get_pos(rnode.stop_idx - 1) - self.get_pos(lnode.start_idx + 1) + 1
+                    let stop_idx = self.get_coord_idx(&rnode.stop);
+                    let stop = self.coords.iter().nth(stop_idx - 1).unwrap();
+
+                    let start_idx = self.get_coord_idx(&lnode.start);
+                    let start = self.coords.iter().nth(start_idx + 1).unwrap();
+                    stop.pos - start.pos + 1
                 }
             })
             .collect::<Vec<u64>>();
@@ -487,14 +564,22 @@ impl PhasedMatrix {
             .collect::<Vec<usize>>()
     }
 
-    pub fn only_longest_lengths(&self, variant_idx: usize) -> Vec<(Node, Node)> {
-        let lengths = self.get_lengths_from_uhst(variant_idx);
+    pub fn only_longest_lengths<'matrix>(
+        &'matrix self,
+        start_coord: &'matrix Coord,
+    ) -> Vec<(Node<'matrix>, Node<'matrix>)> {
+        let lengths = self.get_lengths_from_uhst(start_coord);
 
         let calculate_len = |(lnode, rnode): &(Node, Node)| {
-            if lnode.start_idx == rnode.stop_idx {
+            if lnode.start == rnode.stop {
                 0
             } else {
-                self.get_pos(rnode.stop_idx - 1) - self.get_pos(lnode.start_idx + 1) + 1
+                let stop_idx = self.get_coord_idx(&rnode.stop);
+                let stop = self.coords.iter().nth(stop_idx - 1).unwrap();
+
+                let start_idx = self.get_coord_idx(&lnode.start);
+                let start = self.coords.iter().nth(start_idx + 1).unwrap();
+                stop.pos - start.pos + 1
             }
         };
 
@@ -540,19 +625,95 @@ impl PhasedMatrix {
 
         self.coords = to_keep
             .iter()
-            .map(|index| self.coords[*index].clone())
+            .map(|index| self.coords.iter().nth(*index).unwrap().clone())
             .collect();
     }
 
-    pub fn select_columns_by_range(&mut self, range: Range<usize>) {
-        // Take the first element of the range and subtract from variant_idx
-        self.variant_idx -= range.clone().next().unwrap();
-        self.matrix = self.matrix.slice(s![.., range.clone()]).to_owned();
-        self.coords = self.coords[range].to_vec();
+    pub fn select_columns_by_range<R: RangeBounds<Coord>>(&mut self, range: R) {
+        let (first, last) = match (range.start_bound(), range.end_bound()) {
+            (Bound::Included(first), Bound::Excluded(last)) => {
+                let last_idx = self.get_coord_idx(last);
+                (
+                    first.clone(),
+                    self.get_coord(last_idx.saturating_sub(1)).clone(),
+                )
+            }
+            (Bound::Included(first), Bound::Included(last)) => (first.clone(), last.clone()),
+            _ => panic!("Range problem"),
+        };
+
+        let first_idx = self.get_coord_idx(&first);
+        let last_idx = self.get_coord_idx(&last);
+
+        let last_idx = last_idx.min(self.ncoords() - 1);
+
+        self.matrix = self.matrix.slice(s![.., first_idx..last_idx]).to_owned();
+        self.coords = self.coords.range(first..=last).cloned().collect();
+
+        let coord_idx = self.get_coord_idx(self.start_coord());
+        self.start_coord = self.get_coord(coord_idx - first_idx).clone();
+    }
+
+    pub fn select_columns_by_range_idx<R: RangeBounds<usize>>(&mut self, range: R) {
+        let (first_idx, last_idx) = match (range.start_bound(), range.end_bound()) {
+            (Bound::Included(first), Bound::Excluded(last)) => (*first, last.saturating_sub(1)),
+            (Bound::Included(first), Bound::Included(last)) => (*first, *last),
+            _ => panic!("Range problem"),
+        };
+
+        let first = self.get_coord(first_idx).clone();
+
+        let last_idx = last_idx.min(self.ncoords() - 1);
+        let last = self.get_coord(last_idx).clone();
+
+        self.coords = self.coords.range(first..=last).cloned().collect();
+        self.matrix = self.matrix.slice(s![.., first_idx..last_idx]).to_owned();
+
+        let new_var_idx = self.variant_idx - first_idx;
+        self.set_variant_idx(new_var_idx);
     }
 
     // Inclusive ranges not supported so remember to add + 1 to stop_idx
-    pub fn find_haplotype_for_sample<R: RangeBounds<usize> + Iterator<Item = usize>>(
+    pub fn find_haplotype_for_sample<R: RangeBounds<Coord> + std::fmt::Debug>(
+        &self,
+        range: R,
+        sample: usize,
+    ) -> Vec<HapVariant> {
+        self.coords()
+            .range(range)
+            .map(|coord| {
+                let index = self.get_coord_idx(coord);
+                let gt = *self.matrix.slice(ndarray::s![sample, index]).into_scalar();
+
+                HapVariant {
+                    contig: coord.contig.to_string(),
+                    pos: coord.pos,
+                    alt: coord.alt.clone(),
+                    reference: coord.reference.clone(),
+                    gt,
+                }
+            })
+            .collect()
+    }
+
+    // Inclusive ranges not supported so remember to add + 1 to stop_idx
+    pub fn find_u8_haplotype_for_sample<R: RangeBounds<Coord>>(
+        &self,
+        range: R,
+        sample: usize,
+    ) -> Vec<u8> {
+        self.coords()
+            .range(range)
+            .map(|coord| {
+                let index = self.get_coord_idx(coord);
+
+                *self.matrix.slice(ndarray::s![sample, index]).into_scalar()
+            })
+            .collect()
+    }
+
+    // Inclusive ranges not supported so remember to add + 1 to stop_idx
+    pub fn find_haplotype_for_sample_idx<R: RangeBounds<usize> + Iterator<Item = usize>>(
         &self,
         contig: &str,
         range: R,
@@ -561,16 +722,16 @@ impl PhasedMatrix {
         range
             .map(|index| HapVariant {
                 contig: contig.to_string(),
-                pos: self.coords[index].pos,
-                alt: self.coords[index].alt.clone(),
-                reference: self.coords[index].reference.clone(),
+                pos: self.coords.iter().nth(index).unwrap().pos,
+                alt: self.coords.iter().nth(index).unwrap().alt.clone(),
+                reference: self.coords.iter().nth(index).unwrap().reference.clone(),
                 gt: *self.matrix.slice(ndarray::s![sample, index]).into_scalar(),
             })
             .collect()
     }
 
     // Inclusive ranges not supported so remember to add + 1 to stop_idx
-    pub fn find_u8_haplotype_for_sample<R: RangeBounds<usize> + Iterator<Item = usize>>(
+    pub fn find_u8_haplotype_for_sample_idx<R: RangeBounds<usize> + Iterator<Item = usize>>(
         &self,
         range: R,
         sample: usize,
@@ -703,31 +864,90 @@ impl PhasedMatrix {
 }
 
 pub trait CoordDataSlot {
-    fn get_slot(&self, index: usize) -> ArrayView1<u8>;
-    fn is_contradictory(&self, index: usize, positions: &[usize]) -> bool;
-    fn prev_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize>;
-    fn next_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize>;
+    fn get_slot(&self, coord: &Coord) -> ArrayView1<u8>;
+    fn is_contradictory(&self, coord: &Coord, positions: &[usize]) -> bool;
+    fn prev_contradictory(&self, coord: &Coord, positions: &[usize]) -> Option<&Coord>;
+    fn next_contradictory(&self, coord: &Coord, positions: &[usize]) -> Option<&Coord>;
 }
 
 impl CoordDataSlot for PhasedMatrix {
-    fn get_slot(&self, index: usize) -> ArrayView1<u8> {
+    fn get_slot(&self, coord: &Coord) -> ArrayView1<u8> {
+        let index = self.get_coord_idx(coord);
         self.matrix.index_axis(Axis(1), index)
     }
     // Slot is contractory if it contains both 0 and 1.
-    fn is_contradictory(&self, index: usize, positions: &[usize]) -> bool {
-        let slot = self.get_slot(index);
+    fn is_contradictory(&self, coord: &Coord, positions: &[usize]) -> bool {
+        let slot = self.get_slot(coord);
         let mut iter = positions.iter();
         let first = iter.next().unwrap();
         slot.len() > 1 && iter.any(|x| slot[*x] != slot[*first])
     }
 
-    fn prev_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize> {
+    fn prev_contradictory(&self, coord: &Coord, positions: &[usize]) -> Option<&Coord> {
+        let index = self.get_coord_idx(coord);
+
+        if index == 0 || positions.len() < 2 {
+            return None;
+        }
+
+        let mut idx = index as isize - 1;
+
+        while idx >= 0 {
+            let coord = self.coords.iter().nth(idx as usize).unwrap();
+            if self.is_contradictory(coord, positions) {
+                return Some(coord);
+            }
+            idx -= 1;
+        }
+        None
+    }
+
+    fn next_contradictory(&self, coord: &Coord, positions: &[usize]) -> Option<&Coord> {
+        let index = self.get_coord_idx(coord);
+
+        if index == self.matrix.ncols() - 1 || positions.len() < 2 {
+            return None;
+        }
+
+        let mut idx = index + 1;
+
+        while idx < self.matrix.ncols() {
+            let coord = self.coords.iter().nth(idx).unwrap();
+            if self.is_contradictory(coord, positions) {
+                return Some(coord);
+            }
+            idx += 1;
+        }
+        None
+    }
+}
+
+pub trait IdxCoordDataSlot {
+    fn get_slot_idx(&self, index: usize) -> ArrayView1<u8>;
+    fn is_contradictory_idx(&self, index: usize, positions: &[usize]) -> bool;
+    fn prev_contradictory_idx(&self, index: usize, positions: &[usize]) -> Option<usize>;
+    fn next_contradictory_idx(&self, index: usize, positions: &[usize]) -> Option<usize>;
+}
+
+impl IdxCoordDataSlot for PhasedMatrix {
+    fn get_slot_idx(&self, index: usize) -> ArrayView1<u8> {
+        self.matrix.index_axis(Axis(1), index)
+    }
+    // Slot is contractory if it contains both 0 and 1.
+    fn is_contradictory_idx(&self, index: usize, positions: &[usize]) -> bool {
+        let slot = self.get_slot_idx(index);
+        let mut iter = positions.iter();
+        let first = iter.next().unwrap();
+        slot.len() > 1 && iter.any(|x| slot[*x] != slot[*first])
+    }
+
+    fn prev_contradictory_idx(&self, index: usize, positions: &[usize]) -> Option<usize> {
         if index == 0 || positions.len() < 2 {
             return None;
         }
         let mut idx = (index - 1) as isize;
         while idx >= 0 {
-            if self.is_contradictory(idx as usize, positions) {
+            if self.is_contradictory_idx(idx as usize, positions) {
                 return Some(idx as usize);
             }
             idx -= 1;
@@ -735,13 +955,13 @@ impl CoordDataSlot for PhasedMatrix {
         None
     }
 
-    fn next_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize> {
+    fn next_contradictory_idx(&self, index: usize, positions: &[usize]) -> Option<usize> {
         if index == self.matrix.ncols() - 1 || positions.len() < 2 {
             return None;
         }
         let mut idx = index + 1;
         while idx < self.matrix.ncols() {
-            if self.is_contradictory(idx, positions) {
+            if self.is_contradictory_idx(idx, positions) {
                 return Some(idx);
             }
             idx += 1;
@@ -782,3 +1002,591 @@ mod tests {
         assert_eq!(&"G".to_string(), hv.genotype());
     }
 }
+
+// //TODO: Most of these fields, if not all, should be private to ensure the correctness of
+// // for example common selects and slicings performed by the user
+// // Slice indexing matrices is also an anti-pattern in Polars
+// #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+// pub struct PhasedMatrix {
+//     pub variant_idx: usize,
+//     pub matrix: Array2<u8>,
+//     samples: Vec<String>,
+//     coords: Vec<Coord>,
+//     clinical_data: Option<DataFrame>,
+//     pub ploidy: Ploidy,
+// }
+
+// impl PhasedMatrix {
+//     pub fn new<T: AsRef<Selection>>(
+//         variant_idx: usize,
+//         matrix: Array2<u8>,
+//         samples: Vec<String>,
+//         coords: Vec<Coord>,
+//         selection: T,
+//     ) -> Self {
+//         Self {
+//             variant_idx,
+//             matrix,
+//             samples,
+//             coords,
+//             clinical_data: None,
+//             ploidy: selection.as_ref().into(),
+//         }
+//     }
+
+//     pub fn nsamples(&self) -> usize {
+//         self.samples.len()
+//     }
+
+//     pub fn nhaplotypes(&self) -> usize {
+//         self.samples.len() * *self.ploidy
+//     }
+
+//     pub fn nrows(&self) -> usize {
+//         self.matrix.nrows()
+//     }
+
+//     pub fn ncoords(&self) -> usize {
+//         self.coords.len()
+//     }
+
+//     pub fn samples(&self) -> &Vec<String> {
+//         &self.samples
+//     }
+
+//     pub fn clinical_data(&self) -> &Option<DataFrame> {
+//         &self.clinical_data
+//     }
+
+//     pub fn coords(&self) -> &Vec<Coord> {
+//         &self.coords
+//     }
+
+//     pub fn coords_mut(&mut self) -> &mut Vec<Coord> {
+//         &mut self.coords
+//     }
+
+//     pub fn set_coords(&mut self, coords: Vec<Coord>) {
+//         self.coords = coords;
+//     }
+
+//     pub fn variant_idx(&self) -> usize {
+//         self.variant_idx
+//     }
+
+//     pub fn set_variant_idx(&mut self, variant_idx: usize) {
+//         self.variant_idx = variant_idx;
+//     }
+
+//     pub fn variant_idx_pos(&self) -> u64 {
+//         if !self.coords.is_empty() {
+//             self.coords[self.variant_idx].pos
+//         } else {
+//             0
+//         }
+//     }
+
+//     pub fn get_coord(&self, idx: usize) -> &Coord {
+//         &self.coords[idx]
+//     }
+
+//     pub fn get_pos(&self, idx: usize) -> u64 {
+//         self.coords[idx].pos
+//     }
+
+//     pub fn get_contig(&self) -> &String {
+//         &self.coords[0].contig
+//     }
+
+//     pub fn get_first_idx_on_right_by_pos(&self, pos: u64) -> usize {
+//         match self.coords.iter().position(|c| c.pos >= pos) {
+//             Some(idx) => idx,
+//             None => self.coords.len(),
+//         }
+//     }
+
+//     pub fn get_first_idx_on_left_by_pos(&self, pos: u64) -> usize {
+//         match self.coords.iter().position(|c| c.pos > pos) {
+//             Some(idx) => idx.saturating_sub(1),
+//             None => 0,
+//         }
+//     }
+
+//     pub fn get_nearest_idx_by_pos(&self, pos: u64) -> usize {
+//         if let Some(idx) = self.coords.iter().position(|c| c.pos >= pos) {
+//             if idx == 0 {
+//                 return idx;
+//             }
+//             if self.get_pos(idx) == pos {
+//                 return idx;
+//             }
+
+//             let one_before_idx = idx - 1;
+//             let before = self.get_pos(one_before_idx);
+//             let after = self.get_pos(idx);
+//             if pos - before >= after - pos {
+//                 idx
+//             } else {
+//                 one_before_idx
+//             }
+//         } else {
+//             // return last element if no element is larger
+//             self.coords.len() - 1
+//         }
+//     }
+
+//     pub fn idx_by_pos(&self, pos: u64) -> Option<usize> {
+//         self.coords.iter().position(|c| c.pos == pos)
+//     }
+
+//     pub fn idx_by_coord(&self, coord: &Coord) -> Option<usize> {
+//         self.coords.iter().position(|c| c == coord)
+//     }
+
+//     pub fn idx_by_hapvariant(&self, hap: &HapVariant) -> Option<usize> {
+//         self.coords.iter().position(|coord| coord == hap)
+//     }
+
+//     pub fn matrix(&self) -> &Array2<u8> {
+//         &self.matrix
+//     }
+
+//     pub fn get_sample_name(&self, index: usize) -> String {
+//         self.samples.get(index / *self.ploidy).unwrap().clone()
+//         // self.samples.get(index).unwrap().clone()
+//     }
+
+//     pub fn get_sample_names(&self, indexes: &[usize]) -> Vec<String> {
+//         indexes.iter().map(|i| self.get_sample_name(*i)).collect()
+//     }
+
+//     pub fn get_sample_idxs(&self, samples: &[String]) -> Result<Vec<usize>> {
+//         let idxs: Vec<_> = self
+//             .samples
+//             .iter()
+//             .enumerate()
+//             .filter(|(_, s)| samples.contains(s))
+//             .flat_map(|(i, _)| {
+//                 ((i * *self.ploidy)..(i * *self.ploidy) + *self.ploidy).collect::<Vec<usize>>()
+//             })
+//             .collect();
+
+//         ensure!(
+//             !idxs.is_empty(),
+//             "None of the control samples are found in the vcf."
+//         );
+//         Ok(idxs)
+//     }
+
+//     pub fn select_carriers(&mut self, variant_pos: u64, selection: &Selection) -> Result<()> {
+//         ensure!(
+//             self.variant_idx_pos() == variant_pos,
+//             "Cannot select variant carriers: no variant at position {variant_pos}"
+//         );
+
+//         let slice = self
+//             .matrix
+//             .slice(s![0..self.matrix.nrows(), self.variant_idx]);
+
+//         let indexes = slice
+//             .iter()
+//             .enumerate()
+//             .filter(|(_, gt)| match selection {
+//                 Selection::OnlyAlts => **gt == 1,
+//                 Selection::OnlyRefs => **gt == 0,
+//                 _ => panic!("Invalid selection method for alleles"),
+//             })
+//             .map(|(i, _)| i)
+//             .collect::<Vec<usize>>();
+
+//         match selection {
+//             Selection::OnlyAlts => tracing::info!("Selected {} ALT alleles", indexes.len()),
+//             Selection::OnlyRefs => tracing::info!("Selected {} REF alleles", indexes.len()),
+//             _ => panic!("Invalid selection method for alleles"),
+//         };
+
+//         self.select_rows(indexes);
+//         self.ploidy = Ploidy::Mixed;
+
+//         tracing::info!("Finished selecting by alleles.");
+//         Ok(())
+//     }
+
+//     pub fn get_lengths_from_uhst(&self, variant_idx: usize) -> Vec<(Node, Node)> {
+//         let uhst_right =
+//             uhst::construct_uhst(self, &uhst::LocDirection::Right, variant_idx, 1, true);
+//         let uhst_left = uhst::construct_uhst(self, &uhst::LocDirection::Left, variant_idx, 1, true);
+
+//         let start_idx = NodeIndex::new(0);
+//         let lmaj_branch = find_majority_nodes(&uhst_left, start_idx);
+//         let rmaj_branch = find_majority_nodes(&uhst_right, start_idx);
+
+//         (0..self.matrix.nrows())
+//             .map(|idx| {
+//                 let mut lnode = lmaj_branch.len()
+//                     - lmaj_branch
+//                         .iter()
+//                         .rev()
+//                         .position(|(node, _)| node.indexes.contains(&idx))
+//                         .unwrap();
+//                 let mut rnode = rmaj_branch.len()
+//                     - rmaj_branch
+//                         .iter()
+//                         .rev()
+//                         .position(|(node, _)| node.indexes.contains(&idx))
+//                         .unwrap();
+//                 if rnode == rmaj_branch.len() {
+//                     rnode -= 1;
+//                 }
+
+//                 if lnode == lmaj_branch.len() {
+//                     lnode -= 1;
+//                 }
+
+//                 (
+//                     idx,
+//                     lmaj_branch.get(lnode).unwrap(),
+//                     rmaj_branch.get(rnode).unwrap(),
+//                 )
+//             })
+//             .map(|(_idx, (lnode, _), (rnode, _))| ((*lnode).clone(), (*rnode).clone()))
+//             .collect()
+//     }
+
+//     pub fn select_only_longest(&mut self) {
+//         let longest_indexes = self.only_longest_indexes();
+
+//         self.select_rows(longest_indexes);
+//         self.ploidy = Ploidy::Haploid;
+
+//         tracing::info!("Finished only-longest selection.");
+//     }
+
+//     pub fn only_longest_indexes(&self) -> Vec<usize> {
+//         let lengths = self.get_lengths_from_uhst(self.variant_idx());
+//         let lengths = lengths
+//             .iter()
+//             .map(|(lnode, rnode)| {
+//                 if lnode.start_idx == rnode.stop_idx {
+//                     0
+//                 } else {
+//                     self.get_pos(rnode.stop_idx - 1) - self.get_pos(lnode.start_idx + 1) + 1
+//                 }
+//             })
+//             .collect::<Vec<u64>>();
+
+//         (0..self.nsamples())
+//             .map(|i| {
+//                 let lengths = lengths
+//                     .iter()
+//                     .enumerate()
+//                     .skip(i * *self.ploidy)
+//                     .take(*self.ploidy);
+
+//                 let (max_idx, max_len) = lengths.clone().max_by_key(|(_, l)| *l).unwrap();
+//                 if lengths.filter(|(_, l)| *l == max_len).count() > 1 {
+//                     tracing::warn!(
+//                         "Sample {} has two equally long haplotypes in only-longest selection.",
+//                         self.get_sample_name(i)
+//                     );
+//                 }
+//                 max_idx
+//             })
+//             .collect::<Vec<usize>>()
+//     }
+
+//     pub fn only_longest_lengths(&self, variant_idx: usize) -> Vec<(Node, Node)> {
+//         let lengths = self.get_lengths_from_uhst(variant_idx);
+
+//         let calculate_len = |(lnode, rnode): &(Node, Node)| {
+//             if lnode.start_idx == rnode.stop_idx {
+//                 0
+//             } else {
+//                 self.get_pos(rnode.stop_idx - 1) - self.get_pos(lnode.start_idx + 1) + 1
+//             }
+//         };
+
+//         (0..self.nsamples())
+//             .map(|i| {
+//                 let lengths = lengths
+//                     .iter()
+//                     .enumerate()
+//                     .skip(i * *self.ploidy)
+//                     .take(*self.ploidy);
+
+//                 let (_, max_nodes) = lengths
+//                     .clone()
+//                     .max_by_key(|(_, l)| calculate_len(l))
+//                     .unwrap();
+
+//                 let max_len = calculate_len(max_nodes);
+//                 if lengths.filter(|(_, l)| calculate_len(l) == max_len).count() > 1 {
+//                     tracing::warn!(
+//                         "Sample {} has two equally long haplotypes.",
+//                         self.get_sample_name(i)
+//                     );
+//                 }
+//                 max_nodes.clone()
+//             })
+//             .collect::<Vec<(Node, Node)>>()
+//     }
+
+//     // Sort inside select_rows to avoid bugs down the line
+//     pub fn select_rows(&mut self, mut to_keep: Vec<usize>) {
+//         to_keep.sort();
+//         self.matrix = self.matrix.select(Axis(0), &to_keep);
+
+//         self.samples = to_keep
+//             .iter()
+//             .map(|index| self.get_sample_name(*index))
+//             .collect();
+//     }
+
+//     pub fn select_columns_by_idx(&mut self, to_keep: &mut [usize]) {
+//         to_keep.sort();
+//         self.matrix = self.matrix.select(Axis(1), to_keep);
+
+//         self.coords = to_keep
+//             .iter()
+//             .map(|index| self.coords[*index].clone())
+//             .collect();
+//     }
+
+//     pub fn select_columns_by_range(&mut self, range: Range<usize>) {
+//         // Take the first element of the range and subtract from variant_idx
+//         self.variant_idx -= range.clone().next().unwrap();
+//         self.matrix = self.matrix.slice(s![.., range.clone()]).to_owned();
+//         self.coords = self.coords[range].to_vec();
+//     }
+
+//     // Inclusive ranges not supported so remember to add + 1 to stop_idx
+//     pub fn find_haplotype_for_sample<R: RangeBounds<usize> + Iterator<Item = usize>>(
+//         &self,
+//         contig: &str,
+//         range: R,
+//         sample: usize,
+//     ) -> Vec<HapVariant> {
+//         range
+//             .map(|index| HapVariant {
+//                 contig: contig.to_string(),
+//                 pos: self.coords[index].pos,
+//                 alt: self.coords[index].alt.clone(),
+//                 reference: self.coords[index].reference.clone(),
+//                 gt: *self.matrix.slice(ndarray::s![sample, index]).into_scalar(),
+//             })
+//             .collect()
+//     }
+
+//     // Inclusive ranges not supported so remember to add + 1 to stop_idx
+//     pub fn find_u8_haplotype_for_sample<R: RangeBounds<usize> + Iterator<Item = usize>>(
+//         &self,
+//         range: R,
+//         sample: usize,
+//     ) -> Vec<u8> {
+//         range
+//             .map(|index| *self.matrix.slice(ndarray::s![sample, index]).into_scalar())
+//             .collect()
+//     }
+
+//     pub fn set_variable_data(&mut self, df: DataFrame) -> Result<()> {
+//         let clinical_samples: Vec<String> = if let Ok(raw_utf8) = df["id"].utf8() {
+//             raw_utf8
+//                 .into_iter()
+//                 .flatten()
+//                 .map(|v| v.to_string())
+//                 .collect()
+//         } else if let Ok(i64) = df["id"].i64() {
+//             i64.into_iter().flatten().map(|v| v.to_string()).collect()
+//         } else {
+//             return Err(eyre!("Make sure variable file has an id column"));
+//         };
+
+//         let mut counter = 0;
+//         for sample in &self.samples {
+//             if !clinical_samples.contains(sample) {
+//                 tracing::warn!("Sample {sample} is not present in clinical data");
+//             } else {
+//                 counter += 1;
+//             }
+//         }
+//         if counter == 0 {
+//             return Err(eyre!(
+//                 "None of the wanted vcf samples match sample ids in the variable data file"
+//             ));
+//         }
+//         let ids = Series::new("parsed_id", clinical_samples);
+//         let df_lazy = df.lazy().with_columns([ids.lit()]).collect().unwrap();
+
+//         let names = lit(Series::from_iter(self.samples.clone()));
+
+//         let df = df_lazy
+//             // .clone()
+//             .lazy()
+//             .filter(col("parsed_id").is_in(names))
+//             .collect()?;
+
+//         df["parsed_id"].utf8().wrap_err(eyre!("Error processing the `id` column of the variables data file. Either the column does not exist or id's are not utf8 compliant"))?;
+
+//         self.clinical_data = Some(df);
+//         Ok(())
+//     }
+
+//     pub fn get_variable_data_mean(
+//         &self,
+//         indexes: &[usize],
+//         column_names: &[String],
+//     ) -> Result<Option<Vec<f64>>> {
+//         let samples = self.get_sample_names(indexes);
+//         let names = lit(Series::from_iter(samples.clone()));
+
+//         if let Some(df) = &self.clinical_data {
+//             let mut means = Vec::with_capacity(column_names.len());
+//             for column_name in column_names {
+//                 tracing::debug!("Analyzing variable column {column_name:?}..");
+//                 let check_that_not_empty = df
+//                     .clone()
+//                     .lazy()
+//                     .filter(col("parsed_id").is_in(names.clone()))
+//                     .select([col(column_name)])
+//                     .collect()?;
+
+//                 // Reminder: This check might need to be evaluated in the future to speed things up
+//                 // It is here, because the mean function returns 0.0 for an empty vector
+//                 // This can be considered a bug in under circumstances
+//                 if check_that_not_empty.shape().0 == 0 {
+//                     return Err(eyre!(
+//                         "Samples {samples:?} have no data for `{column_name}`"
+//                     ));
+//                 }
+
+//                 let mean = df
+//                     .clone()
+//                     .lazy()
+//                     .filter(col("parsed_id").is_in(names.clone()))
+//                     .select([col(column_name).mean()])
+//                     .collect()?;
+
+//                 let mean = mean.column(column_name)?.sum::<f64>().ok_or(eyre!(
+//                     "A value {mean:?} cannot be parsed as an f64 in the column {column_name}."
+//                 ))?;
+//                 means.push(mean)
+//             }
+//             Ok(Some(means))
+//         } else {
+//             Ok(None)
+//         }
+//     }
+
+//     pub fn get_variable_data_vecs(
+//         &self,
+//         indexes: &[usize],
+//         column_names: &[String],
+//     ) -> Result<Option<Vec<Vec<f64>>>> {
+//         let names_vec = self.get_sample_names(indexes);
+//         let names = lit(Series::from_iter(names_vec));
+
+//         if let Some(df) = &self.clinical_data {
+//             let mut vecs = Vec::with_capacity(column_names.len());
+//             for column_name in column_names {
+//                 let df = df
+//                     .clone()
+//                     .lazy()
+//                     .filter(col("parsed_id").is_in(names.clone()))
+//                     .select([col(column_name)])
+//                     .collect()?;
+
+//                 if let Ok(vec) = df[column_name.as_str()].f64() {
+//                     let vec: Vec<f64> = vec.into_iter().flatten().collect();
+//                     vecs.push(vec)
+//                 } else if let Ok(vec) = df[column_name.as_str()].i64() {
+//                     let vec: Vec<f64> = vec.into_iter().flatten().map(|v| v as f64).collect();
+//                     vecs.push(vec)
+//                 }
+//             }
+//             Ok(Some(vecs))
+//         } else {
+//             Ok(None)
+//         }
+//     }
+// }
+
+// pub trait CoordDataSlot {
+//     fn get_slot(&self, index: usize) -> ArrayView1<u8>;
+//     fn is_contradictory(&self, index: usize, positions: &[usize]) -> bool;
+//     fn prev_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize>;
+//     fn next_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize>;
+// }
+
+// impl CoordDataSlot for PhasedMatrix {
+//     fn get_slot(&self, index: usize) -> ArrayView1<u8> {
+//         self.matrix.index_axis(Axis(1), index)
+//     }
+//     // Slot is contractory if it contains both 0 and 1.
+//     fn is_contradictory(&self, index: usize, positions: &[usize]) -> bool {
+//         let slot = self.get_slot(index);
+//         let mut iter = positions.iter();
+//         let first = iter.next().unwrap();
+//         slot.len() > 1 && iter.any(|x| slot[*x] != slot[*first])
+//     }
+
+//     fn prev_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize> {
+//         if index == 0 || positions.len() < 2 {
+//             return None;
+//         }
+//         let mut idx = (index - 1) as isize;
+//         while idx >= 0 {
+//             if self.is_contradictory(idx as usize, positions) {
+//                 return Some(idx as usize);
+//             }
+//             idx -= 1;
+//         }
+//         None
+//     }
+
+//     fn next_contradictory(&self, index: usize, positions: &[usize]) -> Option<usize> {
+//         if index == self.matrix.ncols() - 1 || positions.len() < 2 {
+//             return None;
+//         }
+//         let mut idx = index + 1;
+//         while idx < self.matrix.ncols() {
+//             if self.is_contradictory(idx, positions) {
+//                 return Some(idx);
+//             }
+//             idx += 1;
+//         }
+//         None
+//     }
+// }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn test_coords_displays() {
+//         let coord = Coord {
+//             contig: "chr9".to_string(),
+//             pos: 25,
+//             reference: "G".to_string(),
+//             alt: "T".to_string(),
+//         };
+
+//         assert_eq!("chr9_25_G_T".to_string(), format!("{coord}"))
+//     }
+
+//     #[test]
+//     fn test_hapvariant_genotype_getter() {
+//         let mut hv = HapVariant {
+//             contig: "chr9".to_string(),
+//             pos: 25,
+//             reference: "G".to_string(),
+//             alt: "T".to_string(),
+//             gt: 1,
+//         };
+
+//         assert_eq!(&"T".to_string(), hv.genotype());
+
+//         hv.gt = 0;
+//         assert_eq!(&"G".to_string(), hv.genotype());
+//     }
+// }

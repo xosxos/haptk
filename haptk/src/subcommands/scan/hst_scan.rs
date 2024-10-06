@@ -9,6 +9,7 @@ use rayon::prelude::*;
 
 use crate::args::{Selection, StandardArgs};
 use crate::io::push_to_output;
+use crate::structs::Coord;
 use crate::utils::parse_coords;
 
 use color_eyre::{
@@ -19,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::io::get_output;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::subcommands::bhst::{construct_bhst, HstType, Metadata, Node};
+use crate::subcommands::bhst_shard::{construct_bhst, HstType, Metadata, Node};
 
 #[doc(hidden)]
 pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
@@ -35,23 +36,11 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
 
     let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None)?;
 
-    // Create a Vec because par_iter cannot be used with pure ranges and par_bridge does not
-    // return in ordered fashion with .collect()
-    let range: Vec<_> = (0..vcf.ncoords()).collect();
-
-    let hsts = range
+    let hsts = Vec::from_iter(vcf.coords())
         .par_iter()
-        .filter(|idx| *idx % step_size == 0)
-        .map(|idx| {
-            if idx % (vcf.ncoords() / 10) == 0 {
-                tracing::info!("Finished constructing 10% of the trees...");
-            }
-
-            HstScanRow {
-                idx: *idx,
-                hst: construct_bhst(&vcf, *idx, 4),
-            }
-        })
+        .enumerate()
+        .filter(|(n, _)| *n % step_size == 0)
+        .map(|(_, &coord)| (coord.clone(), construct_bhst(&vcf, coord, 4)))
         .collect();
 
     let metadata = Metadata::new(&vcf, &args, vcf.samples().clone(), HstType::Bhst);
@@ -64,26 +53,30 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
 }
 
 pub type Limits = (usize, usize, usize, usize);
+pub type Hst<'a> = Graph<Node<'a>, u8>;
+pub type HstMap<'a> = BTreeMap<Coord, Hst<'a>>;
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct HstScanRow {
-    pub idx: usize,
-    pub hst: Graph<Node, u8>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct HstScan {
+pub struct HstScan<'a> {
     pub metadata: Metadata,
-    pub hsts: Vec<HstScanRow>,
+    pub hsts: HstMap<'a>,
 }
 
-impl HstScan {
+impl<'a> HstScan<'a> {
     pub fn nhaplotypes(&self) -> usize {
         self.metadata.samples.len() * *self.metadata.ploidy
     }
 
     pub fn get_pos(&self, idx: usize) -> u64 {
-        self.metadata.coords[idx].pos
+        self.metadata.coords.iter().nth(idx).unwrap().pos
+    }
+
+    pub fn get_coord_idx(&self, coord: &Coord) -> usize {
+        self.metadata
+            .coords
+            .iter()
+            .position(|c| c == coord)
+            .unwrap()
     }
 
     pub fn get_sample_name(&self, index: usize) -> String {
@@ -147,7 +140,7 @@ fn write_hsts(trees: HstScan, path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn read_tree_file(path: PathBuf) -> Result<HstScan> {
+pub fn read_tree_file<'a>(path: PathBuf) -> Result<HstScan<'a>> {
     let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
     let reader = bgzip::BGZFReader::new(file)?;
 
@@ -183,55 +176,58 @@ pub fn read_tree_file(path: PathBuf) -> Result<HstScan> {
 //     }
 // }
 
-#[allow(unused_variables)]
-pub fn get_sender(
-    write_bam: bool,
-    args: &StandardArgs,
-    hsts: Arc<HstScan>,
-) -> Option<Sender<(usize, NodeIndex, f64)>> {
-    match write_bam {
-        true => {
-            let (tx, rx) = std::sync::mpsc::channel();
+// #[allow(unused_variables)]
+// pub fn get_sender<'a>(
+//     write_bam: bool,
+//     args: &StandardArgs,
+//     hsts: Arc<HstScan>,
+// ) -> Option<Sender<(&'a Coord, NodeIndex, f64)>> {
+//     match write_bam {
+//         true => {
+//             let (tx, rx) = std::sync::mpsc::channel();
 
-            std::thread::spawn(move || {
-                while let Ok((tree_idx, top_node_idx, optimized_value)) = rx.recv() {
-                    todo!()
-                    // let record =
-                    // create_bam_record(hsts.clone(), tree_idx, top_node_idx, optimized_value);
-                    // out.write(&record).unwrap();
-                }
-            });
-            Some(tx)
-        }
-        false => None,
-    }
-}
+//             std::thread::spawn(move || {
+//                 while let Ok((tree_idx, top_node_idx, optimized_value)) = rx.recv() {
+//                     todo!()
+//                     // let record =
+//                     // create_bam_record(hsts.clone(), tree_idx, top_node_idx, optimized_value);
+//                     // out.write(&record).unwrap();
+//                 }
+//             });
+//             Some(tx)
+//         }
+//         false => None,
+//     }
+// }
 
-pub fn return_assoc<F, U>(
-    hsts: Arc<HstScan>,
-    args: &StandardArgs,
+pub fn return_assoc<'a, F, U>(
+    hsts: &'a Arc<HstScan<'a>>,
+    _args: &StandardArgs,
     limits: Limits,
-    write_bam: bool,
+    _write_bam: bool,
     optimizer: F,
     rower: U,
 ) -> Vec<AssocRow>
 where
-    F: Fn(Arc<HstScan>, usize, Limits) -> Option<(usize, NodeIndex, f64)> + Sync + Send + Clone,
-    U: Fn(Arc<HstScan>, usize, NodeIndex, f64) -> AssocRow + Sync + Send,
+    F: Fn(Arc<HstScan>, &Hst, &Coord, Limits) -> Option<(Coord, NodeIndex, f64)>
+        + Sync
+        + Send
+        + Clone,
+    U: Fn(Arc<HstScan>, &Coord, NodeIndex, f64) -> AssocRow + Sync + Send,
 {
-    let tx = get_sender(write_bam, args, hsts.clone());
+    // let tx = get_sender(write_bam, args, hsts.clone());
 
     hsts.hsts
         .par_iter()
-        .filter_map(|hst_row| optimizer(hsts.clone(), hst_row.idx, limits))
-        .map_with(tx, |tx, optimizer_tuple| {
-            if let Some(tx) = tx {
-                tx.send(optimizer_tuple).unwrap();
-            }
-            optimizer_tuple
-        })
-        .map(|(tree_idx, top_node_idx, optimized_value)| {
-            rower(hsts.clone(), tree_idx, top_node_idx, optimized_value)
+        .filter_map(|(coord, hst)| optimizer(hsts.clone(), hst, coord, limits))
+        // .map_with(tx, |tx, optimizer_tuple| {
+        //     if let Some(tx) = tx {
+        //         tx.send(optimizer_tuple).unwrap();
+        //     }
+        //     optimizer_tuple
+        // })
+        .map(|(coord, top_node_idx, optimized_value)| {
+            rower(hsts.clone(), &coord, top_node_idx, optimized_value)
         })
         .collect()
 }
@@ -259,8 +255,8 @@ pub struct AssocRow {
     pub marker_len: usize,
     pub start: u64,
     pub stop: u64,
-    pub start_idx: usize,
-    pub stop_idx: usize,
+    pub start_coord: Coord,
+    pub stop_coord: Coord,
     pub opt_value: f64,
     pub node_idx: NodeIndex,
     pub first_sample_idx: usize,
@@ -271,24 +267,26 @@ pub struct AssocRow {
 impl AssocRow {
     pub fn new(
         hsts: Arc<HstScan>,
-        tree_idx: usize,
+        coord: &Coord,
         top_node_idx: NodeIndex,
         opt_value: f64,
         hashmap: BTreeMap<String, String>,
     ) -> AssocRow {
-        let hst = &hsts.hsts[tree_idx].hst;
+        let hst = hsts.hsts.get(coord).unwrap();
         let top_node = hst.node_weight(top_node_idx).unwrap();
 
         AssocRow {
-            contig: hsts.metadata.contig.clone(),
-            pos: hsts.get_pos(tree_idx),
-            marker_id: get_marker_id(top_node, hsts.clone()),
-            bp_len: (hsts.get_pos(top_node.stop_idx) - hsts.get_pos(top_node.start_idx)) as f32,
-            marker_len: top_node.stop_idx - top_node.start_idx + 1,
-            start: hsts.get_pos(top_node.start_idx),
-            stop: hsts.get_pos(top_node.stop_idx),
-            start_idx: top_node.start_idx,
-            stop_idx: top_node.stop_idx,
+            contig: coord.contig.clone(),
+            pos: coord.pos,
+            marker_id: get_marker_id(top_node),
+            bp_len: (top_node.stop.pos - top_node.start.pos) as f32,
+            marker_len: hsts.get_coord_idx(top_node.stop.as_ref())
+                - hsts.get_coord_idx(top_node.start.as_ref())
+                + 1,
+            start: top_node.start.pos,
+            stop: top_node.stop.pos,
+            start_coord: top_node.start.clone().into_owned(),
+            stop_coord: top_node.stop.clone().into_owned(),
             opt_value,
             hashmap,
             node_idx: top_node_idx,
@@ -308,11 +306,11 @@ impl AssocRow {
     fn node_idx(&self) -> NodeIndex {
         self.node_idx
     }
-    fn start_idx(&self) -> usize {
-        self.start_idx
+    fn start_coord(&self) -> &Coord {
+        &self.start_coord
     }
-    fn stop_idx(&self) -> usize {
-        self.stop_idx
+    fn stop_coord(&self) -> &Coord {
+        &self.stop_coord
     }
     fn first_sample_idx(&self) -> usize {
         self.first_sample_idx
@@ -360,13 +358,12 @@ impl std::fmt::Display for AssocRow {
     }
 }
 
-pub fn get_marker_id<T: Borrow<HstScan>>(top_node: &Node, hsts: T) -> String {
-    let hsts = hsts.borrow();
-    let start = hsts.get_pos(top_node.start_idx);
-    let stop = hsts.get_pos(top_node.stop_idx);
+pub fn get_marker_id(top_node: &Node) -> String {
+    let start = top_node.start.pos;
+    let stop = top_node.stop.pos;
 
     let ht = top_node.haplotype.iter().fold(
-        format!("{}_{}_{}_", hsts.metadata.contig, start, stop),
+        format!("{}_{}_{}_", top_node.start.contig, start, stop),
         |acc, e| format!("{acc}{e}"),
     );
 
@@ -376,9 +373,12 @@ pub fn get_marker_id<T: Borrow<HstScan>>(top_node: &Node, hsts: T) -> String {
     format!("{:02x}", hasher.finish())
 }
 
-pub fn top_node_from_hsts(hsts: &Arc<HstScan>, hst_idx: usize, top_node_idx: NodeIndex) -> &Node {
-    let hst: &HstScanRow = &hsts.hsts[hst_idx];
-    let hst = &hst.hst;
+pub fn top_node_from_hsts<'a, 'b>(
+    hsts: &'b HstMap<'b>,
+    coord: &'a Coord,
+    top_node_idx: NodeIndex,
+) -> &'b Node<'b> {
+    let hst = hsts.get(coord).unwrap();
     hst.node_weight(top_node_idx).unwrap()
 }
 

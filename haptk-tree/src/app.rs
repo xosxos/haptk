@@ -4,7 +4,7 @@ use eframe::egui;
 use petgraph::Graph;
 
 use haptk::structs::PhasedMatrix;
-use haptk::subcommands::bhst::Node;
+use haptk::subcommands::bhst_shard::Node;
 
 use crate::central_panel::central_panel;
 use crate::side_panel::side_panel;
@@ -16,24 +16,24 @@ pub enum State {
     UhstRight,
 }
 
-pub type Hst = Graph<Node, u8>;
+pub type Hst<'a> = Graph<Node<'a>, u8>;
 
-pub struct TreeApp {
+pub struct TreeApp<'a> {
     vcf: Rc<PhasedMatrix>,
     state: State,
-    bhst: Rc<Hst>,
-    uhst_left: Rc<Hst>,
-    uhst_right: Rc<Hst>,
+    bhst: Rc<Hst<'a>>,
+    uhst_left: Rc<Hst<'a>>,
+    uhst_right: Rc<Hst<'a>>,
     nmin_samples: usize,
     decoy_samples: Rc<Vec<String>>,
 }
 
-impl TreeApp {
+impl<'a> TreeApp<'a> {
     pub fn new(
         vcf: PhasedMatrix,
-        bhst: Hst,
-        uhst_left: Hst,
-        uhst_right: Hst,
+        bhst: Hst<'a>,
+        uhst_left: Hst<'a>,
+        uhst_right: Hst<'a>,
         nmin_samples: usize,
         decoy_samples: Option<Vec<String>>,
     ) -> Self {
@@ -50,7 +50,7 @@ impl TreeApp {
     }
 }
 
-impl eframe::App for TreeApp {
+impl<'a> eframe::App for TreeApp<'a> {
     /// Called by the frame work to save state before shutdown.
     /// Note that you must enable the `persistence` feature for this to work.
     #[cfg(feature = "persistence")]

@@ -7,6 +7,7 @@ use svg::Document;
 use svg::Node;
 
 use crate::args::GraphArgs;
+use crate::structs::MatrixSlice;
 use crate::structs::PhasedMatrix;
 
 pub fn determine_line_color(
@@ -94,13 +95,15 @@ impl<'a> MatrixGraph<'a> {
     }
 
     pub fn draw_graph(&mut self, order: &[usize]) {
-        let nrows = self.vcf.matrix.nrows();
-        let ncols = self.vcf.matrix.ncols();
+        let nrows = self.vcf.matrix_nrows();
+        let ncols = self.vcf.matrix_ncols();
         self.marker_width = self.s.width / ncols as f32;
         self.row_height = (self.s.height - (self.s.height) * 0.015) / nrows as f32;
 
         for (y, row_idx) in order.iter().enumerate() {
-            let row = self.vcf.matrix.slice(ndarray::s![*row_idx, ..]);
+            let row = self
+                .vcf
+                .matrix_slice(MatrixSlice::Point(*row_idx), MatrixSlice::All);
             for (x, gt) in row.iter().enumerate() {
                 self.create_box(
                     Point {
@@ -152,7 +155,7 @@ impl<'a> MatrixGraph<'a> {
         element.assign("y", y);
         element.assign("fill", "black");
         element.assign("font-size", format!("{}px", self.s.font_size));
-        element.append(Text::new(format!("haplotypes: {}", self.vcf.nrows())));
+        element.append(Text::new(format!("haplotypes: {}", self.vcf.nhaplotypes())));
         self.document.append(element);
 
         let second_place = self.s.width * 0.86;
@@ -193,7 +196,7 @@ impl<'a> MatrixGraph<'a> {
             return "#000";
         }
 
-        if row_idx == self.vcf.nrows() / 2 {
+        if row_idx == self.vcf.nhaplotypes() / 2 {
             return "#000";
         }
 
@@ -231,14 +234,15 @@ pub fn matrix_graph_png(
         false => None,
     };
 
-    let width = vcf.matrix.ncols() * 5;
-    let height = vcf.matrix.nrows() * 7;
+    let width = vcf.matrix_ncols() * 5;
+    let height = vcf.matrix_nrows() * 7;
 
     let mut imgbuf: image::RgbaImage = image::ImageBuffer::new(width as u32, height as u32);
 
     // for y in 0..vcf.matrix.nrows() {
     for (y, row_idx) in order.iter().enumerate() {
-        let row = vcf.matrix.slice(ndarray::s![*row_idx, ..]);
+        let row = vcf.matrix_slice(MatrixSlice::Point(*row_idx), MatrixSlice::All);
+
         for (x, gt) in row.iter().enumerate() {
             let ny = y * 7;
             let nx = x * 5;

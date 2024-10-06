@@ -1,5 +1,5 @@
 #![allow(clippy::comparison_chain)]
-use std::path::PathBuf;
+use std::{collections::BTreeSet, path::PathBuf};
 
 use color_eyre::{
     eyre::{eyre, WrapErr},
@@ -20,6 +20,7 @@ use crate::{
 // use crate::graphs::matrix_graph::matrix_graph_png;
 
 #[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     args: StandardArgs,
     haplotype_path: PathBuf,
@@ -112,14 +113,9 @@ pub fn run(
             // Use start and end from the haplotype to select columns from the matrix by range
 
             let start = vcf.get_first_idx_on_left_by_pos(start.pos);
-            let mut stop = vcf.get_first_idx_on_right_by_pos(end.pos);
-            if stop != vcf.ncoords() {
-                stop += 1;
-            }
-            vcf.select_columns_by_range(
-                // inclusive range not possible due to ndarray range generics being so difficult
-                start..stop,
-            );
+            let stop = vcf.get_first_idx_on_right_by_pos(end.pos);
+
+            vcf.select_columns_by_range_idx(start..=stop);
             vcf
         }
         Selection::Haploid => {
@@ -153,7 +149,7 @@ pub fn run(
     if want_npy {
         let mut npy_output = args.output.clone();
         push_to_output(&args, &mut npy_output, "ht_comparison", "npy");
-        ndarray_npy::write_npy(npy_output, &vcf.matrix)?;
+        ndarray_npy::write_npy(npy_output, vcf.matrix())?;
     }
 
     let index_order = sort_indexes_for_diff_graph(
@@ -202,13 +198,12 @@ pub fn transform_gt_matrix_to_match_matrix(
 ) -> Result<PhasedMatrix> {
     let mut match_matrix: Vec<u8> = vec![];
     let mut coords_na = 0;
-    let mut coords = vec![];
-    vcf.matrix
-        .axis_iter(Axis(1))
+    let mut coords = BTreeSet::new();
+    vcf.matrix_axis_iter(1)
         .enumerate()
         .for_each(|(var_idx, col)| {
-            if let Some(hv) = ht.iter().find(|hv| *hv == &vcf.coords()[var_idx]) {
-                coords.push(vcf.coords()[var_idx].clone());
+            if let Some(hv) = ht.iter().find(|hv| *hv == vcf.get_coord(var_idx)) {
+                coords.insert(vcf.get_coord(var_idx).clone());
                 match_matrix.extend(col.iter().map(|gt| match hv.gt == *gt {
                     true => 1,
                     false => 0,
@@ -217,7 +212,7 @@ pub fn transform_gt_matrix_to_match_matrix(
                 coords_na += 1;
                 tracing::trace!(
                     "Coord not found in the haplotype: {}",
-                    &vcf.coords()[var_idx]
+                    &vcf.get_coord(var_idx)
                 );
             }
         });
@@ -235,9 +230,13 @@ pub fn transform_gt_matrix_to_match_matrix(
 
     let vcf_coords = vcf.coords_mut();
     *vcf_coords = coords;
-    vcf.matrix = Array2::from_shape_vec((vcf.nrows(), vcf.ncoords()).f(), match_matrix)?;
+    vcf.set_matrix(Array2::from_shape_vec(
+        (vcf.nhaplotypes(), vcf.ncoords()).f(),
+        match_matrix,
+    )?);
 
-    vcf.variant_idx = vcf.get_nearest_idx_by_pos(variant_pos);
+    vcf.start_coord = vcf.get_nearest_coord_by_pos(variant_pos).clone();
+    vcf.variant_idx = vcf.get_coord_idx(vcf.start_coord());
     // vcf.variant_idx = vcf.get_first_idx_on_right_by_pos(variant_pos);
 
     tracing::debug!("Finished transforming the genotype matrix to a match matrix.");
@@ -272,8 +271,7 @@ fn sort_indexes_for_diff_graph(
         // Take all from start to variant index, reverse and calculate 1 count in parallel
         // to get the amount of markers shared to the left
         SortOption::Left => vcf
-            .matrix
-            .slice(s![.., 0..vcf.variant_idx() + 1])
+            .slice_cols(0..vcf.variant_idx() + 1)
             .axis_iter(Axis(0))
             .into_par_iter()
             .enumerate()
@@ -290,8 +288,8 @@ fn sort_indexes_for_diff_graph(
             })
             .collect(),
         SortOption::Right => vcf
-            .matrix
-            .slice(s![.., vcf.variant_idx()..vcf.ncoords()])
+            .slice_cols(vcf.variant_idx()..vcf.ncoords())
+            // .slice(s![.., vcf.variant_idx()..vcf.ncoords()])
             .axis_iter(Axis(0))
             .into_par_iter()
             .enumerate()
@@ -308,8 +306,7 @@ fn sort_indexes_for_diff_graph(
             })
             .collect(),
         SortOption::Total => vcf
-            .matrix
-            .slice(s![.., 0..vcf.ncoords()])
+            .slice_cols(0..vcf.ncoords())
             .axis_iter(Axis(0))
             .into_par_iter()
             .enumerate()
@@ -365,8 +362,7 @@ fn sort_indexes_for_diff_graph(
 }
 
 pub fn find_shared_haplotype_ranges(vcf: &PhasedMatrix) -> Vec<(usize, usize, usize)> {
-    vcf.matrix
-        .axis_iter(Axis(0))
+    vcf.matrix_axis_iter(0)
         .into_par_iter()
         .enumerate()
         .map(|(idx, row)| {

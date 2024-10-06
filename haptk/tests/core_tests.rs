@@ -4,6 +4,7 @@ use common::{create_test_matrix, TEST_VCF};
 #[cfg(test)]
 mod core {
     use super::*;
+    use std::collections::BTreeSet;
     use std::path::PathBuf;
 
     use haptk::args::{Selection, StandardArgs};
@@ -34,7 +35,7 @@ mod core {
     fn read_vcf_to_phased_matrix() {
         let vcf = create_test_matrix();
 
-        for row in vcf.matrix.rows() {
+        for row in vcf.matrix_axis_iter(0) {
             println!(
                 "{}",
                 row.to_vec()
@@ -43,7 +44,7 @@ mod core {
             );
         }
 
-        let row = vcf.matrix.rows().into_iter().next().unwrap().to_vec();
+        let row = vcf.matrix_axis_iter(0).next().unwrap().to_vec();
         let row = row
             .to_vec()
             .iter()
@@ -53,7 +54,7 @@ mod core {
             String::from("000000000000000000000000000001000100000000000000000000000000000")
         );
 
-        let row = vcf.matrix.rows().into_iter().nth(1).unwrap().to_vec();
+        let row = vcf.matrix_axis_iter(0).nth(1).unwrap().to_vec();
         let row = row
             .to_vec()
             .iter()
@@ -80,7 +81,7 @@ mod core {
                     "C".to_string()
                 },
             })
-            .collect::<Vec<Coord>>();
+            .collect::<BTreeSet<Coord>>();
 
         assert_eq!(vcf.samples(), &samples);
         assert_eq!(vcf.variant_idx(), 31);
@@ -92,7 +93,7 @@ mod core {
         let mut vcf = create_test_matrix();
         vcf.select_rows(vec![0, 3, 20]);
 
-        let row = vcf.matrix.rows().into_iter().next().unwrap().to_vec();
+        let row = vcf.matrix_axis_iter(0).next().unwrap().to_vec();
         let row = row
             .to_vec()
             .iter()
@@ -112,13 +113,23 @@ mod core {
         );
     }
 
+    #[ignore]
+    #[test]
+    fn test_nearest_coord_by_pos() {
+        assert_eq!(true, false)
+    }
+
     #[test]
     fn select_columns_by_range() {
         let mut vcf = create_test_matrix();
         let (pos, idx) = (vcf.variant_idx_pos(), vcf.variant_idx());
 
-        vcf.select_columns_by_range(10..50);
+        println!("coords len pre {}", vcf.ncoords());
+        vcf.select_columns_by_range_idx(10..50);
+        println!("coords len post {}", vcf.ncoords());
+        println!("coords len post {:?}", vcf.coords());
 
+        println!("variant_idx pre {idx} and post {}", vcf.variant_idx());
         assert_ne!(idx, vcf.variant_idx());
         assert_eq!(pos, vcf.variant_idx_pos());
     }
@@ -143,7 +154,7 @@ mod core {
         let mut samples = create_samples();
         samples.push("SAMPLE14".to_string());
 
-        let row = vcf.matrix.rows().into_iter().next().unwrap().to_vec();
+        let row = vcf.matrix_axis_iter(0).next().unwrap().to_vec();
         let row = row
             .to_vec()
             .iter()
@@ -153,7 +164,7 @@ mod core {
             String::from("000000000000000100000000000000010000000000000001000000000000000")
         );
 
-        let row = vcf.matrix.rows().into_iter().nth(1).unwrap().to_vec();
+        let row = vcf.matrix_axis_iter(0).nth(1).unwrap().to_vec();
         let row = row
             .to_vec()
             .iter()
@@ -175,7 +186,7 @@ mod core {
         let mut samples = create_samples();
         samples.truncate(samples.len() - 1);
 
-        let row = vcf.matrix.rows().into_iter().next().unwrap().to_vec();
+        let row = vcf.matrix_axis_iter(0).next().unwrap().to_vec();
         let row = row
             .to_vec()
             .iter()
@@ -195,7 +206,7 @@ mod core {
 
         let samples = create_samples();
 
-        let row = vcf.matrix.rows().into_iter().next().unwrap().to_vec();
+        let row = vcf.matrix_axis_iter(0).next().unwrap().to_vec();
         let row = row
             .to_vec()
             .iter()
@@ -205,7 +216,7 @@ mod core {
             String::from("000000000000000100000000000000010000000000000001000000000000000")
         );
 
-        let row = vcf.matrix.rows().into_iter().nth(1).unwrap().to_vec();
+        let row = vcf.matrix_axis_iter(0).nth(1).unwrap().to_vec();
         let row = row
             .to_vec()
             .iter()
@@ -251,40 +262,50 @@ mod core {
     #[test]
     fn set_vcf_coords_and_variant_idx() {
         let mut vcf = create_test_matrix();
-        vcf.set_coords(vec![]);
-        assert_eq!(&Vec::<Coord>::new(), vcf.coords());
-
-        vcf.set_variant_idx(99);
-        assert_eq!(99, vcf.variant_idx());
-
-        vcf.set_variant_idx(0);
-        assert_eq!(0, vcf.variant_idx());
+        vcf.set_coords(BTreeSet::new());
+        assert_eq!(&BTreeSet::<Coord>::new(), vcf.coords());
 
         let coords = vcf.coords_mut();
-        coords.push(Coord {
-            contig: "".to_string(),
+        coords.insert(Coord {
+            contig: "chr9".to_string(),
             pos: 10,
-            reference: "".to_string(),
-            alt: "".to_string(),
+            reference: "T".to_string(),
+            alt: "C".to_string(),
+        });
+        coords.insert(Coord {
+            contig: "chr9".to_string(),
+            pos: 11,
+            reference: "A".to_string(),
+            alt: "T".to_string(),
         });
 
-        assert_eq!(10, vcf.variant_idx_pos());
-        assert_eq!(1, vcf.ncoords());
+        vcf.set_variant_idx(1);
+        assert_eq!(1, vcf.variant_idx());
+
+        assert_eq!(11, vcf.variant_idx_pos());
+        assert_eq!(2, vcf.ncoords());
         assert_eq!(14, vcf.nsamples());
-        assert_eq!(14 * 2, vcf.nrows());
+        assert_eq!(14 * 2, vcf.nhaplotypes());
     }
 
     #[test]
     fn nearest_idx_by_pos() {
         let mut vcf = create_test_matrix();
-        let coords = vcf.coords_mut();
+        let coords = vcf.coords();
 
-        coords.iter_mut().for_each(|c| c.pos = c.pos.pow(2));
+        let mut vec = Vec::from_iter(coords.iter().cloned());
+        vec.iter_mut().for_each(|c| c.pos = c.pos.pow(2));
+        vcf.set_coords(vec.into_iter().collect());
 
-        assert_eq!(4, vcf.get_nearest_idx_by_pos(26));
-        assert_eq!(4, vcf.get_nearest_idx_by_pos(23));
-        assert_eq!(5, vcf.get_nearest_idx_by_pos(31));
-        assert_eq!(vcf.ncoords() - 1, vcf.get_nearest_idx_by_pos(9999999));
+        let one = vcf.get_nearest_coord_by_pos(26);
+        let two = vcf.get_nearest_coord_by_pos(23);
+        let three = vcf.get_nearest_coord_by_pos(31);
+        let four = vcf.get_nearest_coord_by_pos(9999999);
+
+        assert_eq!(4, vcf.get_coord_idx(one));
+        assert_eq!(4, vcf.get_coord_idx(two));
+        assert_eq!(5, vcf.get_coord_idx(three));
+        assert_eq!(vcf.ncoords() - 1, vcf.get_coord_idx(four));
 
         let coord = Coord {
             contig: "chr9".to_string(),
@@ -335,7 +356,7 @@ mod core {
                 .iter()
                 .take(32)
                 .cloned()
-                .collect::<Vec<Coord>>(),
+                .collect::<BTreeSet<Coord>>(),
             vcf2.coords()
         );
     }

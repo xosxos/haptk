@@ -6,8 +6,9 @@ use petgraph::graph::NodeIndex;
 
 use crate::args::{ConciseArgs, StandardArgs};
 use crate::io::{open_csv_writer, push_to_output, read_sample_ids};
+use crate::structs::Coord;
 use crate::subcommands::scan::{
-    read_tree_file, return_assoc, write_assoc, AssocRow, HstScan, HstScanRow, Limits,
+    read_tree_file, return_assoc, write_assoc, AssocRow, Hst, HstScan, Limits,
 };
 use crate::utils::parse_coords;
 
@@ -65,18 +66,21 @@ pub fn run(args: ConciseArgs, limits: Limits, samples: PathBuf) -> Result<()> {
     let (_contig, _start, _stop) = parse_coords(&args.coords)?;
 
     // Define the minimizer/maximiser function for the HST
-    let optimizer =
-        |hsts: Arc<HstScan>, hst_idx: usize, limits: Limits| -> Option<(usize, NodeIndex, f64)> {
-            optimizer_inner(hsts, hst_idx, limits, &seg_samples)
-        };
+    let optimizer = |hsts: Arc<HstScan>,
+                     hst: &Hst,
+                     coord: &Coord,
+                     limits: Limits|
+     -> Option<(Coord, NodeIndex, f64)> {
+        optimizer_inner(hsts, hst, coord, limits, &seg_samples)
+    };
 
     // Define what information is wanted for each CSV row
-    let rower = |hsts: Arc<HstScan>, hst_idx, top_node_idx, optimized_value| -> AssocRow {
-        rower_inner(hsts, hst_idx, top_node_idx, optimized_value, &seg_samples)
+    let rower = |hsts: Arc<HstScan>, coord: &Coord, top_node_idx, optimized_value| -> AssocRow {
+        rower_inner(hsts, coord, top_node_idx, optimized_value, &seg_samples)
     };
 
     let write_bam = false;
-    let assoc = return_assoc(hsts.clone(), &args, limits, write_bam, optimizer, rower);
+    let assoc = return_assoc(&hsts, &args, limits, write_bam, optimizer, rower);
 
     write_assoc(HEADER, assoc, writer)?;
 
@@ -85,12 +89,12 @@ pub fn run(args: ConciseArgs, limits: Limits, samples: PathBuf) -> Result<()> {
 
 fn rower_inner(
     hsts: Arc<HstScan>,
-    hst_idx: usize,
+    coord: &Coord,
     top_node_idx: NodeIndex,
     optimized_value: f64,
     case_list: &[String],
 ) -> AssocRow {
-    let node = top_node_from_hsts(&hsts, hst_idx, top_node_idx);
+    let node = top_node_from_hsts(&hsts.hsts, coord, top_node_idx);
 
     let case_list_idx = hsts.get_sample_idxs(case_list).unwrap();
 
@@ -103,21 +107,16 @@ fn rower_inner(
     assoc_hm.insert("nhet_ctrls".to_string(), nhet_ctrls.to_string());
     assoc_hm.insert("nhom_ctrls".to_string(), nhom_ctrls.to_string());
 
-    AssocRow::new(
-        hsts.clone(),
-        hst_idx,
-        top_node_idx,
-        optimized_value,
-        assoc_hm,
-    )
+    AssocRow::new(hsts.clone(), coord, top_node_idx, optimized_value, assoc_hm)
 }
 
 fn optimizer_inner(
     hsts: Arc<HstScan>,
-    hst_idx: usize,
+    hst: &Hst,
+    coord: &Coord,
     limits: Limits,
     case_list: &[String],
-) -> Option<(usize, NodeIndex, f64)> {
+) -> Option<(Coord, NodeIndex, f64)> {
     let (nmin_samples, nmax_samples, nmin_variants, nmax_variants) = limits;
     let mut top_node_idx = NodeIndex::new(0);
 
@@ -126,8 +125,6 @@ fn optimizer_inner(
 
     let mut optimized_value = start_value;
 
-    let hst: &HstScanRow = &hsts.hsts[hst_idx];
-    let hst = &hst.hst;
     let mut iterator = hst.node_indices();
 
     // Skip first node because it contains no haplotypes
@@ -156,13 +153,13 @@ fn optimizer_inner(
     if optimized_value == start_value {
         tracing::warn!(
             "No optimized value for the HST in contig {} at pos {}",
-            hsts.metadata.contig,
-            hsts.get_pos(hst_idx),
+            coord.contig,
+            coord.pos,
         );
         return None;
     }
 
-    Some((hst_idx, top_node_idx, optimized_value))
+    Some((coord.clone(), top_node_idx, optimized_value))
 }
 
 #[allow(dead_code)]

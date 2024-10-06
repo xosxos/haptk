@@ -36,7 +36,7 @@ where
     };
 
     let sample_idx = node.indexes.first().unwrap();
-    let ht = vcf.find_haplotype_for_sample(vcf.get_contig(), start_idx..=stop_idx, *sample_idx);
+    let ht = vcf.find_haplotype_for_sample_idx(vcf.get_contig(), start_idx..=stop_idx, *sample_idx);
     let path = PathBuf::from(format!(
         "results_tree_haplotypes/{}_{}_{}.csv",
         name.as_ref(),
@@ -69,17 +69,18 @@ where
         Ploidy::Diploid | Ploidy::Mixed => {
             let mut samples = vcf.get_sample_names(&node.indexes);
             samples.sort_unstable();
-            let (u, d) = samples.partition_dedup();
+            // let (u, d) = samples.partition_dedup();
 
-            let gts = u
-                .iter()
-                .map(|u| match d.contains(u) {
-                    true => (1, 1),
-                    false => (1, 0),
-                })
-                .collect::<Vec<(u8, u8)>>();
+            // let gts = u
+            //     .iter()
+            //     .map(|u| match d.contains(u) {
+            //         true => (1, 1),
+            //         false => (1, 0),
+            //     })
+            //     .collect::<Vec<(u8, u8)>>();
 
-            (u.to_vec(), gts)
+            // (u.to_vec(), gts)
+            (vec![], vec![])
         }
     };
 

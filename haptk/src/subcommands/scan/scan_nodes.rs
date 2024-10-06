@@ -6,11 +6,12 @@ use petgraph::graph::NodeIndex;
 use crate::{
     args::{ConciseArgs, StandardArgs},
     io::{open_csv_writer, push_to_output},
-    subcommands::scan::{
-        read_tree_file, return_assoc, write_assoc, AssocRow, HstScan, HstScanRow, Limits,
-    },
+    structs::Coord,
+    subcommands::scan::{read_tree_file, return_assoc, write_assoc, AssocRow, HstScan, Limits},
     utils::{centromeres_hg38, parse_coords},
 };
+
+use super::Hst;
 
 const HEADER: &[&str] = &[
     "contig",
@@ -57,52 +58,49 @@ pub fn run(args: ConciseArgs, limits: Limits) -> Result<()> {
 
     // Define the minimizer/maximiser function for the HST
     let optimizer =
-        |hsts: Arc<HstScan>, hst_idx: usize, limits: Limits| -> Option<(usize, NodeIndex, f64)> {
-            optimizer_inner(hsts, hst_idx, limits)
-        };
+        |hsts: Arc<HstScan>,
+         hst: &Hst,
+         coord: &Coord,
+         limits: Limits|
+         -> Option<(Coord, NodeIndex, f64)> { optimizer_inner(hsts, hst, coord, limits) };
 
     // Define what information is wanted for each CSV row
-    let rower = |hsts: Arc<HstScan>, hst_idx, top_node_idx, optimized_value| -> AssocRow {
-        rower_inner(hsts, hst_idx, top_node_idx, optimized_value)
+    let rower = |hsts: Arc<HstScan>, coord: &Coord, top_node_idx, optimized_value| -> AssocRow {
+        rower_inner(hsts, coord, top_node_idx, optimized_value)
     };
 
     let write_bam = false;
-    let assoc = return_assoc(hsts.clone(), &args, limits, write_bam, optimizer, rower);
+    let assoc = return_assoc(&hsts, &args, limits, write_bam, optimizer, rower);
 
     write_assoc(HEADER, assoc, writer)?;
     Ok(())
 }
 
-fn rower_inner(
+fn rower_inner<'a>(
     hsts: Arc<HstScan>,
-    tree_idx: usize,
+    coord: &'a Coord,
     top_node_idx: NodeIndex,
     optimized_value: f64,
 ) -> AssocRow {
-    let hst = &hsts.hsts[tree_idx].hst;
+    let hst = hsts.hsts.get(coord).unwrap();
     let top_node = hst.node_weight(top_node_idx).unwrap();
-    let start = hsts.get_pos(top_node.start_idx);
-    let stop = hsts.get_pos(top_node.stop_idx);
+    let start = top_node.start.pos;
+    let stop = top_node.stop.pos;
 
-    let is_centromere = check_for_centromere(&hsts.metadata.contig, start, stop);
+    let is_centromere = check_for_centromere(&coord.contig, start, stop);
 
     let mut assoc_hm = BTreeMap::new();
     assoc_hm.insert("centromere".to_string(), is_centromere.to_string());
 
-    AssocRow::new(
-        hsts.clone(),
-        tree_idx,
-        top_node_idx,
-        optimized_value,
-        assoc_hm,
-    )
+    AssocRow::new(hsts, coord, top_node_idx, optimized_value, assoc_hm)
 }
 
 fn optimizer_inner(
-    hsts: Arc<HstScan>,
-    hst_idx: usize,
+    _hsts: Arc<HstScan>,
+    hst: &Hst,
+    coord: &Coord,
     limits: Limits,
-) -> Option<(usize, NodeIndex, f64)> {
+) -> Option<(Coord, NodeIndex, f64)> {
     let (nmin_samples, nmax_samples, nmin_variants, nmax_variants) = limits;
     let mut top_node_idx = NodeIndex::new(0);
 
@@ -111,8 +109,6 @@ fn optimizer_inner(
 
     let mut optimized_value = start_value;
 
-    let hst: &HstScanRow = &hsts.hsts[hst_idx];
-    let hst = &hst.hst;
     let mut iterator = hst.node_indices();
 
     // Skip first node because it contains no haplotypes
@@ -130,8 +126,8 @@ fn optimizer_inner(
             let node = hst.node_weight(idx).unwrap();
 
             // Longest haplotype in bp
-            let start = hsts.get_pos(node.start_idx);
-            let stop = hsts.get_pos(node.stop_idx);
+            let start = node.start.pos;
+            let stop = node.stop.pos;
             let value = stop
                 .checked_sub(start)
                 .expect("Overflowed subtraction, report to HAPTK github")
@@ -155,11 +151,11 @@ fn optimizer_inner(
     if optimized_value == start_value {
         tracing::warn!(
             "No optimized value for the HST in contig {} at pos {}",
-            hsts.metadata.contig,
-            hsts.get_pos(hst_idx),
+            coord.contig,
+            coord.pos,
         );
         return None;
     }
 
-    Some((hst_idx, top_node_idx, optimized_value))
+    Some((coord.clone(), top_node_idx, optimized_value))
 }

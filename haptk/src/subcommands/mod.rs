@@ -3,6 +3,7 @@ pub mod check_for_haplotype;
 
 /// Find the most recent common ancestor. The original R algorithm by Gandolfo et al translated to Rust. <https://github.com/bahlolab/DatingRareMutations>
 pub mod mrca;
+// pub mod mrca_shard;
 
 /// MRCA scan
 pub mod mrca_scan;
@@ -17,10 +18,12 @@ pub mod list_haplotypes;
 pub mod list_markers;
 
 /// Bidirectional haplotype sharing tree algorithm
-pub mod bhst;
+// pub mod bhst;
+pub mod bhst_shard;
 
 /// Unidirectional haplotype sharing tree algorithm
-pub mod uhst;
+// pub mod uhst;
+pub mod uhst_shard;
 
 /// Haplotype to VCF
 pub mod haplotype_to_vcf;

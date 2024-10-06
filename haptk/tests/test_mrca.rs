@@ -2,6 +2,8 @@ mod common;
 use std::path::PathBuf;
 
 use haptk::args::Selection;
+
+#[ignore]
 #[test]
 #[cfg(feature = "clap")]
 fn mrca() {

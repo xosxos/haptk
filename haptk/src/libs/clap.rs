@@ -11,8 +11,9 @@ use tracing_subscriber::fmt::time::OffsetTime;
 
 use crate::args::{ConciseArgs, GraphArgs, SortOption, StandardArgs};
 use crate::subcommands::{
-    bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst,
-    fasta_to_haplotype, haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
+    bhst_shard, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst,
+    fasta_to_haplotype, haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca,
+    uhst_shard,
 };
 
 // Genome-wide methods
@@ -568,8 +569,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
                 args, haplotype, mark_samples, mark_shorter_alleles, png, npy, graph_args, sort_option,
             )?,
 
-        SubCommand::Bhst { args,  min_size, publish, .. } => bhst::run(args, min_size, publish,)?,
-        SubCommand::Uhst {args,  min_size, publish, .. } => uhst::run(args, min_size, publish,)?,
+        SubCommand::Bhst { args,  min_size, publish, .. } => bhst_shard::run(args, min_size, publish,)?,
+        SubCommand::Uhst {args,  min_size, publish, .. } => uhst_shard::run(args, min_size, publish,)?,
 
         SubCommand::CompareHaplotypes { haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides, .. }
             => compare_haplotypes::run(haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides)?,
@@ -584,19 +585,13 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         SubCommand::FastaToHaplotype { file, seq_name, output, .. } => fasta_to_haplotype::run(file, seq_name, output)?,
 
         // Genome-wide methods
-        SubCommand::MrcaScan {
-            args, recombination_rates, step_size, no_csv, plot, graph_args, mark_centromere, ..
-        } => mrca_scan::run(
-            args, recombination_rates, step_size, no_csv, plot, graph_args, mark_centromere
-        )?,
+        SubCommand::MrcaScan { args, recombination_rates, step_size, no_csv, .. }
+        => mrca_scan::run(args, recombination_rates, step_size, no_csv)?,
 
         SubCommand::BhstScan { args, step_size, .. } => hst_scan::run(args, step_size)?,
 
-        SubCommand::ScanNodes {
-            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len,  ..
-        } => scan_nodes::run(
-            args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len),
-        )?,
+        SubCommand::ScanNodes { args, min_sample_size, max_sample_size, min_ht_len, max_ht_len,  .. }
+        => scan_nodes::run(args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len))?,
 
         SubCommand::ScanQuantitative {
             args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, var_data, var_name, ..

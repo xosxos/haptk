@@ -2,6 +2,6 @@
 resolver = "2"
 members = [
   "haptk",
-  "haptk-gui",
-  "haptk-tree",
+  # "haptk-gui",
+  # "haptk-tree",
 ]

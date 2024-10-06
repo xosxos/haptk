@@ -33,6 +33,9 @@ pub mod stats;
 /// Structs
 pub mod structs;
 
+// pub mod read_vcf_hst;
+// pub mod structs_hst;
+
 /// Utils
 pub mod utils;
 

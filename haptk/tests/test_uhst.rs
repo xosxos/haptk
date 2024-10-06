@@ -11,7 +11,8 @@ mod test_uhst {
     use haptk::{
         args::{Selection, StandardArgs},
         read_vcf::read_vcf_to_matrix,
-        subcommands::uhst::{self, LocDirection},
+        structs::Coord,
+        subcommands::uhst_shard::{self, LocDirection},
     };
 
     #[test]
@@ -22,7 +23,14 @@ mod test_uhst {
         };
         let vcf = read_vcf_to_matrix(&args, "chr9", 32, None, None).unwrap();
 
-        let g = uhst::construct_uhst(&vcf, &LocDirection::Left, 32, 1, false);
+        let coord = Coord {
+            contig: String::from("chr9"),
+            reference: String::from("G"),
+            alt: String::from("T"),
+            pos: 32,
+        };
+
+        let g = uhst_shard::construct_uhst(&vcf, &LocDirection::Left, &coord, 1, false);
         let mut f = std::fs::File::create("tests/results/test.dot").unwrap();
         f.write_all(format!("{}", petgraph::dot::Dot::new(&g)).as_bytes())
             .unwrap();

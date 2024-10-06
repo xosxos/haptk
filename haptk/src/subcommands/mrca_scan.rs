@@ -2,30 +2,20 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use color_eyre::{eyre::eyre, Result};
-use itertools::Itertools;
-use plotters::prelude::*;
 use rayon::prelude::*;
 
-use crate::args::{GraphArgs, Selection, StandardArgs};
+use crate::args::{Selection, StandardArgs};
 use crate::io::{open_csv_writer, push_to_output, read_recombination_file};
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::PhasedMatrix;
+use crate::structs::{Coord, PhasedMatrix};
 use crate::subcommands::mrca::mrca_gamma_method;
 use crate::utils::{centromeres_hg38, parse_coords};
 
-use super::bhst::Node;
+use super::bhst_shard::Node;
 
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)]
-pub fn run(
-    args: StandardArgs,
-    rec_rates: PathBuf,
-    step_size: usize,
-    no_csv: bool,
-    yes_plot: bool,
-    graph_args: GraphArgs,
-    mark_centromere: bool,
-) -> Result<()> {
+pub fn run(args: StandardArgs, rec_rates: PathBuf, step_size: usize, no_csv: bool) -> Result<()> {
     match args.selection {
         Selection::OnlyAlts | Selection::OnlyRefs | Selection::Unphased => {
             return Err(eyre!(
@@ -48,40 +38,42 @@ pub fn run(
         write_ages_to_csv(&args, &ages, args.output.clone(), &vcf)?;
     }
 
-    if yes_plot {
-        draw_plot(
-            &vcf,
-            &args,
-            graph_args,
-            args.output.clone(),
-            ages,
-            contig,
-            mark_centromere,
-        )?;
-    }
-
     Ok(())
 }
 
-fn write_ages_to_csv(
-    args: &StandardArgs,
-    ages: &Vec<(usize, f64, bool)>,
-    mut output: PathBuf,
+fn find_ages(
     vcf: &PhasedMatrix,
-) -> Result<()> {
-    push_to_output(args, &mut output, "mrca_scan", "csv");
+    args: &StandardArgs,
+    rates: BTreeMap<u64, f32>,
+    step_size: usize,
+) -> Result<Vec<(Coord, f64, bool)>> {
+    match args.selection == Selection::OnlyLongest {
+        true => Vec::from_iter(vcf.coords())
+            .par_iter()
+            .enumerate()
+            .filter(|(n, _)| *n % step_size == 0)
+            .map(|(_, &coord)| {
+                let only_longest_lengths = vcf.only_longest_lengths(coord);
 
-    let mut writer = open_csv_writer(output)?;
-    writer.write_record(vec!["contig", "pos", "mrca", "centromere"])?;
-    for (idx, age, check) in ages {
-        writer.write_record(vec![
-            vcf.get_contig().to_string(),
-            format!("{}", vcf.get_pos(*idx)),
-            format!("{age:.5}"),
-            format!("{check}"),
-        ])?;
+                let check = check_for_centromeres(vcf, &only_longest_lengths);
+
+                let ((i_tau_hat, _, _), _) =
+                    mrca_gamma_method(only_longest_lengths, coord.pos, &rates)?;
+                Ok((coord.clone(), i_tau_hat, check))
+            })
+            .collect(),
+        false => Vec::from_iter(vcf.coords())
+            .par_iter()
+            .enumerate()
+            .filter(|(n, _)| *n % step_size == 0)
+            .map(|(_, &coord)| {
+                let shared_lengths = vcf.get_lengths_from_uhst(coord);
+                let check = check_for_centromeres(vcf, &shared_lengths);
+                let ((i_tau_hat, _, _), _) = mrca_gamma_method(shared_lengths, coord.pos, &rates)?;
+                Ok((coord.clone(), i_tau_hat, check))
+            })
+            .collect(),
     }
-    Ok(())
 }
 
 fn check_for_centromeres(vcf: &PhasedMatrix, lengths: &Vec<(Node, Node)>) -> bool {
@@ -90,8 +82,8 @@ fn check_for_centromeres(vcf: &PhasedMatrix, lengths: &Vec<(Node, Node)>) -> boo
     let mut overlapping_centromere = 0;
 
     for (left_node, right_node) in lengths {
-        let start = vcf.get_pos(left_node.start_idx);
-        let stop = vcf.get_pos(right_node.stop_idx);
+        let start = left_node.start.pos;
+        let stop = right_node.stop.pos;
 
         let c1 = start > c_start && start < c_stop;
         let c2 = stop > c_start && stop < c_stop;
@@ -106,152 +98,23 @@ fn check_for_centromeres(vcf: &PhasedMatrix, lengths: &Vec<(Node, Node)>) -> boo
     overlapping_centromere as f32 / lengths.len() as f32 > 0.1
 }
 
-fn find_ages(
-    vcf: &PhasedMatrix,
+fn write_ages_to_csv(
     args: &StandardArgs,
-    rates: BTreeMap<u64, f32>,
-    step_size: usize,
-) -> Result<Vec<(usize, f64, bool)>> {
-    // Create a Vec because par_iter cannot be used with pure ranges and par_bridge does not
-    // return in ordered fashion with .collect()
-    let range: Vec<usize> = (0..vcf.ncoords()).collect();
-
-    match args.selection == Selection::OnlyLongest {
-        true => range
-            .par_iter()
-            .filter(|n| *n % step_size == 0)
-            .map(|i| {
-                let only_longest_lengths = vcf.only_longest_lengths(*i);
-
-                let check = check_for_centromeres(vcf, &only_longest_lengths);
-
-                let ((i_tau_hat, _, _), _) =
-                    mrca_gamma_method(vcf, only_longest_lengths, vcf.get_pos(*i), &rates)?;
-                Ok((*i, i_tau_hat, check))
-            })
-            .collect(),
-        false => range
-            .par_iter()
-            .filter(|n| *n % step_size == 0)
-            .map(|i| {
-                let shared_lengths = vcf.get_lengths_from_uhst(*i);
-                let check = check_for_centromeres(vcf, &shared_lengths);
-                let ((i_tau_hat, _, _), _) =
-                    mrca_gamma_method(vcf, shared_lengths, vcf.get_pos(*i), &rates)?;
-                Ok((*i, i_tau_hat, check))
-            })
-            .collect(),
-    }
-}
-
-fn draw_plot(
-    vcf: &PhasedMatrix,
-    args: &StandardArgs,
-    graph_args: GraphArgs,
+    ages: &Vec<(Coord, f64, bool)>,
     mut output: PathBuf,
-    data: Vec<(usize, f64, bool)>,
-    contig: &str,
-    mark_centromere: bool,
+    vcf: &PhasedMatrix,
 ) -> Result<()> {
-    push_to_output(args, &mut output, "mrca_scan", "png");
+    push_to_output(args, &mut output, "mrca_scan", "csv");
 
-    let root = BitMapBackend::new(&output, (graph_args.width as u32, graph_args.height as u32))
-        .into_drawing_area();
-
-    let y_start = data.iter().min_by(|a, b| a.1.total_cmp(&b.1)).unwrap().1;
-    let y_stop = data.iter().max_by(|a, b| a.1.total_cmp(&b.1)).unwrap().1;
-
-    root.fill(&WHITE)?;
-    let mut chart = ChartBuilder::on(&root)
-        .margin(10)
-        .set_label_area_size(LabelAreaPosition::Left, 60)
-        .set_label_area_size(LabelAreaPosition::Right, 60)
-        .set_label_area_size(LabelAreaPosition::Bottom, 40)
-        .build_cartesian_2d(0..vcf.ncoords(), y_start - 0.2..y_stop + 0.2)?;
-
-    chart
-        .configure_mesh()
-        .disable_x_mesh()
-        .disable_y_mesh()
-        .x_labels(30)
-        .max_light_lines(4)
-        .y_desc("MRCA")
-        .x_desc("POS")
-        .draw()?;
-
-    // Raw log10 data line
-    // chart.draw_series(LineSeries::new(
-    // data.iter().map(|(pos, mrca)|(*pos,*mrca)),
-    // &BLUE,
-    // ))?;
-
-    // Last 10 elements moving average
-    let mut moving_average = vec![];
-    for (a, b, c, d, e, f, g, h, i, j) in data.iter().tuples() {
-        let sum = a.1 + b.1 + c.1 + d.1 + e.1 + f.1 + g.1 + h.1 + i.1 + j.1;
-        let mean = sum / 10.0;
-        moving_average.push((j.0, mean));
+    let mut writer = open_csv_writer(output)?;
+    writer.write_record(vec!["contig", "pos", "mrca", "centromere"])?;
+    for (coord, age, check) in ages {
+        writer.write_record(vec![
+            vcf.get_contig().to_string(),
+            format!("{}", coord.pos),
+            format!("{age:.5}"),
+            format!("{check}"),
+        ])?;
     }
-
-    chart.draw_series(LineSeries::new(
-        moving_average.iter().map(|(pos, mrca)| (*pos, *mrca)),
-        ShapeStyle {
-            color: BLACK.mix(0.9),
-            filled: true,
-            stroke_width: graph_args.stroke_width,
-        },
-    ))?;
-
-    // Centromere location
-    if mark_centromere {
-        let (centro_start, centro_stop) = centromeres_hg38(contig);
-        let centro_start = vcf.get_nearest_idx_by_pos(centro_start);
-        let centro_stop = vcf.get_nearest_idx_by_pos(centro_stop);
-
-        chart.draw_series(LineSeries::new(
-            [(centro_start, y_start), (centro_start, y_stop)].into_iter(),
-            ShapeStyle {
-                color: GREEN.mix(0.6),
-                filled: true,
-                stroke_width: 2,
-            },
-        ))?;
-
-        chart.draw_series(LineSeries::new(
-            [(centro_stop, y_start), (centro_stop, y_stop)].into_iter(),
-            ShapeStyle {
-                color: GREEN.mix(0.6),
-                filled: true,
-                stroke_width: 2,
-            },
-        ))?;
-    }
-
-    // Variant location
-    if graph_args.mark_locus {
-        chart.draw_series(LineSeries::new(
-            [(vcf.variant_idx(), y_start), (vcf.variant_idx(), y_stop)].into_iter(),
-            ShapeStyle {
-                color: BLUE.mix(0.6),
-                filled: true,
-                stroke_width: 2,
-            },
-        ))?;
-    }
-
-    // Mean line
-    let sum: f64 = data.iter().map(|(_pos, mrca, _check)| mrca).sum();
-    let mean = sum / data.len() as f64;
-    chart.draw_series(LineSeries::new(
-        [(0, mean), (vcf.ncoords(), mean)].into_iter(),
-        ShapeStyle {
-            color: RED.mix(0.6),
-            filled: true,
-            stroke_width: graph_args.stroke_width / 2,
-        },
-    ))?;
-
-    root.present().expect("Unable to write result to file");
-
     Ok(())
 }

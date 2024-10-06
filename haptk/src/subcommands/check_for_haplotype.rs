@@ -63,7 +63,7 @@ fn write_matches_to_csv(
     vcf: &PhasedMatrix,
 ) -> Result<()> {
     writer.write_record(vec!["id", "match"])?;
-    for idx in 0..vcf.nrows() {
+    for idx in 0..vcf.nhaplotypes() {
         writer.write_record(vec![
             format!("{}", vcf.get_sample_name(idx)),
             format!("{}", matching_indexes.contains(&idx)),
@@ -76,26 +76,26 @@ pub fn identical_haplotype_count(vcf: &PhasedMatrix, ht: &[HapVariant]) -> Vec<u
     let indexes: Vec<(usize, usize)> = ht
         .iter()
         .enumerate()
-        .filter_map(|(coords_i, h)| {
-            // Check the PartialEq implementation between HapVariant and Coord
-            if let Some(vcf_i) = vcf.coords().iter().position(|c| c == h) {
-                Some((vcf_i, coords_i))
-            } else {
-                tracing::warn!("Haplotype variant {:?} not found in the vcf", h);
-                None
-            }
-        })
+        .filter_map(|(ht_idx, h)|
+            match vcf.try_coord_by_hapvariant(h) {
+                    Some(matrix_idx) => Some((matrix_idx, ht_idx)),
+                    None => {
+                        tracing::warn!("Haplotype variant {:?} not found in the vcf", h);
+                        None
+                    }   
+                }
+        )
         .collect();
 
     if indexes.is_empty() {
         return vec![];
     }
 
-    let mut matching = vec![true; vcf.matrix.nrows()];
+    let mut matching = vec![true; vcf.nhaplotypes()];
 
     for (n, value) in matching.iter_mut().enumerate() {
-        'inner: for (vcf_i, coords_i) in &indexes {
-            if vcf.matrix[[n, *vcf_i]] != ht[*coords_i].gt {
+        'inner: for (matrix_idx, ht_idx) in &indexes {
+            if vcf.matrix_point(n, *matrix_idx) != ht[*ht_idx].gt {
                 *value = false;
                 break 'inner;
             }

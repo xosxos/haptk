@@ -3,16 +3,16 @@ use common::{standard_args, OUTDIR};
 
 use std::path::PathBuf;
 
-use haptk::{args::Selection, subcommands::uhst};
+use haptk::{args::Selection, subcommands::uhst_shard};
 
 #[test]
 #[cfg(feature = "clap")]
 fn compare_haplotypes() {
     let args = standard_args(Selection::All);
-    uhst::run(args, 1, false).unwrap();
+    uhst_shard::run(args, 1, false).unwrap();
 
     let args = standard_args(Selection::OnlyLongest);
-    uhst::run(args, 1, false).unwrap();
+    uhst_shard::run(args, 1, false).unwrap();
 
     let files = vec![
         PathBuf::from("tests/results/uhst_mbah.csv"),

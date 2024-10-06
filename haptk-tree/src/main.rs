@@ -1,4 +1,4 @@
-#![feature(slice_partition_dedup)]
+// #![feature(slice_partition_dedup)]
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -8,8 +8,8 @@ use eframe::Theme;
 use haptk::args::StandardArgs;
 use haptk::io::read_sample_ids;
 use haptk::libs::clap::LogAndVerbosity;
-use haptk::subcommands::bhst;
-use haptk::subcommands::uhst;
+use haptk::subcommands::bhst_shard;
+use haptk::subcommands::uhst_shard;
 
 mod app;
 mod central_panel;

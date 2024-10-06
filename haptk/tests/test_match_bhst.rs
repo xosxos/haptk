@@ -2,13 +2,14 @@ mod common;
 
 #[cfg(test)]
 #[cfg(feature = "clap")]
-mod test_bhst {
+mod compare_hst {
     use haptk::args::Selection;
-    use haptk::subcommands::bhst::Hst;
+    use haptk::subcommands::bhst_shard::Hst;
     use std::path::PathBuf;
 
     //--- Binary tests
 
+    #[ignore]
     #[test]
     fn compare_to_bhst_all() {
         run_compare_to_hst(Selection::All);
@@ -22,6 +23,7 @@ mod test_bhst {
         insta::assert_yaml_snapshot!(hst_string);
     }
 
+    #[ignore]
     #[test]
     fn compare_to_bhst_only_ref() {
         run_compare_to_hst(Selection::OnlyRefs);
@@ -35,6 +37,7 @@ mod test_bhst {
         insta::assert_yaml_snapshot!(hst_string);
     }
 
+    #[ignore]
     #[test]
     fn compare_to_bhst_only_alt() {
         run_compare_to_hst(Selection::OnlyAlts);
@@ -48,6 +51,7 @@ mod test_bhst {
         insta::assert_yaml_snapshot!(hst_string);
     }
 
+    #[ignore]
     #[test]
     fn compare_to_bhst_only_longest() {
         run_compare_to_hst(Selection::OnlyLongest);

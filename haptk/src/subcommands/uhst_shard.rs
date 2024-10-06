@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use color_eyre::{
     eyre::{ensure, eyre},
     Result,
@@ -9,8 +11,9 @@ use rayon::prelude::*;
 use crate::{
     args::{Selection, StandardArgs},
     io::{open_csv_writer, push_to_output, write_haplotype},
-    structs::{HapVariant, IdxCoordDataSlot, PhasedMatrix},
-    subcommands::bhst::{self, write_hst_file, HstType, Node},
+    libs::structs::{CoordDataSlot, PhasedMatrix},
+    structs::{Coord, HapVariant},
+    subcommands::bhst_shard::{self, write_hst_file, HstType, Node},
 };
 
 #[doc(hidden)]
@@ -35,24 +38,24 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool) -> Result<()> {
         return Err(eyre!("Running with unphased data is not supported."));
     }
 
-    let vcf = bhst::read_vcf_with_selections(&args)?;
+    let vcf = bhst_shard::read_vcf_with_selections(&args)?;
 
     ensure!(
-        vcf.nrows() >= min_size,
+        vcf.nhaplotypes() >= min_size,
         "VCF has less haplotypes than the required minimum node size ({} < {min_size})",
-        vcf.nrows()
+        vcf.nhaplotypes()
     );
 
     let vec = vec![LocDirection::Left, LocDirection::Right];
     let first_and_mbah_nodes = vec
         .par_iter()
         .map(|direction| -> Result<(Node, Node)> {
-            let uhst = construct_uhst(&vcf, direction, vcf.variant_idx(), min_size, false);
+            let uhst = construct_uhst(&vcf, direction, vcf.start_coord(), min_size, false);
 
             // Find first, second last and last nodes on the majority branch
             // for downstream analyses
             let start_idx = NodeIndex::new(0);
-            let nodes = bhst::find_majority_nodes(&uhst, start_idx);
+            let nodes = bhst_shard::find_majority_nodes(&uhst, start_idx);
 
             ensure!(
                 nodes.len() > 2,
@@ -131,25 +134,25 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool) -> Result<()> {
 }
 
 #[doc(hidden)]
-pub fn construct_uhst(
-    vcf: &PhasedMatrix,
+pub fn construct_uhst<'matrix>(
+    vcf: &'matrix PhasedMatrix,
     direction: &LocDirection,
-    idx: usize,
+    start_coord: &'matrix Coord,
     min_size: usize,
     only_majority: bool,
-) -> Graph<Node, u8> {
-    let mut hst = bhst::initiate_hst(vcf, idx);
+) -> Graph<Node<'matrix>, u8> {
+    let mut hst = bhst_shard::initiate_hst(vcf, start_coord);
 
     let mut min_size_blacklist = vec![];
     loop {
         // From all nodes find all leaf nodes with more indexes than min_size
-        let indices = bhst::find_leaf_nodes(&hst, min_size, &min_size_blacklist);
+        let indices = bhst_shard::find_leaf_nodes(&hst, min_size, &min_size_blacklist);
 
         // Iterate through the filtered leaf nodes in parallel to find new nodes to add
         let nodes = indices
             .into_par_iter()
             .filter_map(|node_idx| {
-                find_contradictory_gt(vcf, &hst, idx, node_idx, direction)
+                find_contradictory_gt(vcf, &hst, start_coord, node_idx, direction)
                     .map(|(node1, node2)| (node_idx, node1, node2))
             })
             .collect::<Vec<(NodeIndex, Node, Node)>>();
@@ -197,22 +200,22 @@ pub fn construct_uhst(
 }
 
 #[doc(hidden)]
-fn find_contradictory_gt(
-    vcf: &PhasedMatrix,
-    uhst: &Graph<Node, u8>,
-    tree_start_idx: usize,
+fn find_contradictory_gt<'matrix>(
+    vcf: &'matrix PhasedMatrix,
+    uhst: &Graph<Node<'matrix>, u8>,
+    start_coord: &'matrix Coord,
     node_idx: NodeIndex,
     direction: &LocDirection,
-) -> Option<(Node, Node)> {
+) -> Option<(Node<'matrix>, Node<'matrix>)> {
     let node = uhst.node_weight(node_idx).unwrap();
 
     let next_contradictory_idx = match direction {
-        LocDirection::Left => vcf.prev_contradictory_idx(node.start_idx, &node.indexes),
-        LocDirection::Right => vcf.next_contradictory_idx(node.start_idx, &node.indexes),
+        LocDirection::Left => vcf.prev_contradictory(&node.start, &node.indexes),
+        LocDirection::Right => vcf.next_contradictory(&node.start, &node.indexes),
     };
 
     if let Some(next_idx) = next_contradictory_idx {
-        let genotypes = vcf.get_slot_idx(next_idx);
+        let genotypes = vcf.get_slot(next_idx);
 
         let (mut ones, mut zeroes) = (vec![], vec![]);
 
@@ -223,22 +226,22 @@ fn find_contradictory_gt(
             }
         }
 
-        let (start_idx, stop_idx) = match direction {
-            LocDirection::Left => (next_idx, tree_start_idx),
-            LocDirection::Right => (tree_start_idx, next_idx),
+        let (start, stop) = match direction {
+            LocDirection::Left => (next_idx, start_coord),
+            LocDirection::Right => (start_coord, next_idx),
         };
 
         let n1 = Node {
-            start_idx,
-            stop_idx,
-            haplotype: vcf.find_u8_haplotype_for_sample_idx(start_idx..stop_idx + 1, zeroes[0]),
+            haplotype: vcf.find_u8_haplotype_for_sample(start..=stop, zeroes[0]),
+            start: Cow::Borrowed(start),
+            stop: Cow::Borrowed(stop),
             indexes: zeroes,
         };
 
         let n2 = Node {
-            start_idx,
-            stop_idx,
-            haplotype: vcf.find_u8_haplotype_for_sample_idx(start_idx..stop_idx + 1, ones[0]),
+            haplotype: vcf.find_u8_haplotype_for_sample(start..=stop, ones[0]),
+            start: Cow::Borrowed(start),
+            stop: Cow::Borrowed(stop),
             indexes: ones,
         };
 
@@ -249,26 +252,34 @@ fn find_contradictory_gt(
         "Genotyping data ran out on {} side for samples {:?} starting from position {}",
         direction,
         vcf.get_sample_names(&node.indexes),
-        vcf.get_pos(node.start_idx)
+        node.start.pos
     );
 
     None
 }
 
 pub fn combine_node_haplotypes(nodes: &[Node], vcf: &PhasedMatrix) -> Vec<HapVariant> {
-    let left_pos = nodes[0].start_idx;
+    let left = &nodes[0].start;
+    let idx = vcf.get_coord_idx(left);
+    let left_plus = vcf.get_coord(idx + 1);
+
+    let left = match left_plus > vcf.start_coord() {
+        true => left,
+        false => left_plus,
+    };
+
     let left_sample = nodes[0].indexes[0];
 
-    let left_range = left_pos + 1..vcf.variant_idx;
+    let left_range = left..vcf.start_coord();
 
-    let mut left_ht = vcf.find_haplotype_for_sample_idx(vcf.get_contig(), left_range, left_sample);
+    let mut left_ht = vcf.find_haplotype_for_sample(left_range, left_sample);
 
-    let right_pos = nodes[1].stop_idx;
+    let right = &nodes[1].stop;
     let right_sample = nodes[1].indexes[0];
 
-    let right_range = vcf.variant_idx..right_pos;
+    let right_range = vcf.start_coord()..right.as_ref();
 
-    let right_ht = vcf.find_haplotype_for_sample_idx(vcf.get_contig(), right_range, right_sample);
+    let right_ht = vcf.find_haplotype_for_sample(right_range, right_sample);
 
     left_ht.extend(right_ht);
     left_ht

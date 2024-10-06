@@ -10,7 +10,7 @@ mod test_check_for_haplotype {
 
     use common::clap_standard_args;
 
-    use haptk::{args::Selection, subcommands::uhst};
+    use haptk::{args::Selection, subcommands::uhst_shard};
     use haptk::{structs::HapVariant, subcommands::check_for_haplotype};
 
     #[rustfmt::skip]
@@ -105,7 +105,7 @@ mod test_check_for_haplotype {
 
     fn check_for_haplotype(selection: Selection) {
         let args = standard_args(Selection::OnlyLongest);
-        uhst::run(args, 1, false).unwrap();
+        uhst_shard::run(args, 1, false).unwrap();
 
         let args = clap_standard_args(selection);
         let cmd = haptk::clap::SubCommand::CheckForHaplotype {

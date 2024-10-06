@@ -5,12 +5,15 @@ use petgraph::graph::NodeIndex;
 
 use crate::args::{ConciseArgs, StandardArgs};
 use crate::io::{open_csv_writer, push_to_output, read_recombination_file};
-use crate::subcommands::bhst::find_majority_nodes;
+use crate::structs::Coord;
+use crate::subcommands::bhst_shard::find_majority_nodes;
 use crate::subcommands::scan::{
     read_tree_file, return_assoc, top_node_from_hsts, write_assoc, zygosity_from_node, AssocRow,
-    HstScan, HstScanRow, Limits,
+    HstScan, Limits,
 };
 use crate::utils::parse_coords;
+
+use super::Hst;
 
 const HEADER: &[&str] = &[
     "contig",
@@ -47,19 +50,30 @@ pub fn run(args: ConciseArgs, limits: Limits, rec_rates: PathBuf) -> Result<()> 
 
     let (_contig, _start, _stop) = parse_coords(&args.coords)?;
 
+    // // Define the minimizer/maximiser function for the HST
+    // let optimizer = |hsts: Arc<HstScan>,
+    //                  hst_coord: &Coord,
+    //                  limits: Limits|
+    //  -> Option<(usize, NodeIndex, f64)> {
+    //     optimizer_inner(hsts, hst_coord, limits, &rec_rates)
+    // };
+
     // Define the minimizer/maximiser function for the HST
-    let optimizer =
-        |hsts: Arc<HstScan>, hst_idx: usize, limits: Limits| -> Option<(usize, NodeIndex, f64)> {
-            optimizer_inner(hsts, hst_idx, limits, &rec_rates)
-        };
+    let optimizer = |hsts: Arc<HstScan>,
+                     hst: &Hst,
+                     coord: &Coord,
+                     limits: Limits|
+     -> Option<(Coord, NodeIndex, f64)> {
+        optimizer_inner(hsts, hst, coord, limits, &rec_rates)
+    };
 
     // Define what information is wanted for each CSV row
-    let rower = |hsts: Arc<HstScan>, hst_idx, top_node_idx, optimized_value| -> AssocRow {
-        rower_inner(hsts, hst_idx, top_node_idx, optimized_value)
+    let rower = |hsts: Arc<HstScan>, coord: &Coord, top_node_idx, optimized_value| -> AssocRow {
+        rower_inner(hsts, coord, top_node_idx, optimized_value)
     };
 
     let write_bam = false;
-    let assoc = return_assoc(hsts.clone(), &args, limits, write_bam, optimizer, rower);
+    let assoc = return_assoc(&hsts, &args, limits, write_bam, optimizer, rower);
 
     write_assoc(HEADER, assoc, writer)?;
     Ok(())
@@ -67,26 +81,27 @@ pub fn run(args: ConciseArgs, limits: Limits, rec_rates: PathBuf) -> Result<()> 
 
 fn rower_inner(
     hsts: Arc<HstScan>,
-    hst_idx: usize,
+    coord: &Coord,
     top_node_idx: NodeIndex,
     optimized_value: f64,
 ) -> AssocRow {
-    let node = top_node_from_hsts(&hsts, hst_idx, top_node_idx);
+    let node = top_node_from_hsts(&hsts.hsts, coord, top_node_idx);
     let (nhet, nhom) = zygosity_from_node(node);
 
     let mut hm = BTreeMap::new();
     hm.insert("n_hom".to_string(), nhom.to_string());
     hm.insert("n_het".to_string(), nhet.to_string());
 
-    AssocRow::new(hsts.clone(), hst_idx, top_node_idx, optimized_value, hm)
+    AssocRow::new(hsts.clone(), coord, top_node_idx, optimized_value, hm)
 }
 
 fn optimizer_inner(
-    hsts: Arc<HstScan>,
-    hst_idx: usize,
+    _hsts: Arc<HstScan>,
+    hst: &Hst,
+    coord: &Coord,
     limits: Limits,
     rec_rates: &BTreeMap<u64, f32>,
-) -> Option<(usize, NodeIndex, f64)> {
+) -> Option<(Coord, NodeIndex, f64)> {
     let (nmin_samples, nmax_samples, nmin_variants, nmax_variants) = limits;
     let mut top_node_idx = NodeIndex::new(0);
 
@@ -95,8 +110,6 @@ fn optimizer_inner(
 
     let mut optimized_value = start_value;
 
-    let hst: &HstScanRow = &hsts.hsts[hst_idx];
-    let hst = &hst.hst;
     let mut iterator = hst.node_indices();
 
     // Skip first node because it contains no haplotypes
@@ -130,8 +143,8 @@ fn optimizer_inner(
                 for idx in &node.indexes {
                     if !used_indexes.contains(&idx) {
                         let tuple = Breakpoint {
-                            start: hsts.get_pos(prev_node.start_idx),
-                            stop: hsts.get_pos(prev_node.stop_idx),
+                            start: prev_node.start.pos,
+                            stop: prev_node.stop.pos,
                         };
                         breakpoints.push(tuple);
                         used_indexes.push(idx);
@@ -156,13 +169,13 @@ fn optimizer_inner(
     if optimized_value == start_value {
         tracing::warn!(
             "No optimized value for the HST in contig {} at pos {}",
-            hsts.metadata.contig,
-            hsts.get_pos(hst_idx),
+            coord.contig,
+            coord.pos
         );
         return None;
     }
 
-    Some((hst_idx, top_node_idx, optimized_value))
+    Some((coord.clone(), top_node_idx, optimized_value))
 }
 
 pub struct Breakpoint {

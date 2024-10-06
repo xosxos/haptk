@@ -7,12 +7,12 @@ use haptk::{
     args::{GraphArgs, Selection, StandardArgs},
     io::read_haplotype_file,
     read_vcf::read_vcf_to_matrix,
-    subcommands::{compare_to_haplotype::transform_gt_matrix_to_match_matrix, uhst},
+    subcommands::{compare_to_haplotype::transform_gt_matrix_to_match_matrix, uhst_shard},
 };
 #[cfg(test)]
 #[cfg(feature = "clap")]
 mod test_compare_to_haplotype {
-    use haptk::args::SortOption;
+    use haptk::{args::SortOption, structs::MatrixSlice};
 
     use super::*;
 
@@ -39,7 +39,7 @@ mod test_compare_to_haplotype {
         // let ht = remove_unused_ht(&vcf, ht.clone()).unwrap();
         let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, 32).unwrap();
 
-        for (idx, row) in vcf.matrix.rows().into_iter().enumerate() {
+        for (idx, row) in vcf.matrix_axis_iter(0).into_iter().enumerate() {
             println!(
                 "{} {}",
                 vcf.get_sample_name(idx),
@@ -50,8 +50,10 @@ mod test_compare_to_haplotype {
         }
 
         let homozygous_variants = vec![
-            vcf.matrix.slice(ndarray::s![.., 13]).to_vec(),
-            vcf.matrix.slice(ndarray::s![.., 15]).to_vec(),
+            vcf.matrix_slice(MatrixSlice::All, MatrixSlice::Point(13))
+                .to_vec(),
+            vcf.matrix_slice(MatrixSlice::All, MatrixSlice::Point(15))
+                .to_vec(),
         ];
         for col in homozygous_variants {
             assert_eq!(vec![1; 28], col)
@@ -67,7 +69,7 @@ mod test_compare_to_haplotype {
         .unwrap();
         vcf.select_carriers(32, &Selection::OnlyAlts).unwrap();
         let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, 32).unwrap();
-        for row in vcf.matrix.rows() {
+        for row in vcf.matrix_axis_iter(0) {
             assert_eq!((17..46).map(|_| 1).collect::<Vec<u8>>(), row.to_vec())
         }
     }
@@ -121,7 +123,7 @@ mod test_compare_to_haplotype {
 
     fn compare_to_haplotype(selection: Selection, mark: bool, png: bool) {
         let args = standard_args(Selection::OnlyLongest);
-        uhst::run(args, 1, false).unwrap();
+        uhst_shard::run(args, 1, false).unwrap();
 
         let args = common::clap_standard_args(selection);
 
