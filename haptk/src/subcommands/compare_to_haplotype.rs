@@ -230,10 +230,13 @@ pub fn transform_gt_matrix_to_match_matrix(
 
     let vcf_coords = vcf.coords_mut();
     *vcf_coords = coords;
-    vcf.set_matrix(Array2::from_shape_vec(
-        (vcf.nhaplotypes(), vcf.ncoords()).f(),
-        match_matrix,
-    )?);
+    let offset_coord_start = vcf_coords.first().unwrap().clone();
+    let offset_coord_end = vcf_coords.last().unwrap().clone();
+    vcf.set_matrix(
+        offset_coord_start,
+        offset_coord_end,
+        Array2::from_shape_vec((vcf.nhaplotypes(), vcf.ncoords()).f(), match_matrix)?,
+    );
 
     vcf.start_coord = vcf.get_nearest_coord_by_pos(variant_pos).clone();
     vcf.variant_idx = vcf.get_coord_idx(vcf.start_coord());

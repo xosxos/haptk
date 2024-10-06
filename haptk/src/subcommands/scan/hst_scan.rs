@@ -1,7 +1,6 @@
-use std::{borrow::Borrow, collections::BTreeMap, hash::DefaultHasher, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, hash::DefaultHasher, path::PathBuf, sync::Arc};
 
 use std::hash::Hasher;
-use std::sync::mpsc::Sender;
 
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
@@ -373,9 +372,9 @@ pub fn get_marker_id(top_node: &Node) -> String {
     format!("{:02x}", hasher.finish())
 }
 
-pub fn top_node_from_hsts<'a, 'b>(
+pub fn top_node_from_hsts<'b>(
     hsts: &'b HstMap<'b>,
-    coord: &'a Coord,
+    coord: &Coord,
     top_node_idx: NodeIndex,
 ) -> &'b Node<'b> {
     let hst = hsts.get(coord).unwrap();

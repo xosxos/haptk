@@ -135,16 +135,6 @@ mod core {
     }
 
     #[test]
-    fn select_columns() {
-        let mut vcf = create_test_matrix();
-        vcf.select_columns_by_idx(&mut [0, 3, 20]);
-        assert_eq!(
-            vcf.coords().iter().map(|c| c.pos).collect::<Vec<u64>>(),
-            vec![1, 4, 21]
-        );
-    }
-
-    #[test]
     fn select_alt_carriers() {
         let mut vcf = create_test_matrix();
 

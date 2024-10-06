@@ -76,9 +76,9 @@ pub fn run(args: ConciseArgs, limits: Limits) -> Result<()> {
     Ok(())
 }
 
-fn rower_inner<'a>(
+fn rower_inner(
     hsts: Arc<HstScan>,
-    coord: &'a Coord,
+    coord: &Coord,
     top_node_idx: NodeIndex,
     optimized_value: f64,
 ) -> AssocRow {

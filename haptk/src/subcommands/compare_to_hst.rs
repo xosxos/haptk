@@ -236,16 +236,18 @@ pub fn haplotype_has_contradictory_genotypes(
         return false;
     }
 
-    let start_pos = child.start.pos;
-    let stop_pos = child.stop.pos;
-    let start = vcf.get_first_idx_on_left_by_pos(start_pos);
-    let mut stop = vcf.get_first_idx_on_right_by_pos(stop_pos);
-    if stop != vcf.ncoords() {
-        stop += 1;
-    }
+    let sample_haplotype = vcf.find_haplotype_for_sample(start_idx..=stop_idx, sample_idx);
 
-    let sample_haplotype =
-        vcf.find_haplotype_for_sample_idx(vcf.get_contig(), start..stop, sample_idx);
+    // let start_pos = child.start.pos;
+    // let stop_pos = child.stop.pos;
+    // let start = vcf.get_first_idx_on_left_by_pos(start_pos);
+    // let mut stop = vcf.get_first_idx_on_right_by_pos(stop_pos);
+    // if stop != vcf.ncoords() {
+    //     stop += 1;
+    // }
+
+    // let sample_haplotype =
+    //     vcf.find_haplotype_for_sample_idx(vcf.get_contig(), start..stop, sample_idx);
 
     let ref_haplotype = hst.get_haplotype(node_idx);
     // for ht in &ref_haplotype {

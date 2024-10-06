@@ -39,7 +39,7 @@ mod test_compare_to_haplotype {
         // let ht = remove_unused_ht(&vcf, ht.clone()).unwrap();
         let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, 32).unwrap();
 
-        for (idx, row) in vcf.matrix_axis_iter(0).into_iter().enumerate() {
+        for (idx, row) in vcf.matrix_axis_iter(0).enumerate() {
             println!(
                 "{} {}",
                 vcf.get_sample_name(idx),

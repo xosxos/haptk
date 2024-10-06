@@ -63,8 +63,10 @@ pub fn get_unique_haplotypes_map(vcf: &PhasedMatrix) -> Result<HaplotypeMap> {
         let idxs = vcf.get_sample_idxs(&[sample_name.clone()])?;
 
         for idx in idxs.iter() {
-            let haplotype =
-                vcf.find_haplotype_for_sample_idx(vcf.get_contig(), 0..vcf.ncoords(), *idx);
+            let haplotype = vcf.find_haplotype_for_sample(
+                vcf.coords().first().unwrap()..=vcf.coords().last().unwrap(),
+                *idx,
+            );
 
             let matching_indexes = identical_haplotype_count(vcf, &haplotype);
 
