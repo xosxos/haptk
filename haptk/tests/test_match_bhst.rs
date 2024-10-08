@@ -83,6 +83,7 @@ mod compare_hst {
             threads: 8,
             min_size: 1,
             publish: false,
+            sharded: false,
         };
 
         // Build match HST

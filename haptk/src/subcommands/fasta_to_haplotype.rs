@@ -6,7 +6,7 @@ use color_eyre::{
 };
 use rust_htslib::faidx::Reader;
 
-use crate::error::HatkError::PosParseError;
+use crate::error::HaptkError::PosParseError;
 use crate::io::open_csv_writer;
 
 pub fn parse_seq_name(coords: &str) -> Result<(&str, u64, u64, &str)> {

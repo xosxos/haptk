@@ -65,6 +65,9 @@ pub enum SubCommand {
         /// Remove sample IDs and hard cut out all nodes with samples less than or equal to `min_size`
         #[arg(long)]
         publish: bool,
+
+        #[arg(long)]
+        sharded: bool,
     },
 
     /// Build a bidirectional haplotype sharing tree at a coordinate
@@ -86,6 +89,9 @@ pub enum SubCommand {
         /// Remove sample IDs and hard cut out all nodes with samples less than or equal to `min_size`
         #[arg(long)]
         publish: bool,
+
+        #[arg(long)]
+        sharded: bool,
     },
     /// Analyze the MRCA based on the Gamma method at a coordinate
     Mrca {
@@ -569,8 +575,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
                 args, haplotype, mark_samples, mark_shorter_alleles, png, npy, graph_args, sort_option,
             )?,
 
-        SubCommand::Bhst { args,  min_size, publish, .. } => bhst_shard::run(args, min_size, publish,)?,
-        SubCommand::Uhst {args,  min_size, publish, .. } => uhst_shard::run(args, min_size, publish,)?,
+        SubCommand::Bhst { args,  min_size, publish, sharded, .. } => bhst_shard::run(args, min_size, publish, sharded)?,
+        SubCommand::Uhst {args,  min_size, publish, sharded, .. } => uhst_shard::run(args, min_size, publish, sharded)?,
 
         SubCommand::CompareHaplotypes { haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides, .. }
             => compare_haplotypes::run(haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides)?,

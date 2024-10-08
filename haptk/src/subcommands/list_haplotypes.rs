@@ -34,17 +34,17 @@ pub fn run(args: StandardArgs, selection_variant: Option<String>, nucleotides: b
     let (contig, start, stop) = parse_coords(&args.coords)?;
 
     let mut vcf = match (start, stop) {
-        (Some(_), Some(_)) => read_vcf_to_matrix(&args, contig, pos, Some((start, stop)), None)?,
-        _ => read_vcf_to_matrix(&args, contig, pos, None, None)?,
+        (Some(_), Some(_)) => {
+            read_vcf_to_matrix(&args, contig, pos, Some((start, stop)), None, false)?
+        }
+        _ => read_vcf_to_matrix(&args, contig, pos, None, None, false)?,
     };
 
-    match &args.selection {
-        Selection::OnlyAlts | Selection::OnlyRefs => vcf.select_carriers(pos, &args.selection)?,
-        Selection::OnlyLongest => vcf.select_only_longest(),
-        _ => (),
+    if args.selection == Selection::OnlyLongest {
+        vcf.select_only_longest()?;
     }
 
-    ensure!(!vcf.samples().is_empty(), "No samples found in VCF");
+    ensure!(vcf.has_samples(), "No samples found in VCF");
 
     let unique_haplotypes_map = get_unique_haplotypes_map(&vcf)?;
 
@@ -71,9 +71,6 @@ pub fn get_unique_haplotypes_map(vcf: &PhasedMatrix) -> Result<HaplotypeMap> {
             let matching_indexes = identical_haplotype_count(vcf, &haplotype);
 
             let n = matching_indexes.len();
-            // let freq = matching_indexes.len() as f64 / vcf.nhaplotypes() as f64;
-
-            // freq_map.entry(haplotype.clone()).or_insert((n, freq));
 
             map.entry((haplotype, n))
                 .or_insert_with(Vec::new)

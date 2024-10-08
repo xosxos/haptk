@@ -7,6 +7,8 @@ mod core {
     use std::collections::BTreeSet;
     use std::path::PathBuf;
 
+    use color_eyre::Result;
+
     use haptk::args::{Selection, StandardArgs};
     use haptk::io::read_variable_data_file;
     use haptk::read_vcf::read_vcf_to_matrix;
@@ -32,8 +34,8 @@ mod core {
     }
 
     #[test]
-    fn read_vcf_to_phased_matrix() {
-        let vcf = create_test_matrix();
+    fn read_vcf_to_phased_matrix() -> Result<()> {
+        let vcf = create_test_matrix()?;
 
         for row in vcf.matrix_axis_iter(0) {
             println!(
@@ -86,11 +88,12 @@ mod core {
         assert_eq!(vcf.samples(), &samples);
         assert_eq!(vcf.variant_idx(), 31);
         assert_eq!(vcf.coords(), &coords);
+        Ok(())
     }
 
     #[test]
-    fn select_rows() {
-        let mut vcf = create_test_matrix();
+    fn select_rows() -> Result<()> {
+        let mut vcf = create_test_matrix()?;
         vcf.select_rows(vec![0, 3, 20]);
 
         let row = vcf.matrix_axis_iter(0).next().unwrap().to_vec();
@@ -111,6 +114,7 @@ mod core {
                 "SAMPLE11".to_string()
             ]
         );
+        Ok(())
     }
 
     #[ignore]
@@ -120,8 +124,8 @@ mod core {
     }
 
     #[test]
-    fn select_columns_by_range() {
-        let mut vcf = create_test_matrix();
+    fn select_columns_by_range() -> Result<()> {
+        let mut vcf = create_test_matrix()?;
         let (pos, idx) = (vcf.variant_idx_pos(), vcf.variant_idx());
 
         println!("coords len pre {}", vcf.ncoords());
@@ -132,66 +136,67 @@ mod core {
         println!("variant_idx pre {idx} and post {}", vcf.variant_idx());
         assert_ne!(idx, vcf.variant_idx());
         assert_eq!(pos, vcf.variant_idx_pos());
+        Ok(())
     }
 
+    // #[test]
+    // fn select_alt_carriers() {
+    //     let mut vcf = create_test_matrix()?;
+
+    //     vcf.select_carriers(vcf.variant_idx_pos(), &Selection::OnlyAlts)
+    //         .unwrap();
+
+    //     let mut samples = create_samples();
+    //     samples.push("SAMPLE14".to_string());
+
+    //     let row = vcf.matrix_axis_iter(0).next().unwrap().to_vec();
+    //     let row = row
+    //         .to_vec()
+    //         .iter()
+    //         .fold(String::new(), |cur, nxt| format!("{cur}{nxt}"));
+    //     assert_eq!(
+    //         row,
+    //         String::from("000000000000000100000000000000010000000000000001000000000000000")
+    //     );
+
+    //     let row = vcf.matrix_axis_iter(0).nth(1).unwrap().to_vec();
+    //     let row = row
+    //         .to_vec()
+    //         .iter()
+    //         .fold(String::new(), |cur, nxt| format!("{cur}{nxt}"));
+    //     assert_eq!(
+    //         row,
+    //         String::from("000000000000001000000000000000010000000000000000100000000000000")
+    //     );
+
+    //     assert_eq!(&samples, vcf.samples());
+    // }
+
+    // #[test]
+    // fn select_ref_carriers() {
+    //     let mut vcf = create_test_matrix()?;
+    //     vcf.select_carriers(vcf.variant_idx_pos(), &Selection::OnlyRefs)
+    //         .unwrap();
+
+    //     let mut samples = create_samples();
+    //     samples.truncate(samples.len() - 1);
+
+    //     let row = vcf.matrix_axis_iter(0).next().unwrap().to_vec();
+    //     let row = row
+    //         .to_vec()
+    //         .iter()
+    //         .fold(String::new(), |cur, nxt| format!("{cur}{nxt}"));
+    //     assert_eq!(
+    //         row,
+    //         String::from("000000000000000000000000000001000100000000000000000000000000000")
+    //     );
+
+    //     assert_eq!(&samples, vcf.samples());
+    // }
+
     #[test]
-    fn select_alt_carriers() {
-        let mut vcf = create_test_matrix();
-
-        vcf.select_carriers(vcf.variant_idx_pos(), &Selection::OnlyAlts)
-            .unwrap();
-
-        let mut samples = create_samples();
-        samples.push("SAMPLE14".to_string());
-
-        let row = vcf.matrix_axis_iter(0).next().unwrap().to_vec();
-        let row = row
-            .to_vec()
-            .iter()
-            .fold(String::new(), |cur, nxt| format!("{cur}{nxt}"));
-        assert_eq!(
-            row,
-            String::from("000000000000000100000000000000010000000000000001000000000000000")
-        );
-
-        let row = vcf.matrix_axis_iter(0).nth(1).unwrap().to_vec();
-        let row = row
-            .to_vec()
-            .iter()
-            .fold(String::new(), |cur, nxt| format!("{cur}{nxt}"));
-        assert_eq!(
-            row,
-            String::from("000000000000001000000000000000010000000000000000100000000000000")
-        );
-
-        assert_eq!(&samples, vcf.samples());
-    }
-
-    #[test]
-    fn select_ref_carriers() {
-        let mut vcf = create_test_matrix();
-        vcf.select_carriers(vcf.variant_idx_pos(), &Selection::OnlyRefs)
-            .unwrap();
-
-        let mut samples = create_samples();
-        samples.truncate(samples.len() - 1);
-
-        let row = vcf.matrix_axis_iter(0).next().unwrap().to_vec();
-        let row = row
-            .to_vec()
-            .iter()
-            .fold(String::new(), |cur, nxt| format!("{cur}{nxt}"));
-        assert_eq!(
-            row,
-            String::from("000000000000000000000000000001000100000000000000000000000000000")
-        );
-
-        assert_eq!(&samples, vcf.samples());
-    }
-
-    #[test]
-    fn select_only_longest() {
-        let mut vcf = create_test_matrix();
+    fn select_only_longest() -> Result<()> {
+        let mut vcf = create_test_matrix()?;
         vcf.select_only_longest();
 
         let samples = create_samples();
@@ -217,21 +222,23 @@ mod core {
         );
 
         assert_eq!(&samples, vcf.samples());
+        Ok(())
     }
 
     #[test]
-    fn only_longest_indexes() {
-        let vcf = create_test_matrix();
-        let indexes = vcf.only_longest_indexes();
+    fn only_longest_indexes() -> Result<()> {
+        let mut vcf = create_test_matrix()?;
+        let indexes = vcf.only_longest_indexes()?;
         assert_eq!(
             vec![1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27],
             indexes
         );
+        Ok(())
     }
 
     #[test]
-    fn get_sample_names_from_phased_matrix() {
-        let vcf = create_test_matrix();
+    fn get_sample_names_from_phased_matrix() -> Result<()> {
+        let vcf = create_test_matrix()?;
         let names = vcf.get_sample_names(&[0, 3, 20]);
         assert_eq!(
             names,
@@ -247,11 +254,12 @@ mod core {
 
         let name = vcf.get_sample_name(0);
         assert_eq!("SAMPLE1".to_string(), name);
+        Ok(())
     }
 
     #[test]
-    fn set_vcf_coords_and_variant_idx() {
-        let mut vcf = create_test_matrix();
+    fn set_vcf_coords_and_variant_idx() -> Result<()> {
+        let mut vcf = create_test_matrix()?;
         vcf.set_coords(BTreeSet::new());
         assert_eq!(&BTreeSet::<Coord>::new(), vcf.coords());
 
@@ -276,11 +284,12 @@ mod core {
         assert_eq!(2, vcf.ncoords());
         assert_eq!(14, vcf.nsamples());
         assert_eq!(14 * 2, vcf.nhaplotypes());
+        Ok(())
     }
 
     #[test]
-    fn nearest_idx_by_pos() {
-        let mut vcf = create_test_matrix();
+    fn nearest_idx_by_pos() -> Result<()> {
+        let mut vcf = create_test_matrix()?;
         let coords = vcf.coords();
 
         let mut vec = Vec::from_iter(coords.iter().cloned());
@@ -305,6 +314,7 @@ mod core {
         };
 
         assert_eq!(4, vcf.idx_by_coord(&coord).unwrap());
+        Ok(())
     }
 
     // #[test]
@@ -332,13 +342,14 @@ mod core {
     // }
 
     #[test]
-    fn read_vcf_to_phased_matrix_by_coords() {
-        let vcf1 = create_test_matrix();
+    fn read_vcf_to_phased_matrix_by_coords() -> Result<()> {
+        let vcf1 = create_test_matrix()?;
         let args = StandardArgs {
             file: PathBuf::from(TEST_VCF),
             ..Default::default()
         };
-        let vcf2 = read_vcf_to_matrix(&args, "chr9", 16, Some((Some(1), Some(32))), None).unwrap();
+        let vcf2 =
+            read_vcf_to_matrix(&args, "chr9", 16, Some((Some(1), Some(32))), None, false).unwrap();
 
         assert_eq!(
             &vcf1
@@ -349,21 +360,23 @@ mod core {
                 .collect::<BTreeSet<Coord>>(),
             vcf2.coords()
         );
+        Ok(())
     }
 
     #[test]
-    fn error_on_not_normalized_vcf() {
+    fn error_on_not_normalized_vcf() -> Result<()> {
         let args = StandardArgs {
             file: PathBuf::from("tests/data/test_not_normalized.vcf.gz"),
             ..Default::default()
         };
 
-        let res = read_vcf_to_matrix(&args, "chr9", 32, None, None);
+        let res = read_vcf_to_matrix(&args, "chr9", 32, None, None, false);
         assert!(res.is_err());
+        Ok(())
     }
 
     #[test]
-    fn variable_data() {
+    fn variable_data() -> Result<()> {
         let path = PathBuf::from("tests/data/clinical_data.csv");
         let df = read_variable_data_file(path).unwrap();
 
@@ -371,7 +384,7 @@ mod core {
             file: PathBuf::from(TEST_VCF),
             ..Default::default()
         };
-        let mut vcf = read_vcf_to_matrix(&args, "chr9", 32, None, None).unwrap();
+        let mut vcf = read_vcf_to_matrix(&args, "chr9", 32, None, None, false).unwrap();
         vcf.set_variable_data(df).unwrap();
 
         // Make sure NA is calculated right in the average
@@ -393,5 +406,6 @@ mod core {
             .unwrap();
         assert_eq!(vec![88.0, 49.0], vecs[0]);
         assert_eq!(vec![2.0, 10.0], vecs[1]);
+        Ok(())
     }
 }

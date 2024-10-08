@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::ops::Bound;
 use std::ops::RangeBounds;
+use std::path::PathBuf;
 
 use color_eyre::{
     eyre::{ensure, eyre, WrapErr},
@@ -16,9 +17,12 @@ use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::args::Selection;
+use crate::error::HaptkError;
+use crate::read_vcf::read_shard_of_vcf;
 use crate::subcommands::bhst_shard::find_majority_nodes;
 use crate::subcommands::bhst_shard::Node;
 use crate::subcommands::uhst_shard;
+use crate::subcommands::uhst_shard::LocDirection;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Coord {
@@ -184,7 +188,7 @@ impl std::ops::Deref for Ploidy {
 impl From<&Selection> for Ploidy {
     fn from(selection: &Selection) -> Self {
         match selection {
-            Selection::Haploid => Ploidy::Haploid,
+            Selection::Haploid | Selection::OnlyRefs | Selection::OnlyAlts => Ploidy::Haploid,
             _ => Ploidy::Diploid,
         }
     }
@@ -193,7 +197,7 @@ impl From<&Selection> for Ploidy {
 impl From<Selection> for Ploidy {
     fn from(selection: Selection) -> Self {
         match selection {
-            Selection::Haploid => Ploidy::Haploid,
+            Selection::Haploid | Selection::OnlyRefs | Selection::OnlyAlts => Ploidy::Haploid,
             _ => Ploidy::Diploid,
         }
     }
@@ -202,6 +206,16 @@ impl From<Selection> for Ploidy {
 pub enum MatrixSlice {
     All,
     Point(usize),
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ReadMetadata {
+    pub file_path: PathBuf,
+    pub fetch_range: (u64, u64),
+    pub lookups: Vec<[bool; 2]>,
+    pub indexes: Vec<usize>,
+    pub contig_len: Option<u64>,
+    pub sharded: bool,
 }
 
 //TODO: Most of these fields, if not all, should be private to ensure the correctness of
@@ -216,6 +230,7 @@ pub struct PhasedMatrix {
     coords: BTreeSet<Coord>,
     clinical_data: Option<DataFrame>,
     pub ploidy: Ploidy,
+    pub metadata: ReadMetadata,
 }
 
 pub type Offset = (Coord, Coord);
@@ -228,11 +243,12 @@ impl PhasedMatrix {
         samples: Vec<String>,
         coords: BTreeSet<Coord>,
         selection: T,
+        metadata: ReadMetadata,
     ) -> Self {
         let start = coords.first().unwrap().to_owned();
         let end = coords.last().unwrap().to_owned();
-        let mut map = BTreeMap::new();
 
+        let mut map = BTreeMap::new();
         map.insert((start, end), matrix);
 
         Self {
@@ -243,6 +259,7 @@ impl PhasedMatrix {
             coords,
             clinical_data: None,
             ploidy: selection.as_ref().into(),
+            metadata,
         }
     }
 
@@ -335,6 +352,10 @@ impl PhasedMatrix {
         matrix
     }
 
+    pub fn insert_matrix(&mut self, (start_coord, end_coord): (Coord, Coord), matrix: Array2<u8>) {
+        self.matrix.insert((start_coord, end_coord), matrix);
+    }
+
     pub fn set_matrix(&mut self, start_coord: Coord, end_coord: Coord, matrix: Array2<u8>) {
         let mut map = BTreeMap::new();
 
@@ -358,6 +379,10 @@ impl PhasedMatrix {
 
     pub fn samples(&self) -> &Vec<String> {
         &self.samples
+    }
+
+    pub fn has_samples(&self) -> bool {
+        !self.samples.is_empty()
     }
 
     pub fn clinical_data(&self) -> &Option<DataFrame> {
@@ -496,60 +521,62 @@ impl PhasedMatrix {
         Ok(idxs)
     }
 
-    pub fn select_carriers(&mut self, variant_pos: u64, selection: &Selection) -> Result<()> {
-        ensure!(
-            self.variant_idx_pos() == variant_pos,
-            "Cannot select variant carriers: no variant at position {variant_pos}"
-        );
+    // pub fn select_carriers(&mut self, variant_pos: u64, selection: &Selection) -> Result<()> {
+    //     ensure!(
+    //         self.variant_idx_pos() == variant_pos,
+    //         "Cannot select variant carriers: no variant at position {variant_pos}"
+    //     );
 
-        let coord = self.get_nearest_coord_by_pos(variant_pos);
-        let coord_idx = self.get_coord_idx(coord);
+    //     let coord = self.get_nearest_coord_by_pos(variant_pos);
+    //     let coord_idx = self.get_coord_idx(coord);
 
-        let slice = self.matrix_slice(MatrixSlice::All, MatrixSlice::Point(coord_idx));
+    //     let slice = self.matrix_slice(MatrixSlice::All, MatrixSlice::Point(coord_idx));
 
-        let indexes = slice
-            .iter()
-            .enumerate()
-            .filter(|(_, gt)| match selection {
-                Selection::OnlyAlts => **gt == 1,
-                Selection::OnlyRefs => **gt == 0,
-                _ => panic!("Invalid selection method for alleles"),
-            })
-            .map(|(i, _)| i)
-            .collect::<Vec<usize>>();
+    //     let indexes = slice
+    //         .iter()
+    //         .enumerate()
+    //         .filter(|(_, gt)| match selection {
+    //             Selection::OnlyAlts => **gt == 1,
+    //             Selection::OnlyRefs => **gt == 0,
+    //             _ => panic!("Invalid selection method for alleles"),
+    //         })
+    //         .map(|(i, _)| i)
+    //         .collect::<Vec<usize>>();
 
-        match selection {
-            Selection::OnlyAlts => tracing::info!("Selected {} ALT alleles", indexes.len()),
-            Selection::OnlyRefs => tracing::info!("Selected {} REF alleles", indexes.len()),
-            _ => panic!("Invalid selection method for alleles"),
-        };
+    //     match selection {
+    //         Selection::OnlyAlts => tracing::info!("Selected {} ALT alleles", indexes.len()),
+    //         Selection::OnlyRefs => tracing::info!("Selected {} REF alleles", indexes.len()),
+    //         _ => panic!("Invalid selection method for alleles"),
+    //     };
 
-        self.select_rows(indexes);
-        self.ploidy = Ploidy::Mixed;
+    //     self.select_rows(indexes);
+    //     self.ploidy = Ploidy::Mixed;
 
-        tracing::info!("Finished selecting by alleles.");
-        Ok(())
-    }
+    //     tracing::info!("Finished selecting by alleles.");
+    //     Ok(())
+    // }
 
-    pub fn get_lengths_from_uhst<'matrix>(
-        &'matrix self,
-        start_coord: &'matrix Coord,
-    ) -> Vec<(Node<'matrix>, Node<'matrix>)> {
+    pub fn get_lengths_from_uhst(&mut self, start_coord: &Coord) -> Result<Vec<(Node, Node)>> {
         let uhst_right = uhst_shard::construct_uhst(
             self,
             &uhst_shard::LocDirection::Right,
             start_coord,
             1,
             true,
-        );
-        let uhst_left =
-            uhst_shard::construct_uhst(self, &uhst_shard::LocDirection::Left, start_coord, 1, true);
+        )?;
+        let uhst_left = uhst_shard::construct_uhst(
+            self,
+            &uhst_shard::LocDirection::Left,
+            start_coord,
+            1,
+            true,
+        )?;
 
         let start_idx = NodeIndex::new(0);
         let lmaj_branch = find_majority_nodes(&uhst_left, start_idx);
         let rmaj_branch = find_majority_nodes(&uhst_right, start_idx);
 
-        (0..self.nhaplotypes())
+        let lengths = (0..self.nhaplotypes())
             .map(|idx| {
                 let mut lnode = lmaj_branch.len()
                     - lmaj_branch
@@ -578,20 +605,23 @@ impl PhasedMatrix {
                 )
             })
             .map(|(_idx, (lnode, _), (rnode, _))| ((*lnode).clone(), (*rnode).clone()))
-            .collect()
+            .collect();
+        Ok(lengths)
     }
 
-    pub fn select_only_longest(&mut self) {
-        let longest_indexes = self.only_longest_indexes();
+    pub fn select_only_longest(&mut self) -> Result<()> {
+        let longest_indexes = self.only_longest_indexes()?;
 
         self.select_rows(longest_indexes);
         self.ploidy = Ploidy::Haploid;
 
         tracing::info!("Finished only-longest selection.");
+        Ok(())
     }
 
-    pub fn only_longest_indexes(&self) -> Vec<usize> {
-        let lengths = self.get_lengths_from_uhst(self.start_coord());
+    pub fn only_longest_indexes(&mut self) -> Result<Vec<usize>> {
+        let start = self.start_coord().clone();
+        let lengths = self.get_lengths_from_uhst(&start)?;
         let lengths = lengths
             .iter()
             .map(|(lnode, rnode)| {
@@ -608,7 +638,7 @@ impl PhasedMatrix {
             })
             .collect::<Vec<u64>>();
 
-        (0..self.nsamples())
+        let idxs = (0..self.nsamples())
             .map(|i| {
                 let lengths = lengths
                     .iter()
@@ -625,14 +655,12 @@ impl PhasedMatrix {
                 }
                 max_idx
             })
-            .collect::<Vec<usize>>()
+            .collect::<Vec<usize>>();
+        Ok(idxs)
     }
 
-    pub fn only_longest_lengths<'matrix>(
-        &'matrix self,
-        start_coord: &'matrix Coord,
-    ) -> Vec<(Node<'matrix>, Node<'matrix>)> {
-        let lengths = self.get_lengths_from_uhst(start_coord);
+    pub fn only_longest_lengths(&mut self, start_coord: &Coord) -> Result<Vec<(Node, Node)>> {
+        let lengths = self.get_lengths_from_uhst(start_coord)?;
 
         let calculate_len = |(lnode, rnode): &(Node, Node)| {
             if lnode.start == rnode.stop {
@@ -647,7 +675,7 @@ impl PhasedMatrix {
             }
         };
 
-        (0..self.nsamples())
+        let lengths = (0..self.nsamples())
             .map(|i| {
                 let lengths = lengths
                     .iter()
@@ -669,7 +697,8 @@ impl PhasedMatrix {
                 }
                 max_nodes.clone()
             })
-            .collect::<Vec<(Node, Node)>>()
+            .collect::<Vec<(Node, Node)>>();
+        Ok(lengths)
     }
 
     // Sort inside select_rows to avoid bugs down the line
@@ -900,10 +929,22 @@ impl PhasedMatrix {
 }
 
 pub trait CoordDataSlot {
+    fn read_more(&mut self, error: HaptkError) -> Result<()>;
+    fn is_file_end(&self, side: LocDirection) -> bool;
     fn get_slot(&self, coord: &Coord) -> ArrayView1<u8>;
     fn is_contradictory(&self, coord: &Coord, positions: &[usize]) -> bool;
-    fn prev_contradictory(&self, coord: &Coord, positions: &[usize]) -> Option<&Coord>;
-    fn next_contradictory(&self, coord: &Coord, positions: &[usize]) -> Option<&Coord>;
+
+    fn prev_contradictory(
+        &self,
+        coord: &Coord,
+        sample_idxs: &[usize],
+    ) -> std::result::Result<Option<&Coord>, HaptkError>;
+
+    fn next_contradictory(
+        &self,
+        coord: &Coord,
+        sample_idxs: &[usize],
+    ) -> std::result::Result<Option<&Coord>, HaptkError>;
 }
 
 impl CoordDataSlot for PhasedMatrix {
@@ -918,26 +959,77 @@ impl CoordDataSlot for PhasedMatrix {
         slot.len() > 1 && iter.any(|x| slot[*x] != slot[*first])
     }
 
-    fn prev_contradictory(&self, coord: &Coord, positions: &[usize]) -> Option<&Coord> {
+    fn prev_contradictory(
+        &self,
+        coord: &Coord,
+        positions: &[usize],
+    ) -> std::result::Result<Option<&Coord>, HaptkError> {
         if positions.len() < 2 {
-            return None;
+            return Ok(None);
         }
 
-        self.coords
+        match self
+            .coords
             .range(..coord)
             .rev()
             .find(|&coord| self.is_contradictory(coord, positions))
+        {
+            Some(coord) => Ok(Some(coord)),
+            None => match self.is_file_end(LocDirection::Left) {
+                true => Ok(None),
+                false => Err(HaptkError::HstEndError),
+            },
+        }
     }
 
-    fn next_contradictory(&self, coord: &Coord, positions: &[usize]) -> Option<&Coord> {
+    fn next_contradictory(
+        &self,
+        coord: &Coord,
+        positions: &[usize],
+    ) -> std::result::Result<Option<&Coord>, HaptkError> {
         if positions.len() < 2 {
-            return None;
+            return Ok(None);
         }
 
-        self.coords
+        match self
+            .coords
             .range(coord..)
             .skip(1)
             .find(|&coord| self.is_contradictory(coord, positions))
+        {
+            Some(coord) => Ok(Some(coord)),
+            None => match self.is_file_end(LocDirection::Right) {
+                true => Ok(None),
+                false => Err(HaptkError::HstEndError),
+            },
+        }
+    }
+
+    fn is_file_end(&self, side: LocDirection) -> bool {
+        match side {
+            LocDirection::Left => self.metadata.fetch_range.0 == 0 || !self.metadata.sharded,
+            LocDirection::Right => {
+                self.metadata.fetch_range.1 >= self.metadata.contig_len.unwrap()
+                    || !self.metadata.sharded
+            }
+        }
+    }
+
+    fn read_more(&mut self, error: HaptkError) -> Result<()> {
+        let start = self.coords.first().unwrap().clone();
+        let stop = self.coords.last().unwrap().clone();
+
+        match error {
+            HaptkError::HstLeftEndError => {
+                read_shard_of_vcf(self, start.pos.saturating_sub(1_000_000), start.pos)
+            }
+            HaptkError::HstRightEndError => read_shard_of_vcf(self, stop.pos, stop.pos + 1_000_000),
+            HaptkError::HstBothEndError => {
+                read_shard_of_vcf(self, start.pos.saturating_sub(1_000_000), start.pos)?;
+                read_shard_of_vcf(self, stop.pos, stop.pos + 1_000_000)
+            }
+            _ => unreachable!(),
+        }
     }
 }
 

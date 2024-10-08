@@ -34,12 +34,10 @@ pub fn run(args: StandardArgs, haplotype_path: PathBuf) -> Result<()> {
         variant_pos,
         Some((Some(start.pos), Some(end.pos))),
         None,
+        false,
     )?;
     match args.selection {
-        Selection::OnlyAlts | Selection::OnlyRefs => {
-            vcf.select_carriers(variant_pos, &args.selection)?
-        }
-        Selection::OnlyLongest => vcf.select_only_longest(),
+        Selection::OnlyLongest => vcf.select_only_longest()?,
         Selection::Unphased => return Err(eyre!("Running with unphased data is not supported")),
         _ => (),
     };

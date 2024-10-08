@@ -5,6 +5,8 @@ mod common;
 mod test_uhst {
     use super::*;
 
+    use color_eyre::Result;
+
     use std::io::Write;
     use std::path::PathBuf;
 
@@ -16,12 +18,12 @@ mod test_uhst {
     };
 
     #[test]
-    fn matrix_to_graph() {
+    fn matrix_to_graph() -> Result<()> {
         let args = StandardArgs {
             file: PathBuf::from(common::TEST_VCF),
             ..Default::default()
         };
-        let vcf = read_vcf_to_matrix(&args, "chr9", 32, None, None).unwrap();
+        let mut vcf = read_vcf_to_matrix(&args, "chr9", 32, None, None, false).unwrap();
 
         let coord = Coord {
             contig: String::from("chr9"),
@@ -30,10 +32,11 @@ mod test_uhst {
             pos: 32,
         };
 
-        let g = uhst_shard::construct_uhst(&vcf, &LocDirection::Left, &coord, 1, false);
+        let g = uhst_shard::construct_uhst(&mut vcf, &LocDirection::Left, &coord, 1, false)?;
         let mut f = std::fs::File::create("tests/results/test.dot").unwrap();
         f.write_all(format!("{}", petgraph::dot::Dot::new(&g)).as_bytes())
             .unwrap();
+        Ok(())
     }
 
     //--- Binary tests
@@ -95,6 +98,7 @@ mod test_uhst {
             threads: 8,
             min_size: 1,
             publish: false,
+            sharded: false,
         };
         haptk::clap::run_cmd(cmd).unwrap();
     }

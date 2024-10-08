@@ -4,8 +4,10 @@ mod common;
 #[cfg(feature = "clap")]
 mod test_bhst {
     use super::*;
-    use haptk::args::Selection;
+    use haptk::{args::Selection, subcommands::bhst_shard::read_hst_file};
     use std::path::PathBuf;
+
+    use color_eyre::Result;
 
     //--- Binary tests
 
@@ -75,6 +77,7 @@ mod test_bhst {
             threads: 8,
             min_size: 1,
             publish: false,
+            sharded: false,
         };
         haptk::clap::run_cmd(cmd).unwrap();
 
@@ -92,7 +95,57 @@ mod test_bhst {
             threads: 8,
             min_size: 1,
             publish: false,
+            sharded: false,
         };
         haptk::clap::run_cmd(cmd).unwrap();
+    }
+
+    #[test]
+    fn bhst_sharded() -> Result<()> {
+        let mut args = common::clap_standard_args(Selection::All);
+
+        args.file = PathBuf::from("tests/data/test_sharded.vcf.gz");
+        args.prefix = Some(String::from("sharded_one_run"));
+        args.coords = String::from("chr9:32000000");
+
+        let cmd = haptk::clap::SubCommand::Bhst {
+            args: args.clone(),
+            log_and_verbosity: crate::common::silent_verbosity(),
+            threads: 8,
+            min_size: 1,
+            publish: false,
+            sharded: false,
+        };
+        haptk::clap::run_cmd(cmd)?;
+
+        println!("Constructed normal tree");
+
+        args.prefix = Some(String::from("sharded_multi_run"));
+
+        let cmd = haptk::clap::SubCommand::Bhst {
+            args,
+            log_and_verbosity: crate::common::silent_verbosity(),
+            threads: 8,
+            min_size: 1,
+            publish: false,
+            sharded: true,
+        };
+        haptk::clap::run_cmd(cmd)?;
+
+        let hst1 = read_hst_file(PathBuf::from("tests/results/sharded_multi_run_bhst.hst.gz"))?;
+        let hst2 = read_hst_file(PathBuf::from("tests/results/sharded_one_run_bhst.hst.gz"))?;
+
+        assert_eq!(hst1.hst.node_count(), hst2.hst.node_count());
+        assert_eq!(hst1.hst.edge_count(), hst2.hst.edge_count());
+
+        for (idx1, idx2) in hst1.hst.node_indices().zip(hst2.hst.node_indices()) {
+            assert_eq!(idx1, idx2);
+
+            let data1 = hst1.hst.node_weight(idx1).unwrap();
+            let data2 = hst2.hst.node_weight(idx2).unwrap();
+            assert_eq!(data1, data2);
+        }
+
+        Ok(())
     }
 }

@@ -1,5 +1,5 @@
 #[derive(Debug)]
-pub enum HatkError {
+pub enum HaptkError {
     CoordsParseError(String),
     PosParseError((String, String)),
     NormalizeError(u64),
@@ -8,9 +8,13 @@ pub enum HatkError {
     VariantPosNotFoundError((u64, usize)),
     MissingGenotypesError(u64),
     NoMatchingVariantsError,
+    HstEndError,
+    HstBothEndError,
+    HstRightEndError,
+    HstLeftEndError,
 }
 
-impl std::fmt::Display for HatkError {
+impl std::fmt::Display for HaptkError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CoordsParseError(coords) => write!(f, "Failed to parse coords: {coords:?}"),
@@ -34,6 +38,30 @@ impl std::fmt::Display for HatkError {
                 write!(
                     f,
                     "None of the variants in the case file are present in the controls file."
+                )
+            }
+            Self::HstEndError => {
+                write!(
+                    f,
+                    "HST construction ended prematurely due to windowed file-read"
+                )
+            }
+            Self::HstBothEndError => {
+                write!(
+                    f,
+                    "HST construction ended prematurely due to windowed file-read"
+                )
+            }
+            Self::HstLeftEndError => {
+                write!(
+                    f,
+                    "HST construction ended prematurely due to windowed file-read"
+                )
+            }
+            Self::HstRightEndError => {
+                write!(
+                    f,
+                    "HST construction ended prematurely due to windowed file-read"
                 )
             }
             Self::VariantPosNotFoundError((variant_pos, records_n)) => {

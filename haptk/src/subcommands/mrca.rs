@@ -29,15 +29,14 @@ pub fn run(args: StandardArgs, rec_rates: PathBuf) -> Result<()> {
 
     let rates = read_recombination_file(rec_rates)?;
 
-    let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None)?;
+    let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, false)?;
 
-    if args.selection == Selection::OnlyAlts || args.selection == Selection::OnlyRefs {
-        vcf.select_carriers(variant_pos, &args.selection)?;
-    } else if args.selection == Selection::OnlyLongest {
+    if args.selection == Selection::OnlyLongest {
         vcf.select_only_longest();
     };
 
-    let lengths = vcf.get_lengths_from_uhst(vcf.start_coord());
+    let start = vcf.start_coord().clone();
+    let lengths = vcf.get_lengths_from_uhst(&start)?;
     let ((i_tau_hat, i_l, i_u), (c_tau_hat, c_l, c_u)) =
         mrca_gamma_method(lengths, variant_pos, &rates)?;
 

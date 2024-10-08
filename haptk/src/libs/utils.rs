@@ -1,7 +1,7 @@
 use color_eyre::eyre::{eyre, OptionExt, WrapErr};
 use color_eyre::Result;
 
-use crate::error::HatkError::{CoordsParseError, PosParseError};
+use crate::error::HaptkError::{CoordsParseError, PosParseError};
 
 // Round to n significant digits
 // https://stackoverflow.com/questions/28655362/how-does-one-round-a-floating-point-number-to-a-specified-number-of-digits

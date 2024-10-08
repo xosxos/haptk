@@ -33,13 +33,14 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
 
     let (contig, start, stop) = parse_coords(&args.coords)?;
 
-    let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None)?;
+    let mut vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, false)?;
 
-    let hsts = Vec::from_iter(vcf.coords())
-        .par_iter()
+    let hsts = Vec::from_iter(vcf.coords().clone())
+        // .par_iter()
+        .into_iter()
         .enumerate()
         .filter(|(n, _)| *n % step_size == 0)
-        .map(|(_, &coord)| (coord.clone(), construct_bhst(&vcf, coord, 4)))
+        .map(|(_, coord)| (coord.clone(), construct_bhst(&mut vcf, &coord, 4).unwrap()))
         .collect();
 
     let metadata = Metadata::new(&vcf, &args, vcf.samples().clone(), HstType::Bhst);
@@ -52,16 +53,16 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
 }
 
 pub type Limits = (usize, usize, usize, usize);
-pub type Hst<'a> = Graph<Node<'a>, u8>;
-pub type HstMap<'a> = BTreeMap<Coord, Hst<'a>>;
+pub type Hst = Graph<Node, u8>;
+pub type HstMap = BTreeMap<Coord, Hst>;
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct HstScan<'a> {
+pub struct HstScan {
     pub metadata: Metadata,
-    pub hsts: HstMap<'a>,
+    pub hsts: HstMap,
 }
 
-impl<'a> HstScan<'a> {
+impl HstScan {
     pub fn nhaplotypes(&self) -> usize {
         self.metadata.samples.len() * *self.metadata.ploidy
     }
@@ -139,7 +140,7 @@ fn write_hsts(trees: HstScan, path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn read_tree_file<'a>(path: PathBuf) -> Result<HstScan<'a>> {
+pub fn read_tree_file(path: PathBuf) -> Result<HstScan> {
     let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
     let reader = bgzip::BGZFReader::new(file)?;
 
@@ -200,7 +201,7 @@ pub fn read_tree_file<'a>(path: PathBuf) -> Result<HstScan<'a>> {
 // }
 
 pub fn return_assoc<'a, F, U>(
-    hsts: &'a Arc<HstScan<'a>>,
+    hsts: &Arc<HstScan>,
     _args: &StandardArgs,
     limits: Limits,
     _write_bam: bool,
@@ -279,13 +280,12 @@ impl AssocRow {
             pos: coord.pos,
             marker_id: get_marker_id(top_node),
             bp_len: (top_node.stop.pos - top_node.start.pos) as f32,
-            marker_len: hsts.get_coord_idx(top_node.stop.as_ref())
-                - hsts.get_coord_idx(top_node.start.as_ref())
+            marker_len: hsts.get_coord_idx(&top_node.stop) - hsts.get_coord_idx(&top_node.start)
                 + 1,
             start: top_node.start.pos,
             stop: top_node.stop.pos,
-            start_coord: top_node.start.clone().into_owned(),
-            stop_coord: top_node.stop.clone().into_owned(),
+            start_coord: top_node.start.clone(),
+            stop_coord: top_node.stop.clone(),
             opt_value,
             hashmap,
             node_idx: top_node_idx,
@@ -372,11 +372,11 @@ pub fn get_marker_id(top_node: &Node) -> String {
     format!("{:02x}", hasher.finish())
 }
 
-pub fn top_node_from_hsts<'b>(
-    hsts: &'b HstMap<'b>,
+pub fn top_node_from_hsts<'a>(
+    hsts: &'a HstMap,
     coord: &Coord,
     top_node_idx: NodeIndex,
-) -> &'b Node<'b> {
+) -> &'a Node {
     let hst = hsts.get(coord).unwrap();
     hst.node_weight(top_node_idx).unwrap()
 }

@@ -8,6 +8,8 @@ mod test_check_for_haplotype {
     use std::fs::read_to_string;
     use std::path::PathBuf;
 
+    use color_eyre::Result;
+
     use common::clap_standard_args;
 
     use haptk::{args::Selection, subcommands::uhst_shard};
@@ -15,8 +17,8 @@ mod test_check_for_haplotype {
 
     #[rustfmt::skip]
     #[test]
-    fn test_check_for_haplotype() {
-        let vcf = create_test_matrix();
+    fn test_check_for_haplotype() -> Result<()> {
+        let vcf = create_test_matrix()?;
 
         let ht = vec![
             HapVariant{ pos: 32, contig: "chr9".into(), reference: "G".into(), alt: "T".into(), gt: 0 },
@@ -69,6 +71,7 @@ mod test_check_for_haplotype {
         let matches = check_for_haplotype::identical_haplotype_count(&vcf, &ht);
 
         assert!(matches.is_empty());
+        Ok(())
     }
 
     #[test]
@@ -105,7 +108,7 @@ mod test_check_for_haplotype {
 
     fn check_for_haplotype(selection: Selection) {
         let args = standard_args(Selection::OnlyLongest);
-        uhst_shard::run(args, 1, false).unwrap();
+        uhst_shard::run(args, 1, false, false).unwrap();
 
         let args = clap_standard_args(selection);
         let cmd = haptk::clap::SubCommand::CheckForHaplotype {

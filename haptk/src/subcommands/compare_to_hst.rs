@@ -42,28 +42,18 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     tracing::info!("Reading coord range: {} - {}", start, end);
 
     let vcf = match args.selection {
-        Selection::All | Selection::Haploid => read_vcf_to_matrix(
-            &args,
-            contig,
-            variant_pos,
-            Some((Some(start.pos), Some(end.pos))),
-            None,
-        )?,
-        Selection::OnlyAlts | Selection::OnlyRefs => {
-            let mut vcf = read_vcf_to_matrix(
+        Selection::All | Selection::Haploid | Selection::OnlyAlts | Selection::OnlyRefs => {
+            read_vcf_to_matrix(
                 &args,
                 contig,
                 variant_pos,
                 Some((Some(start.pos), Some(end.pos))),
                 None,
-            )?;
-
-            // Select carriers before switching to the given haplotype as the reference
-            vcf.select_carriers(variant_pos, &args.selection)?;
-            vcf
+                false,
+            )?
         }
         Selection::OnlyLongest => {
-            let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None)?;
+            let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, false)?;
             vcf.select_only_longest();
 
             // Use start and end from the haplotype to celect columns from the matrix by range
@@ -126,7 +116,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn init_match_hst<'graph>(vcf: &PhasedMatrix, hst: &'graph Hst) -> Graph<Node<'graph>, u8> {
+pub fn init_match_hst<'graph>(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> {
     let mut match_hst: Graph<Node, u8> = Graph::new();
     let node_idx = NodeIndex::new(0);
     let node = hst.hst.node_weight(node_idx).unwrap();
@@ -141,11 +131,11 @@ pub fn init_match_hst<'graph>(vcf: &PhasedMatrix, hst: &'graph Hst) -> Graph<Nod
 
     recursive_copy(copy_idx, node_idx, hst, &mut match_hst, vcf);
 
-    fn recursive_copy<'graph>(
+    fn recursive_copy(
         copy_idx: NodeIndex,
         node_idx: NodeIndex,
-        hst: &'graph Hst,
-        match_hst: &mut Graph<Node<'graph>, u8>,
+        hst: &Hst,
+        match_hst: &mut Graph<Node, u8>,
         _vcf: &PhasedMatrix,
     ) {
         let children = hst.hst.neighbors_directed(node_idx, Direction::Outgoing);
@@ -168,10 +158,7 @@ pub fn init_match_hst<'graph>(vcf: &PhasedMatrix, hst: &'graph Hst) -> Graph<Nod
     match_hst
 }
 
-pub fn create_match_hst<'graph>(
-    vcf: &PhasedMatrix,
-    hst: &'graph Hst<'graph>,
-) -> Graph<Node<'graph>, u8> {
+pub fn create_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> {
     let node_idx = NodeIndex::new(0);
 
     let node_idx_vecs = (0..vcf.nhaplotypes())
@@ -230,8 +217,8 @@ pub fn haplotype_has_contradictory_genotypes(
     let child = hst.hst.node_weight(node_idx).unwrap();
 
     // How to handle direction and missing variants here?
-    let start_idx = child.start.as_ref();
-    let stop_idx = child.stop.as_ref();
+    let start_idx = &child.start;
+    let stop_idx = &child.stop;
     if start_idx == stop_idx {
         return false;
     }

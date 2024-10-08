@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 use std::path::PathBuf;
 
+use color_eyre::Result;
+
 use haptk::{
     args::{Selection, StandardArgs},
     clap::LogAndVerbosity,
@@ -17,12 +19,12 @@ pub const TEST_CONTRA: &str = "tests/data/test_contrahomozygote.vcf.gz";
 pub const COORDS: &str = "chr9:32";
 pub const COORD_RANGE: &str = "chr9:0-70";
 
-pub fn create_test_matrix() -> PhasedMatrix {
+pub fn create_test_matrix() -> Result<PhasedMatrix> {
     let args = StandardArgs {
         file: PathBuf::from(TEST_VCF),
         ..Default::default()
     };
-    read_vcf_to_matrix(&args, "chr9", 32, None, None).unwrap()
+    read_vcf_to_matrix(&args, "chr9", 32, None, None, false)
 }
 
 pub fn standard_args(selection: Selection) -> StandardArgs {
