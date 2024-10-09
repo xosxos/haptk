@@ -197,7 +197,7 @@ mod core {
     #[test]
     fn select_only_longest() -> Result<()> {
         let mut vcf = create_test_matrix()?;
-        vcf.select_only_longest();
+        vcf.select_only_longest()?;
 
         let samples = create_samples();
 
@@ -300,9 +300,12 @@ mod core {
         let two = vcf.get_nearest_coord_by_pos(23);
         let three = vcf.get_nearest_coord_by_pos(31);
         let four = vcf.get_nearest_coord_by_pos(9999999);
+        // println!("{one:?}");
 
         assert_eq!(4, vcf.get_coord_idx(one));
+        println!("{one:?}");
         assert_eq!(4, vcf.get_coord_idx(two));
+        println!("{two:?}");
         assert_eq!(5, vcf.get_coord_idx(three));
         assert_eq!(vcf.ncoords() - 1, vcf.get_coord_idx(four));
 

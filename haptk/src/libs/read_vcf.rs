@@ -179,7 +179,7 @@ pub fn read_vcf_to_matrix(
     tracing::info!("Reading phased genotypes from {contig} with target position at {variant_pos}.");
     tracing::info!("Using {} samples from the VCF.", indexes.len());
 
-    let window = 2_000_000;
+    let window = 10_000_000;
 
     if sharded {
         ensure!(get_htslib_contig_len(&args.file, contig).is_ok(), "Cannot construct HST using partial reads of the VCF if the contig length is not defined in the header");
@@ -188,14 +188,21 @@ pub fn read_vcf_to_matrix(
             Some(variant_pos.saturating_sub(window)),
             Some(variant_pos + window),
         ));
+        tracing::info!(
+            "Reading first batch in range {}-{}",
+            variant_pos.saturating_sub(window),
+            variant_pos + window
+        );
     }
 
+    // let (markers, coords) =
+    // read_vcf_batch_to_matrix(&args.file, contig, range, &indexes, &lookups, args.no_alt)?;
     let (markers, coords) = match get_htslib_contig_len(&args.file, contig).is_err() {
         true => {
             tracing::info!("No contig {contig} length in the VCF. Reading single-threaded.");
-            read_vcf_batch_to_matrix(&args.file, contig, range, &indexes, &lookups)?
+            read_vcf_batch_to_matrix(&args.file, contig, range, &indexes, &lookups, args.no_alt)?
         }
-        false => read_parallel(&args.file, contig, range, &indexes, &lookups)?,
+        false => read_parallel(&args.file, contig, range, &indexes, &lookups, args.no_alt)?,
     };
 
     let start = coords.first().unwrap();
@@ -209,6 +216,7 @@ pub fn read_vcf_to_matrix(
         fetch_range,
         contig_len: get_htslib_contig_len(&args.file, contig).ok(),
         sharded,
+        remove_no_alt: args.no_alt,
     };
 
     construct_phased_matrix(
@@ -228,6 +236,7 @@ fn read_vcf_batch_to_matrix(
     range: Option<(Option<u64>, Option<u64>)>,
     sample_indexes: &[usize],
     lookups: &[[bool; 2]],
+    remove_no_alt: bool,
 ) -> Result<(Vec<u8>, BTreeSet<Coord>)> {
     let mut reader = get_reader(file_path, contig, range)?;
 
@@ -241,6 +250,15 @@ fn read_vcf_batch_to_matrix(
 
         // HTSlib is 0-based so add 1
         let pos = (record.pos() + 1) as u64;
+
+        // There is a weird bug where the IndexedReader fetches records outside of the range when multithreading
+        if let Some((start, stop)) = range {
+            if let (Some(start), Some(stop)) = (start, stop) {
+                if pos < start || pos > stop {
+                    continue;
+                }
+            }
+        }
 
         tracing::trace!("Reading record at position {pos}");
 
@@ -272,26 +290,27 @@ fn read_vcf_batch_to_matrix(
         // let gts_per_sample = diff / sample_indexes.len();
         // let gts_mod = diff % sample_indexes.len();
 
-        // println!(
-        //     "gts {gts_per_sample} mod {gts_mod} before_len {markers_len_before} len_now {}",
-        //     markers.len()
+        // tracing::trace!(
+        // "gts {gts_per_sample} mod {gts_mod} before_len {markers_len_before} len_now {}",
+        // markers.len()
         // );
         // ensure!(
-        //     check_ploidy(gts_per_sample, gts_mod, args),
+        //     check_ploidy(gts_per_sample, gts_mod, Selection::All),
         //     PloidyError((pos, gts_per_sample))
         // );
 
-        let check_for_no_alt = false;
-
-        if check_for_no_alt {
+        if remove_no_alt {
             let slice = &markers[(markers.len() - diff)..markers.len()];
             if slice.iter().all(|gt| gt == &0u8) {
-                markers.drain((markers.len() - diff)..markers.len());
+                let _ = markers.drain((markers.len() - diff)..);
                 continue;
             }
         }
 
-        coords.insert(construct_coord(&record, contig, pos));
+        if !coords.insert(construct_coord(&record, contig, pos)) {
+            tracing::error!("Duplicate coord at {contig}:{pos}. Not adding the duplicate");
+            let _ = markers.drain((markers.len() - diff)..);
+        }
     }
 
     Ok((markers, coords))
@@ -303,6 +322,7 @@ fn read_parallel(
     range: Option<(Option<u64>, Option<u64>)>,
     sample_indexes: &[usize],
     lookups: &[[bool; 2]],
+    remove_no_alt: bool,
 ) -> Result<(Vec<u8>, BTreeSet<Coord>)> {
     let (first_pos, last_pos) = match range {
         Some((Some(start), Some(end))) => (start, end),
@@ -336,6 +356,7 @@ fn read_parallel(
                 Some((Some(*start), Some(*stop))),
                 sample_indexes,
                 lookups,
+                remove_no_alt,
             )
         })
         .collect::<Result<Vec<(Vec<u8>, BTreeSet<Coord>)>>>()?;
@@ -363,8 +384,13 @@ fn construct_phased_matrix(
     metadata: ReadMetadata,
 ) -> Result<PhasedMatrix> {
     let ploidy: Ploidy = selection.as_ref().into();
-    let matrix =
-        Array2::from_shape_vec((samples.len() * ploidy as usize, coords.len()).f(), markers)?;
+    tracing::debug!(
+        "Contructing matrix: {} x {} = {}",
+        samples.len() * *ploidy,
+        coords.len(),
+        markers.len()
+    );
+    let matrix = Array2::from_shape_vec((samples.len() * *ploidy, coords.len()).f(), markers)?;
 
     let mut vcf = PhasedMatrix::new(
         0,
@@ -393,18 +419,18 @@ fn construct_phased_matrix(
     Ok(vcf)
 }
 
-// fn check_ploidy(length: usize, gts_mod: usize, args: &StandardArgs) -> bool {
-//     if gts_mod != 0 {
-//         return false;
-//     }
+fn check_ploidy(length: usize, gts_mod: usize, selection: Selection) -> bool {
+    if gts_mod != 0 {
+        return false;
+    }
 
-//     match args.selection {
-//         Selection::Haploid => length == 1 || length == 2,
-//         Selection::OnlyAlts => length == 1,
-//         Selection::OnlyRefs => length == 1,
-//         _ => length == 2,
-//     }
-// }
+    match selection {
+        Selection::Haploid => length == 1 || length == 2,
+        Selection::OnlyAlts => length == 1,
+        Selection::OnlyRefs => length == 1,
+        _ => length == 2,
+    }
+}
 
 // fn genotype_to_u8_missing(g: &GenotypeAllele) -> Option<u8> {
 //     match g {
@@ -447,6 +473,7 @@ pub fn read_shard_of_vcf(vcf: &mut PhasedMatrix, start: u64, stop: u64) -> Resul
                 range,
                 indexes,
                 lookups,
+                vcf.metadata.remove_no_alt,
             )?,
             false => read_parallel(
                 &vcf.metadata.file_path,
@@ -454,6 +481,7 @@ pub fn read_shard_of_vcf(vcf: &mut PhasedMatrix, start: u64, stop: u64) -> Resul
                 range,
                 indexes,
                 lookups,
+                vcf.metadata.remove_no_alt,
             )?,
         };
 
@@ -471,9 +499,8 @@ pub fn read_shard_of_vcf(vcf: &mut PhasedMatrix, start: u64, stop: u64) -> Resul
     )?;
 
     let start = coords.first().unwrap();
-    let end = coords.last().unwrap();
 
-    vcf.insert_matrix((start.clone(), end.clone()), matrix);
+    vcf.insert_matrix(start.clone(), matrix);
 
     vcf.coords_mut().extend(coords);
     Ok(())

@@ -232,10 +232,9 @@ pub fn transform_gt_matrix_to_match_matrix(
     let vcf_coords = vcf.coords_mut();
     *vcf_coords = coords;
     let offset_coord_start = vcf_coords.first().unwrap().clone();
-    let offset_coord_end = vcf_coords.last().unwrap().clone();
+
     vcf.set_matrix(
         offset_coord_start,
-        offset_coord_end,
         Array2::from_shape_vec((vcf.nhaplotypes(), vcf.ncoords()).f(), match_matrix)?,
     );
 

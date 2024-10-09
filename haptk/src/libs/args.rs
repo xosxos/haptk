@@ -27,6 +27,10 @@ pub struct StandardArgs {
     /// Output filename prefix
     #[arg(short = 'p', long)]
     pub prefix: Option<String>,
+
+    /// Do not include no ALTs
+    #[arg(long)]
+    pub no_alt: bool,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]

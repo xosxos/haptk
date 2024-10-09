@@ -66,6 +66,7 @@ pub fn run(args: ConciseArgs, limits: Limits, var_data: PathBuf, var_name: Strin
         selection: hsts.metadata.selection.clone(),
         prefix: args.prefix,
         samples: None,
+        no_alt: false,
     };
 
     ensure!(

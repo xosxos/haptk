@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::ops::Bound;
 use std::ops::RangeBounds;
 use std::path::PathBuf;
@@ -32,20 +33,34 @@ pub struct Coord {
     pub alt: String,
 }
 
+impl std::hash::Hash for Coord {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: std::hash::Hasher,
+    {
+        self.pos.hash(state);
+        self.alt.hash(state);
+    }
+}
+
 impl Ord for Coord {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.pos.cmp(&other.pos) {
             Ordering::Less => Ordering::Less,
             Ordering::Equal => {
-                if self.alt == "-" || other.alt == "-" {
-                    Ordering::Equal
+                let cmp = self.reference.cmp(&other.reference);
+                if cmp == Ordering::Equal {
+                    if self.alt == "-" || other.alt == "-" {
+                        Ordering::Equal
+                    } else {
+                        self.alt.cmp(&other.alt)
+                    }
                 } else {
-                    self.alt.cmp(&other.alt)
+                    cmp
                 }
             }
             Ordering::Greater => Ordering::Greater,
         }
-        // self.pos.cmp(&other.pos)
     }
 }
 
@@ -216,18 +231,17 @@ pub struct ReadMetadata {
     pub indexes: Vec<usize>,
     pub contig_len: Option<u64>,
     pub sharded: bool,
+    pub remove_no_alt: bool,
 }
 
-//TODO: Most of these fields, if not all, should be private to ensure the correctness of
-// for example common selects and slicings performed by the user
-// Slice indexing matrices is also an anti-pattern in Polars
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone)]
 pub struct PhasedMatrix {
     pub start_coord: Coord,
     pub variant_idx: usize,
-    matrix: BTreeMap<Offset, Array2<u8>>,
+    pub matrix: BTreeMap<Arc<Coord>, Array2<u8>>,
     samples: Vec<String>,
     coords: BTreeSet<Coord>,
+    indexer: HashMap<Coord, (Arc<Coord>, usize)>,
     clinical_data: Option<DataFrame>,
     pub ploidy: Ploidy,
     pub metadata: ReadMetadata,
@@ -245,11 +259,16 @@ impl PhasedMatrix {
         selection: T,
         metadata: ReadMetadata,
     ) -> Self {
-        let start = coords.first().unwrap().to_owned();
-        let end = coords.last().unwrap().to_owned();
+        let start = Arc::new(coords.first().unwrap().clone());
+
+        let indexer: HashMap<Coord, (Arc<Coord>, usize)> = coords
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (v.clone(), (start.clone(), i)))
+            .collect();
 
         let mut map = BTreeMap::new();
-        map.insert((start, end), matrix);
+        map.insert(start.clone(), matrix);
 
         Self {
             variant_idx,
@@ -259,6 +278,7 @@ impl PhasedMatrix {
             coords,
             clinical_data: None,
             ploidy: selection.as_ref().into(),
+            indexer,
             metadata,
         }
     }
@@ -285,39 +305,29 @@ impl PhasedMatrix {
     }
 
     pub fn matrix_point_coord(&self, x: usize, coord: &Coord) -> u8 {
-        let (col_index, matrix) = self.find_matrix_and_col_idx(coord);
-        matrix[[x, col_index]]
+        let (matrix_key, index) = self.indexer.get(coord).unwrap();
+        let matrix = self.matrix.get(matrix_key).unwrap();
+        matrix[[x, *index]]
     }
 
-    pub fn find_matrix_and_col_idx(&self, coord: &Coord) -> (usize, &Array2<u8>) {
-        let matrix_idx = self
+    pub fn find_matrix_key_by_coord(&self, coord: &Coord) -> (Arc<Coord>, usize) {
+        let (start, _) = self
             .matrix
             .iter()
-            .position(|((start, end), _)| coord >= start && end >= coord)
+            .rev()
+            .find(|(start, _)| coord >= start)
             .unwrap();
-
-        let ((start, _), matrix) = self.matrix.iter().nth(matrix_idx).unwrap();
-
-        let index = self.get_coord_idx(coord) - self.get_coord_idx(start);
-        (index, matrix)
+        let index = self.coords.range(start.as_ref()..coord).count();
+        (start.clone(), index)
     }
 
     pub fn matrix_column(&self, coord: &Coord) -> ArrayView1<u8> {
-        let (index, matrix) = self.find_matrix_and_col_idx(coord);
+        let (matrix, index) = self.indexer.get(coord).unwrap();
+        let matrix = self.matrix.get(matrix).unwrap();
 
-        matrix.index_axis(Axis(1), index)
+        // let (index, matrix) = self.find_matrix_and_col_idx(coord);
+        matrix.index_axis(Axis(1), *index)
     }
-
-    // pub fn matrix_row(&self, coord: &Coord) -> ArrayView1<u8> {
-    //     let index = self.get_coord_idx(coord);
-    //     // Box::new(
-    //     //     self.matrix
-    //     //         .iter()
-    //     //         .map(move |(_, m)| m.index_axis(Axis(1), index).into_iter().copied())
-    //     //         .flatten(),
-    //     // )
-    //     let (_, matrix) = self.matrix.iter().nth(0).unwrap();
-    // }
 
     pub fn matrix_slice(&self, row: MatrixSlice, col: MatrixSlice) -> ArrayView1<u8> {
         let (_, matrix) = self.matrix.iter().nth(0).unwrap();
@@ -352,14 +362,14 @@ impl PhasedMatrix {
         matrix
     }
 
-    pub fn insert_matrix(&mut self, (start_coord, end_coord): (Coord, Coord), matrix: Array2<u8>) {
-        self.matrix.insert((start_coord, end_coord), matrix);
+    pub fn insert_matrix(&mut self, start_coord: Coord, matrix: Array2<u8>) {
+        self.matrix.insert(Arc::new(start_coord), matrix);
     }
 
-    pub fn set_matrix(&mut self, start_coord: Coord, end_coord: Coord, matrix: Array2<u8>) {
+    pub fn set_matrix(&mut self, start_coord: Coord, matrix: Array2<u8>) {
         let mut map = BTreeMap::new();
 
-        map.insert((start_coord, end_coord), matrix);
+        map.insert(Arc::new(start_coord), matrix);
         self.matrix = map;
     }
 
@@ -433,7 +443,8 @@ impl PhasedMatrix {
     }
 
     pub fn get_coord_idx(&self, coord: &Coord) -> usize {
-        self.coords.iter().position(|c| c == coord).unwrap()
+        self.coords.range(..=coord).count() - 1
+        // self.coords.iter().position(|c| c == coord).unwrap()
     }
 
     pub fn try_coord_by_hapvariant(&self, hv: &HapVariant) -> Option<usize> {
@@ -521,41 +532,6 @@ impl PhasedMatrix {
         Ok(idxs)
     }
 
-    // pub fn select_carriers(&mut self, variant_pos: u64, selection: &Selection) -> Result<()> {
-    //     ensure!(
-    //         self.variant_idx_pos() == variant_pos,
-    //         "Cannot select variant carriers: no variant at position {variant_pos}"
-    //     );
-
-    //     let coord = self.get_nearest_coord_by_pos(variant_pos);
-    //     let coord_idx = self.get_coord_idx(coord);
-
-    //     let slice = self.matrix_slice(MatrixSlice::All, MatrixSlice::Point(coord_idx));
-
-    //     let indexes = slice
-    //         .iter()
-    //         .enumerate()
-    //         .filter(|(_, gt)| match selection {
-    //             Selection::OnlyAlts => **gt == 1,
-    //             Selection::OnlyRefs => **gt == 0,
-    //             _ => panic!("Invalid selection method for alleles"),
-    //         })
-    //         .map(|(i, _)| i)
-    //         .collect::<Vec<usize>>();
-
-    //     match selection {
-    //         Selection::OnlyAlts => tracing::info!("Selected {} ALT alleles", indexes.len()),
-    //         Selection::OnlyRefs => tracing::info!("Selected {} REF alleles", indexes.len()),
-    //         _ => panic!("Invalid selection method for alleles"),
-    //     };
-
-    //     self.select_rows(indexes);
-    //     self.ploidy = Ploidy::Mixed;
-
-    //     tracing::info!("Finished selecting by alleles.");
-    //     Ok(())
-    // }
-
     pub fn get_lengths_from_uhst(&mut self, start_coord: &Coord) -> Result<Vec<(Node, Node)>> {
         let uhst_right = uhst_shard::construct_uhst(
             self,
@@ -628,11 +604,9 @@ impl PhasedMatrix {
                 if lnode.start == rnode.stop {
                     0
                 } else {
-                    let stop_idx = self.get_coord_idx(&rnode.stop);
-                    let stop = self.coords.iter().nth(stop_idx - 1).unwrap();
+                    let stop = self.coords().range(..&rnode.stop).next_back().unwrap();
 
-                    let start_idx = self.get_coord_idx(&lnode.start);
-                    let start = self.coords.iter().nth(start_idx + 1).unwrap();
+                    let start = self.coords().range(&lnode.start..).nth(1).unwrap();
                     stop.pos - start.pos + 1
                 }
             })
@@ -666,11 +640,8 @@ impl PhasedMatrix {
             if lnode.start == rnode.stop {
                 0
             } else {
-                let stop_idx = self.get_coord_idx(&rnode.stop);
-                let stop = self.coords.iter().nth(stop_idx - 1).unwrap();
-
-                let start_idx = self.get_coord_idx(&lnode.start);
-                let start = self.coords.iter().nth(start_idx + 1).unwrap();
+                let stop = self.coords().range(..&rnode.stop).next_back().unwrap();
+                let start = self.coords().range(&lnode.start..).nth(1).unwrap();
                 stop.pos - start.pos + 1
             }
         };
@@ -760,11 +731,9 @@ impl PhasedMatrix {
         self.coords = self.coords.range(first..=last).cloned().collect();
 
         let offset_coord_start = self.coords.first().unwrap().clone();
-        let offset_coord_end = self.coords.last().unwrap().clone();
 
         self.set_matrix(
             offset_coord_start,
-            offset_coord_end,
             self.slice_cols(first_idx..last_idx).to_owned(),
         );
 
@@ -797,12 +766,40 @@ impl PhasedMatrix {
     // Inclusive ranges not supported so remember to add + 1 to stop_idx
     pub fn find_u8_haplotype_for_sample<R: RangeBounds<Coord>>(
         &self,
-        range: R,
+        col_range: R,
         sample: usize,
     ) -> Vec<u8> {
-        self.coords()
-            .range(range)
-            .map(|coord| self.matrix_point_coord(sample, coord))
+        let (col_first_idx, col_last_idx) = match (col_range.start_bound(), col_range.end_bound()) {
+            (Bound::Included(first), Bound::Included(last)) => (first, last),
+            _ => panic!("Range problem"),
+        };
+        let (matrix_key_first, index_first) = &self.indexer[col_first_idx];
+        let (matrix_key_last, index_last) = &self.indexer[col_last_idx];
+
+        if matrix_key_first == matrix_key_last {
+            let matrix = self.matrix.get(matrix_key_first).unwrap();
+            return matrix
+                .slice(s![sample, *index_first..=*index_last])
+                .to_vec();
+        }
+
+        self.matrix
+            .range(matrix_key_first.clone()..matrix_key_last.clone())
+            .flat_map(|(key, next_matrix)| {
+                let index_stop = match key == matrix_key_last {
+                    true => *index_last,
+                    false => next_matrix.ncols() - 1,
+                };
+
+                let index_start = match key == matrix_key_first {
+                    true => *index_first,
+                    false => 0,
+                };
+
+                next_matrix
+                    .slice(s![sample, index_start..=index_stop])
+                    .to_vec()
+            })
             .collect()
     }
 
@@ -938,13 +935,19 @@ pub trait CoordDataSlot {
         &self,
         coord: &Coord,
         sample_idxs: &[usize],
-    ) -> std::result::Result<Option<&Coord>, HaptkError>;
+    ) -> std::result::Result<Option<(&Coord, ArrayView1<u8>)>, HaptkError>;
 
     fn next_contradictory(
         &self,
         coord: &Coord,
         sample_idxs: &[usize],
-    ) -> std::result::Result<Option<&Coord>, HaptkError>;
+    ) -> std::result::Result<Option<(&Coord, ArrayView1<u8>)>, HaptkError>;
+}
+
+pub fn is_contradictory(matrix: &Array2<u8>, positions: &[usize], index: usize) -> bool {
+    let slot = matrix.index_axis(Axis(1), index);
+    let first = positions[0];
+    slot.len() > 1 && positions.iter().any(|x| slot[*x] != slot[first])
 }
 
 impl CoordDataSlot for PhasedMatrix {
@@ -954,31 +957,47 @@ impl CoordDataSlot for PhasedMatrix {
     // Slot is contractory if it contains both 0 and 1.
     fn is_contradictory(&self, coord: &Coord, positions: &[usize]) -> bool {
         let slot = self.get_slot(coord);
-        let mut iter = positions.iter();
-        let first = iter.next().unwrap();
-        slot.len() > 1 && iter.any(|x| slot[*x] != slot[*first])
+        let first = positions[0];
+        slot.len() > 1 && positions.iter().any(|x| slot[*x] != slot[first])
     }
 
     fn prev_contradictory(
         &self,
         coord: &Coord,
         positions: &[usize],
-    ) -> std::result::Result<Option<&Coord>, HaptkError> {
+    ) -> std::result::Result<Option<(&Coord, ArrayView1<u8>)>, HaptkError> {
         if positions.len() < 2 {
             return Ok(None);
         }
 
-        match self
-            .coords
-            .range(..coord)
-            .rev()
-            .find(|&coord| self.is_contradictory(coord, positions))
-        {
-            Some(coord) => Ok(Some(coord)),
-            None => match self.is_file_end(LocDirection::Left) {
-                true => Ok(None),
-                false => Err(HaptkError::HstEndError),
-            },
+        let (matrix_key, index) = &self.indexer[coord];
+
+        let (mut travel, mut index, mut past_first) = (0, *index as isize, false);
+
+        for (_key, prev_matrix) in self.matrix.range(..=matrix_key.clone()).rev() {
+            match past_first {
+                true => index = prev_matrix.ncols() as isize - 1,
+                false => index -= 1,
+            }
+
+            while index >= 0 {
+                match is_contradictory(prev_matrix, positions, index as usize) {
+                    true => {
+                        let new_coord = self.coords().range(..coord).rev().nth(travel).unwrap();
+                        let view = prev_matrix.index_axis(Axis(1), index as usize);
+                        return Ok(Some((new_coord, view)));
+                    }
+                    false => travel += 1,
+                }
+                index -= 1;
+            }
+
+            past_first = true;
+        }
+
+        match self.is_file_end(LocDirection::Left) {
+            true => Ok(None),
+            false => Err(HaptkError::HstEndError),
         }
     }
 
@@ -986,22 +1005,38 @@ impl CoordDataSlot for PhasedMatrix {
         &self,
         coord: &Coord,
         positions: &[usize],
-    ) -> std::result::Result<Option<&Coord>, HaptkError> {
+    ) -> std::result::Result<Option<(&Coord, ArrayView1<u8>)>, HaptkError> {
         if positions.len() < 2 {
             return Ok(None);
         }
+        let (matrix_key, index) = &self.indexer[coord];
 
-        match self
-            .coords
-            .range(coord..)
-            .skip(1)
-            .find(|&coord| self.is_contradictory(coord, positions))
-        {
-            Some(coord) => Ok(Some(coord)),
-            None => match self.is_file_end(LocDirection::Right) {
-                true => Ok(None),
-                false => Err(HaptkError::HstEndError),
-            },
+        let (mut travel, mut index, mut past_first) = (0, *index, false);
+
+        for (_key, next_matrix) in self.matrix.range(matrix_key.clone()..) {
+            match past_first {
+                true => index = 0,
+                false => index += 1,
+            }
+
+            while index < next_matrix.ncols() {
+                match is_contradictory(next_matrix, positions, index) {
+                    true => {
+                        let new_coord = self.coords().range(coord..).skip(1).nth(travel).unwrap();
+                        let view = next_matrix.index_axis(Axis(1), index);
+                        return Ok(Some((new_coord, view)));
+                    }
+                    false => travel += 1,
+                };
+                index += 1;
+            }
+
+            past_first = true;
+        }
+
+        match self.is_file_end(LocDirection::Right) {
+            true => Ok(None),
+            false => Err(HaptkError::HstEndError),
         }
     }
 
@@ -1016,20 +1051,30 @@ impl CoordDataSlot for PhasedMatrix {
     }
 
     fn read_more(&mut self, error: HaptkError) -> Result<()> {
+        // println!("trying to fetch more");
         let start = self.coords.first().unwrap().clone();
         let stop = self.coords.last().unwrap().clone();
 
         match error {
             HaptkError::HstLeftEndError => {
-                read_shard_of_vcf(self, start.pos.saturating_sub(1_000_000), start.pos)
+                read_shard_of_vcf(self, start.pos.saturating_sub(1_000_000), start.pos - 1)?
             }
-            HaptkError::HstRightEndError => read_shard_of_vcf(self, stop.pos, stop.pos + 1_000_000),
+            HaptkError::HstRightEndError => {
+                read_shard_of_vcf(self, stop.pos + 1, stop.pos + 1_000_000)?
+            }
             HaptkError::HstBothEndError => {
-                read_shard_of_vcf(self, start.pos.saturating_sub(1_000_000), start.pos)?;
-                read_shard_of_vcf(self, stop.pos, stop.pos + 1_000_000)
+                read_shard_of_vcf(self, start.pos.saturating_sub(1_000_000), start.pos - 1)?;
+                read_shard_of_vcf(self, stop.pos + 1, stop.pos + 1_000_000)?
             }
             _ => unreachable!(),
         }
+
+        self.indexer = self
+            .coords
+            .iter()
+            .map(|v| (v.clone(), self.find_matrix_key_by_coord(v)))
+            .collect();
+        Ok(())
     }
 }
 

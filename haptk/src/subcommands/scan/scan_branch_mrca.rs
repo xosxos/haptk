@@ -42,6 +42,7 @@ pub fn run(args: ConciseArgs, limits: Limits, rec_rates: PathBuf) -> Result<()> 
         selection: hsts.metadata.selection.clone(),
         prefix: args.prefix,
         samples: None,
+        no_alt: false,
     };
 
     let mut output = args.output.clone();

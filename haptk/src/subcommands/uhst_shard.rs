@@ -1,11 +1,11 @@
-use std::borrow::Cow;
+use std::{cmp::Ordering, sync::mpsc::sync_channel};
 
 use color_eyre::{
     eyre::{ensure, eyre},
     Result,
 };
-use petgraph::graph::NodeIndex;
 use petgraph::Graph;
+use petgraph::{graph::NodeIndex, Direction};
 use rayon::prelude::*;
 
 use crate::{
@@ -16,6 +16,8 @@ use crate::{
     structs::{Coord, HapVariant},
     subcommands::bhst_shard::{self, write_hst_file, HstType, Node},
 };
+
+use super::bhst_shard::initiate_hst;
 
 #[doc(hidden)]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -144,70 +146,82 @@ pub fn construct_uhst(
     min_size: usize,
     only_majority: bool,
 ) -> Result<Graph<Node, u8>> {
-    let mut hst = bhst_shard::initiate_hst(vcf, start_coord);
+    let mut hst = initiate_hst(vcf, start_coord);
 
-    let mut min_size_blacklist = vec![];
+    let mut blacklist_nodes = vec![];
+
     loop {
-        // From all nodes find all leaf nodes with more indexes than min_size
-        let indices = bhst_shard::find_leaf_nodes(&hst, min_size, &min_size_blacklist);
+        let (tx, rx) = sync_channel(2024);
 
-        // Iterate through the filtered leaf nodes in parallel to find new nodes to add
-        let nodes = indices
-            .into_par_iter()
-            .map(|node_idx| {
-                find_contradictory_gt(vcf, &hst, start_coord, node_idx, direction)
-                    .map(|node| (node_idx, node))
+        let outres = hst
+            .node_indices()
+            .par_bridge()
+            .filter(|n| !blacklist_nodes.contains(n))
+            .filter_map(|node_idx| {
+                let node = hst.node_weight(node_idx).unwrap();
+
+                let count = hst
+                    .neighbors_directed(node_idx, Direction::Outgoing)
+                    .count();
+
+                match count == 0 && node.indexes.len() >= min_size.max(2) {
+                    true => Some((node_idx, node.clone())),
+                    false => None,
+                }
             })
-            .collect::<std::result::Result<Vec<(NodeIndex, Option<(Node, Node)>)>, HaptkError>>();
+            .map(|(parent_idx, node)| {
+                match find_contradictory_gt(vcf, start_coord, &node, direction) {
+                    Err(e) => Err(e),
+                    Ok(Some((node1, node2))) => {
+                        let black_list_nodes: Vec<NodeIndex> = if only_majority {
+                            match node1.indexes.len().cmp(&node2.indexes.len()) {
+                                Ordering::Greater | Ordering::Equal => {
+                                    tx.send((parent_idx, node1)).unwrap()
+                                }
+                                Ordering::Less => tx.send((parent_idx, node2)).unwrap(),
+                            }
+                            vec![parent_idx]
+                        } else {
+                            [node1, node2]
+                                .into_iter()
+                                .filter_map(|insert_node| {
+                                    if insert_node.indexes.len() >= min_size {
+                                        tx.send((parent_idx, insert_node)).unwrap();
+                                        None
+                                    } else {
+                                        Some(parent_idx)
+                                    }
+                                })
+                                .collect()
+                        };
 
-        let nodes = match nodes {
+                        Ok(black_list_nodes)
+                    }
+                    _ => Ok(vec![]),
+                }
+            })
+            .collect::<std::result::Result<Vec<Vec<NodeIndex>>, HaptkError>>();
+
+        drop(tx);
+
+        while let Ok((parent_idx, insert_node)) = rx.recv() {
+            let idx = hst.add_node(insert_node.clone());
+            hst.add_edge(parent_idx, idx, 0);
+        }
+
+        match outres {
             Err(e) => {
                 vcf.read_more(e)?;
                 continue;
             }
-            Ok(nodes) => nodes,
-        };
-
-        if nodes.is_empty() || (nodes.len() == 1 && nodes[0].1.is_none()) {
-            break;
-        }
-
-        if only_majority {
-            // This path is only used for the `--select longest-haplotype` pre-selection
-            for (idx, nodes) in nodes {
-                if let Some((node1, node2)) = nodes {
-                    match node1.indexes.len().cmp(&node2.indexes.len()) {
-                        std::cmp::Ordering::Greater | std::cmp::Ordering::Equal => {
-                            let node_idx = hst.add_node(node1);
-                            hst.add_edge(idx, node_idx, 0);
-                        }
-                        std::cmp::Ordering::Less => {
-                            let node_idx = hst.add_node(node2);
-                            hst.add_edge(idx, node_idx, 0);
-                        }
-                    }
+            Ok(blacklist) => {
+                if blacklist.is_empty() {
+                    break;
                 }
-            }
-        } else {
-            // Add nodes to the tree
-            for (idx, nodes) in nodes {
-                if let Some((node1, node2)) = nodes {
-                    let hst_node_count_before = hst.node_count();
-
-                    if node1.indexes.len() >= min_size {
-                        let node_idx1 = hst.add_node(node1);
-                        hst.add_edge(idx, node_idx1, 0);
-                    }
-
-                    if node2.indexes.len() >= min_size {
-                        let node_idx2 = hst.add_node(node2);
-                        hst.add_edge(idx, node_idx2, 0);
-                    }
-
-                    if hst.node_count() == hst_node_count_before {
-                        min_size_blacklist.push(idx);
-                    }
+                if only_majority && blacklist[0].is_empty() {
+                    break;
                 }
+                blacklist_nodes.extend(blacklist.iter().flatten());
             }
         }
     }
@@ -217,14 +231,10 @@ pub fn construct_uhst(
 #[doc(hidden)]
 fn find_contradictory_gt(
     vcf: &PhasedMatrix,
-    uhst: &Graph<Node, u8>,
     start_coord: &Coord,
-    node_idx: NodeIndex,
+    node: &Node,
     direction: &LocDirection,
-    // ) -> Option<(Node<'matrix>, Node<'matrix>)> {
 ) -> std::result::Result<Option<(Node, Node)>, HaptkError> {
-    let node = uhst.node_weight(node_idx).unwrap();
-
     let next_contradictory_idx = match direction {
         LocDirection::Left => vcf.prev_contradictory(&node.start, &node.indexes),
         LocDirection::Right => vcf.next_contradictory(&node.start, &node.indexes),
@@ -236,9 +246,7 @@ fn find_contradictory_gt(
         (Ok(idx), _) => idx,
     };
 
-    if let Some(next_idx) = next_contradictory_idx {
-        let genotypes = vcf.get_slot(next_idx);
-
+    if let Some((next_coord, genotypes)) = next_contradictory_idx {
         let (mut ones, mut zeroes) = (vec![], vec![]);
 
         for i in &node.indexes {
@@ -249,8 +257,8 @@ fn find_contradictory_gt(
         }
 
         let (start, stop) = match direction {
-            LocDirection::Left => (next_idx, start_coord),
-            LocDirection::Right => (start_coord, next_idx),
+            LocDirection::Left => (next_coord, start_coord),
+            LocDirection::Right => (start_coord, next_coord),
         };
 
         let n1 = Node {
@@ -284,8 +292,7 @@ fn find_contradictory_gt(
 
 pub fn combine_node_haplotypes(nodes: &[Node], vcf: &PhasedMatrix) -> Vec<HapVariant> {
     let left = &nodes[0].start;
-    let idx = vcf.get_coord_idx(left);
-    let left_plus = vcf.get_coord(idx + 1);
+    let left_plus = vcf.coords().range(&nodes[0].start..).nth(1).unwrap();
 
     let left = match left_plus > vcf.start_coord() {
         true => left,

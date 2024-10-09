@@ -47,6 +47,7 @@ pub fn clap_standard_args(select: Selection) -> haptk::args::StandardArgs {
         samples: None,
         info_limit: None,
         prefix: None,
+        no_alt: false,
     }
 }
 

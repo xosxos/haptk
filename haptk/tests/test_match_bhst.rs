@@ -75,6 +75,7 @@ mod compare_hst {
             samples: None,
             info_limit: None,
             prefix: None,
+            no_alt: false,
         };
 
         let cmd = haptk::clap::SubCommand::Bhst {
@@ -98,6 +99,7 @@ mod compare_hst {
             samples: None,
             info_limit: None,
             prefix: None,
+            no_alt: false,
         };
 
         let cmd = haptk::clap::SubCommand::CompareToHst {
