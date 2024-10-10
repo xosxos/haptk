@@ -3,58 +3,28 @@ mod common;
 #[cfg(test)]
 #[cfg(feature = "clap")]
 mod test_uhst {
-    use super::*;
+    use std::path::PathBuf;
 
     use color_eyre::Result;
 
-    use std::io::Write;
-    use std::path::PathBuf;
-
-    use haptk::{
-        args::{Selection, StandardArgs},
-        read_vcf::read_vcf_to_matrix,
-        structs::Coord,
-        subcommands::uhst_shard::{self, LocDirection},
-    };
+    use super::*;
+    use haptk::{args::Selection, subcommands::bhst::read_hst_file};
 
     #[test]
-    fn matrix_to_graph() -> Result<()> {
-        let args = StandardArgs {
-            file: PathBuf::from(common::TEST_VCF),
-            ..Default::default()
-        };
-        let mut vcf = read_vcf_to_matrix(&args, "chr9", 32, None, None, false).unwrap();
-
-        let coord = Coord {
-            contig: String::from("chr9"),
-            reference: String::from("G"),
-            alt: String::from("T"),
-            pos: 32,
-        };
-
-        let g = uhst_shard::construct_uhst(&mut vcf, &LocDirection::Left, &coord, 1, false)?;
-        let mut f = std::fs::File::create("tests/results/test.dot").unwrap();
-        f.write_all(format!("{}", petgraph::dot::Dot::new(&g)).as_bytes())
-            .unwrap();
-        Ok(())
-    }
-
-    //--- Binary tests
-
-    #[test]
-    fn uhst_all() {
-        run_uhst(Selection::All);
+    fn uhst_all() -> Result<()> {
+        run_uhst(Selection::All)?;
 
         let res = std::fs::read_to_string("tests/results/uhst_mbah.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
 
         let res = std::fs::read_to_string("tests/results/uhst_shared_core_haplotype.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
+        Ok(())
     }
 
     #[test]
-    fn uhst_only_ref() {
-        run_uhst(Selection::OnlyRefs);
+    fn uhst_only_ref() -> Result<()> {
+        run_uhst(Selection::OnlyRefs)?;
 
         let res = std::fs::read_to_string("tests/results/uhst_mbah_only_refs.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
@@ -62,11 +32,12 @@ mod test_uhst {
         let res = std::fs::read_to_string("tests/results/uhst_shared_core_haplotype_only_refs.csv")
             .unwrap();
         insta::assert_yaml_snapshot!(res);
+        Ok(())
     }
 
     #[test]
-    fn uhst_only_alt() {
-        run_uhst(Selection::OnlyAlts);
+    fn uhst_only_alt() -> Result<()> {
+        run_uhst(Selection::OnlyAlts)?;
 
         let res = std::fs::read_to_string("tests/results/uhst_mbah_only_alts.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
@@ -74,11 +45,12 @@ mod test_uhst {
         let res = std::fs::read_to_string("tests/results/uhst_shared_core_haplotype_only_alts.csv")
             .unwrap();
         insta::assert_yaml_snapshot!(res);
+        Ok(())
     }
 
     #[test]
-    fn uhst_only_longest() {
-        run_uhst(Selection::OnlyLongest);
+    fn uhst_only_longest() -> Result<()> {
+        run_uhst(Selection::OnlyLongest)?;
 
         let res = std::fs::read_to_string("tests/results/uhst_mbah_only_longest.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
@@ -87,9 +59,10 @@ mod test_uhst {
             std::fs::read_to_string("tests/results/uhst_shared_core_haplotype_only_longest.csv")
                 .unwrap();
         insta::assert_yaml_snapshot!(res);
+        Ok(())
     }
 
-    fn run_uhst(selection: Selection) {
+    fn run_uhst(selection: Selection) -> Result<()> {
         let args = common::clap_standard_args(selection);
 
         let cmd = haptk::clap::SubCommand::Uhst {
@@ -98,8 +71,57 @@ mod test_uhst {
             threads: 8,
             min_size: 1,
             publish: false,
-            sharded: false,
+            window: None,
         };
-        haptk::clap::run_cmd(cmd).unwrap();
+        haptk::clap::run_cmd(cmd)
+    }
+
+    #[test]
+    fn uhst_sharded() -> Result<()> {
+        let mut args = common::clap_standard_args(Selection::All);
+
+        args.file = PathBuf::from("tests/data/test_sharded.vcf.gz");
+        args.prefix = Some(String::from("sharded_one_run"));
+        args.coords = String::from("chr9:32000000");
+
+        let cmd = haptk::clap::SubCommand::Uhst {
+            args: args.clone(),
+            log_and_verbosity: crate::common::silent_verbosity(),
+            threads: 1,
+            min_size: 1,
+            publish: false,
+            window: None,
+        };
+        haptk::clap::run_cmd(cmd)?;
+
+        println!("Constructed normal tree");
+
+        args.prefix = Some(String::from("sharded_multi_run"));
+
+        let cmd = haptk::clap::SubCommand::Uhst {
+            args,
+            log_and_verbosity: crate::common::silent_verbosity(),
+            threads: 1,
+            min_size: 1,
+            publish: false,
+            window: None,
+        };
+        haptk::clap::run_cmd(cmd)?;
+
+        let hst1 = read_hst_file(PathBuf::from(
+            "tests/results/sharded_multi_run_uhst_left.hst.gz",
+        ))?;
+        let hst2 = read_hst_file(PathBuf::from(
+            "tests/results/sharded_one_run_uhst_left.hst.gz",
+        ))?;
+
+        assert_eq!(hst1.hst.node_count(), hst2.hst.node_count());
+        assert_eq!(hst1.hst.edge_count(), hst2.hst.edge_count());
+
+        for (idx1, idx2) in hst1.hst.node_indices().zip(hst2.hst.node_indices()) {
+            assert_eq!(idx1, idx2);
+        }
+
+        Ok(())
     }
 }

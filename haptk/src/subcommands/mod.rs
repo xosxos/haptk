@@ -18,12 +18,13 @@ pub mod list_haplotypes;
 pub mod list_markers;
 
 /// Bidirectional haplotype sharing tree algorithm
-// pub mod bhst;
-pub mod bhst_shard;
+pub mod bhst;
 
 /// Unidirectional haplotype sharing tree algorithm
-// pub mod uhst;
-pub mod uhst_shard;
+pub mod uhst;
+
+/// Immutable HST algorithm
+pub mod immutable_hst;
 
 /// Haplotype to VCF
 pub mod haplotype_to_vcf;

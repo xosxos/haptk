@@ -10,7 +10,7 @@ use crate::{
     args::{Selection, StandardArgs},
     io::{push_to_output, read_recombination_file},
     libs::read_vcf::read_vcf_to_matrix,
-    subcommands::bhst_shard::Node,
+    subcommands::bhst::Node,
     utils::parse_snp_coord,
 };
 
@@ -29,10 +29,10 @@ pub fn run(args: StandardArgs, rec_rates: PathBuf) -> Result<()> {
 
     let rates = read_recombination_file(rec_rates)?;
 
-    let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, false)?;
+    let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, None)?;
 
     if args.selection == Selection::OnlyLongest {
-        vcf.select_only_longest();
+        vcf.select_only_longest()?;
     };
 
     let start = vcf.start_coord().clone();

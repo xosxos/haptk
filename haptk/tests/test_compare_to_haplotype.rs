@@ -7,12 +7,12 @@ use haptk::{
     args::{GraphArgs, Selection, StandardArgs},
     io::read_haplotype_file,
     read_vcf::read_vcf_to_matrix,
-    subcommands::{compare_to_haplotype::transform_gt_matrix_to_match_matrix, uhst_shard},
+    subcommands::{compare_to_haplotype::transform_gt_matrix_to_match_matrix, uhst},
 };
 #[cfg(test)]
 #[cfg(feature = "clap")]
 mod test_compare_to_haplotype {
-    use haptk::{args::SortOption, structs::MatrixSlice};
+    use haptk::{args::SortOption, structs::Coord};
 
     use super::*;
 
@@ -33,7 +33,7 @@ mod test_compare_to_haplotype {
             32,
             Some((Some(start.pos), Some(end.pos))),
             None,
-            false,
+            None,
         )
         .unwrap();
 
@@ -50,11 +50,23 @@ mod test_compare_to_haplotype {
             );
         }
 
+        let coord1 = Coord {
+            contig: String::from("chr9"),
+            reference: String::from("A"),
+            alt: String::from("C"),
+            pos: 31,
+        };
+
+        let coord2 = Coord {
+            contig: String::from("chr9"),
+            reference: String::from("A"),
+            alt: String::from("C"),
+            pos: 33,
+        };
+
         let homozygous_variants = vec![
-            vcf.matrix_slice(MatrixSlice::All, MatrixSlice::Point(13))
-                .to_vec(),
-            vcf.matrix_slice(MatrixSlice::All, MatrixSlice::Point(15))
-                .to_vec(),
+            vcf.matrix_column(&coord1).to_vec(),
+            vcf.matrix_column(&coord2).to_vec(),
         ];
         for col in homozygous_variants {
             assert_eq!(vec![1; 28], col)
@@ -124,7 +136,7 @@ mod test_compare_to_haplotype {
 
     fn compare_to_haplotype(selection: Selection, mark: bool, png: bool) {
         let args = standard_args(Selection::OnlyLongest);
-        uhst_shard::run(args, 1, false, false).unwrap();
+        uhst::run(args, 1, false, None).unwrap();
 
         let args = common::clap_standard_args(selection);
 

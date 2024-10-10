@@ -6,7 +6,7 @@ use petgraph::graph::NodeIndex;
 use crate::args::{ConciseArgs, StandardArgs};
 use crate::io::{open_csv_writer, push_to_output, read_recombination_file};
 use crate::structs::Coord;
-use crate::subcommands::bhst_shard::find_majority_nodes;
+use crate::subcommands::bhst::find_majority_nodes;
 use crate::subcommands::scan::{
     read_tree_file, return_assoc, top_node_from_hsts, write_assoc, zygosity_from_node, AssocRow,
     HstScan, Limits,

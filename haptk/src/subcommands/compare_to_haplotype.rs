@@ -77,10 +77,10 @@ pub fn run(
                 variant_pos,
                 Some((Some(start.pos), Some(end.pos))),
                 None,
-                false,
+                None,
             )?;
-            let mut vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?;
-            only_longest = Some(vcf.only_longest_indexes()?);
+            let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?;
+            only_longest = Some(vcf.only_longest_indexes_no_shard()?);
             vcf
         }
         Selection::OnlyAlts | Selection::OnlyRefs => {
@@ -90,7 +90,7 @@ pub fn run(
                 variant_pos,
                 Some((Some(start.pos), Some(end.pos))),
                 None,
-                false,
+                None,
             )?;
 
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
@@ -102,13 +102,13 @@ pub fn run(
                 variant_pos,
                 Some((Some(start.pos), Some(end.pos))),
                 None,
-                false,
+                None,
             )?;
 
             let mut vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?;
 
             // Do only longest selection after swithing to the given haplotype as the refernce
-            vcf.select_only_longest()?;
+            vcf.select_only_longest_no_shard()?;
 
             // Use start and end from the haplotype to select columns from the matrix by range
 
@@ -125,7 +125,7 @@ pub fn run(
                 variant_pos,
                 Some((Some(start.pos), Some(end.pos))),
                 None,
-                false,
+                None,
             )?;
 
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?

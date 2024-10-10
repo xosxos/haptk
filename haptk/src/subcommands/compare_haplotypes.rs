@@ -86,6 +86,7 @@ impl From<IndexMap<String, String>> for CompareHaplotype {
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub fn read_haplotype_file(
     ht_path: PathBuf,
 ) -> Result<(Vec<CompareHaplotype>, Vec<String>, Vec<String>, Vec<String>)> {
@@ -300,22 +301,23 @@ impl HaplotypeAligner {
         let mut header = self.header(yes_nucleotides);
         header.extend(self.header_names());
         header.push("annotation".to_string());
-
         let header = header.join(" ");
+
+        // Print out header
         println!("{header}");
 
+        // If missing genotypes present, yellow is true
+        // If contradictory genotypes present, red is also true
         for (coord, (genotypes, ann)) in &self.alignment {
-            // If missing genotypes present, yellow is true
-            // If contradictory genotypes present, red is also true
+            let (is_mismatch, is_missing) = self.find_mismatch(genotypes);
 
-            let (yellow, red) = self.find_mismatch(genotypes);
-            let color = if red {
-                color::Fg(color::AnsiValue::rgb(5, 0, 1))
-            } else if yellow {
-                // color::Fg(color::AnsiValue::rgb(5, 5, 1))
-                color::Fg(color::AnsiValue::rgb(0, 0, 0))
-            } else {
-                color::Fg(color::AnsiValue::rgb(0, 5, 1))
+            let color = match (is_mismatch, is_missing) {
+                // Red
+                (true, _) => color::Fg(color::AnsiValue::rgb(5, 0, 1)),
+                // Yellow
+                (false, true) => color::Fg(color::AnsiValue::rgb(0, 0, 0)),
+                // Green
+                (false, false) => color::Fg(color::AnsiValue::rgb(0, 5, 1)),
             };
 
             // Switch Nones to - and fold the vec into a string
@@ -332,11 +334,11 @@ impl HaplotypeAligner {
                 coord.contig, coord.pos, coord.reference, coord.alt
             );
 
-            if !hide_missing || !yellow {
+            if !hide_missing || !is_missing {
                 if tag_rows {
-                    match (yellow, red) {
-                        (_, true) => println!("{line} err"),
-                        (true, false) => println!("{line} mis"),
+                    match (is_mismatch, is_missing) {
+                        (true, _) => println!("{line} err"),
+                        (false, true) => println!("{line} mis"),
                         (false, false) => println!("{line} ok"),
                     }
                 } else {
@@ -374,7 +376,7 @@ impl HaplotypeAligner {
         let has_missing = is_some_count != genotypes.len();
         let has_mismatch = hash_set.len() > 1;
 
-        (has_missing, has_mismatch)
+        (has_mismatch, has_missing)
     }
 
     fn header(&self, yes_nucleotides: bool) -> Vec<String> {

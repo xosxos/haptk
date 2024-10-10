@@ -34,18 +34,15 @@ class HST:
         data = self.G.get_node_data(idx)
         return data["indexes"]
 
-    def get_node_start_idx(self, idx):
+    def get_node_start(self, idx):
         idx = int(idx)
         data = self.G.get_node_data(idx)
-        return data["start_idx"]
+        return data["start"]
 
-    def get_pos(self, idx):
-        return self.coords[idx]['pos']
-
-    def get_node_stop_idx(self, idx):
+    def get_node_stop(self, idx):
         idx = int(idx)
         data = self.G.get_node_data(idx)
-        return data["stop_idx"]
+        return data["stop"]
     
     def leaf_neighbors(self): 
         return find_leaf_neighbors(self.G)
@@ -95,22 +92,10 @@ class HST:
         return data
 
     def haplotype_string(self, node_data, size):
+        start = Coord.new(node_data['start'])
+        start_idx = utils.find_eq(self.coords, start)
 
-        def gt_to_str(gt):
-            if gt == 0:
-                return 'reference'
-            if gt == 1:
-                return 'alt'
-            else:
-                print('error at iterate_tree script')
-                return 'error'
-        
-        start = node_data['start_idx']
-
-        haplotype = [self.coords[start + i][gt_to_str(gt)] for i, gt in enumerate(node_data['haplotype'])]
-
-        # print(start, stop)
-        # print(hst.coords[hst.metadata['start_idx']])
+        haplotype = [self.coords[start_idx + i].get_genotype(gt) for i, gt in enumerate(node_data['haplotype'])]
 
         if len(haplotype) > size:
             between_len = len(haplotype) - size - 1
@@ -226,13 +211,64 @@ class HST:
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
 
+class Coord:
+    def __init__(self, contig, pos, ref, alt):
+        self.contig = contig
+        self.ref = ref
+        self.alt = alt
+        self.pos = pos
+
+    def new(dct):
+        return Coord(dct['contig'], dct['pos'], dct['ref'], dct['alt'])
+
+    def get_genotype(self, gt):
+        if gt == 0:
+            return self.ref
+        if gt == 1:
+            return self.alt
+        else:
+            raise ValueError
+
+    def __repr__(self):
+        return f'{self.contig}_{self.pos}_{self.ref}_{self.alt}'
+
+    def __lt__(self, other):
+        # return self.pos < other.pos
+        if self.pos < other.pos:
+            return True
+
+        if self.pos == other.pos:
+            if self.ref < other.ref:
+                return True
+            elif self.ref == other.ref:
+                return self.alt < other.alt
+
+        return False
+
+
+    def __gt__(self, other):
+        # return self.pos > other.pos
+        if self.pos > other.pos:
+            return True
+
+        if self.pos == other.pos:
+            if self.ref > other.ref:
+                return True
+            elif self.ref == other.ref:
+                return self.alt > other.alt
+
+        return False
+
+    def __eq__(self, other):
+        return self.pos == other.pos and self.ref == other.ref and self.alt == other.alt
+      
 def read_hst(path):
     with gzip.open(path, 'rt') as f:
         json_bytes = f.read()
         hst_struct = json.loads(json_bytes)
         hst = hst_struct["hst"]
         metadata = hst_struct["metadata"]
-        coords = metadata["coords"]
+        coords = [Coord(dct['contig'], dct['pos'], dct['ref'], dct['alt']) for dct in metadata["coords"]]
         samples = metadata["samples"]
         del metadata["coords"]
         del metadata["samples"]

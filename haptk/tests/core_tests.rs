@@ -9,8 +9,7 @@ mod core {
 
     use color_eyre::Result;
 
-    use haptk::args::{Selection, StandardArgs};
-    use haptk::io::read_variable_data_file;
+    use haptk::args::StandardArgs;
     use haptk::read_vcf::read_vcf_to_matrix;
     use haptk::structs::Coord;
 
@@ -316,7 +315,8 @@ mod core {
             alt: "C".to_string(),
         };
 
-        assert_eq!(4, vcf.idx_by_coord(&coord).unwrap());
+        let idx = vcf.coords().iter().position(|c| c == &coord).unwrap();
+        assert_eq!(4, idx);
         Ok(())
     }
 
@@ -352,7 +352,7 @@ mod core {
             ..Default::default()
         };
         let vcf2 =
-            read_vcf_to_matrix(&args, "chr9", 16, Some((Some(1), Some(32))), None, false).unwrap();
+            read_vcf_to_matrix(&args, "chr9", 16, Some((Some(1), Some(32))), None, None).unwrap();
 
         assert_eq!(
             &vcf1
@@ -373,42 +373,8 @@ mod core {
             ..Default::default()
         };
 
-        let res = read_vcf_to_matrix(&args, "chr9", 32, None, None, false);
+        let res = read_vcf_to_matrix(&args, "chr9", 32, None, None, None);
         assert!(res.is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn variable_data() -> Result<()> {
-        let path = PathBuf::from("tests/data/clinical_data.csv");
-        let df = read_variable_data_file(path).unwrap();
-
-        let args = StandardArgs {
-            file: PathBuf::from(TEST_VCF),
-            ..Default::default()
-        };
-        let mut vcf = read_vcf_to_matrix(&args, "chr9", 32, None, None, false).unwrap();
-        vcf.set_variable_data(df).unwrap();
-
-        // Make sure NA is calculated right in the average
-        let means = vcf
-            .get_variable_data_mean(&[0, 2], &["aoo".to_string(), "dur".to_string()])
-            .unwrap()
-            .unwrap();
-        assert_eq!(68.50, means[0]);
-        assert_eq!(6.0, means[1]);
-
-        // Request variable data on a sample that has no variable data
-        let result = vcf.get_variable_data_mean(&[27], &["aoo".to_string()]);
-        println!("{result:?}");
-        assert!(result.is_err());
-
-        let vecs = vcf
-            .get_variable_data_vecs(&[0, 2], &["aoo".to_string(), "dur".to_string()])
-            .unwrap()
-            .unwrap();
-        assert_eq!(vec![88.0, 49.0], vecs[0]);
-        assert_eq!(vec![2.0, 10.0], vecs[1]);
         Ok(())
     }
 }

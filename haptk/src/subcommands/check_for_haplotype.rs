@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use color_eyre::{
     eyre::eyre,
@@ -9,7 +9,7 @@ use crate::{
     args::{Selection, StandardArgs},
     io::{open_csv_writer, push_to_output},
     read_vcf::read_vcf_to_matrix,
-    structs::{HapVariant, PhasedMatrix},
+    structs::{Coord, HapVariant, PhasedMatrix},
     utils::{parse_snp_coord, precision_f64},
 };
 
@@ -34,10 +34,10 @@ pub fn run(args: StandardArgs, haplotype_path: PathBuf) -> Result<()> {
         variant_pos,
         Some((Some(start.pos), Some(end.pos))),
         None,
-        false,
+        None,
     )?;
     match args.selection {
-        Selection::OnlyLongest => vcf.select_only_longest()?,
+        Selection::OnlyLongest => vcf.select_only_longest_no_shard()?,
         Selection::Unphased => return Err(eyre!("Running with unphased data is not supported")),
         _ => (),
     };
@@ -71,17 +71,17 @@ fn write_matches_to_csv(
 }
 
 pub fn identical_haplotype_count(vcf: &PhasedMatrix, ht: &[HapVariant]) -> Vec<usize> {
-    let indexes: Vec<(usize, usize)> = ht
+    let indexes: Vec<(&(Arc<Coord>, usize), usize)> = ht
         .iter()
         .enumerate()
         .filter_map(|(ht_idx, h)|
-            match vcf.try_coord_by_hapvariant(h) {
-                    Some(matrix_idx) => Some((matrix_idx, ht_idx)),
-                    None => {
+            match vcf.indexer.get(&h.clone().into()) {
+                Some(matrix_idx) => Some((matrix_idx, ht_idx)),
+                None => {
                         tracing::warn!("Haplotype variant {:?} not found in the vcf", h);
                         None
-                    }   
-                }
+                },
+            }
         )
         .collect();
 
@@ -89,20 +89,18 @@ pub fn identical_haplotype_count(vcf: &PhasedMatrix, ht: &[HapVariant]) -> Vec<u
         return vec![];
     }
 
-    let mut matching = vec![true; vcf.nhaplotypes()];
+    (0..vcf.nhaplotypes()).filter(|sample_idx| {
+        let mut no_mismatch = true;
+        for ((key_coord, var_idx), ht_idx) in &indexes {
+            let matrix = vcf.matrix.get(key_coord).unwrap();
 
-    for (n, value) in matching.iter_mut().enumerate() {
-        'inner: for (matrix_idx, ht_idx) in &indexes {
-            if vcf.matrix_point(n, *matrix_idx) != ht[*ht_idx].gt {
-                *value = false;
-                break 'inner;
+              if matrix[[*sample_idx, *var_idx]] != ht[*ht_idx].gt {
+                no_mismatch = false;
+                break;
             }
         }
+        no_mismatch
     }
-
-    matching
-        .iter()
-        .enumerate()
-        .filter_map(|(i, m)| if *m { Some(i) } else { None })
-        .collect()
+    )
+    .collect()
 }

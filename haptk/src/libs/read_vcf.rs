@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use color_eyre::{
-    eyre::{ensure, eyre},
+    eyre::{ensure, eyre, OptionExt},
     Result,
 };
 use ndarray::{Array2, ShapeBuilder};
@@ -15,7 +15,7 @@ use rust_htslib::bcf::Read;
 
 use crate::{
     args::{Selection, StandardArgs},
-    error::HaptkError::{NormalizeError, PloidyError, SamplesNotFoundError},
+    error::HaptkError::{NormalizeError, SamplesNotFoundError},
     io::{get_htslib_contig_len, read_multiple_sample_ids},
     structs::{Coord, PhasedMatrix, Ploidy, ReadMetadata},
 };
@@ -128,7 +128,8 @@ fn prune_by_gt(
     let mut gt_buffer = rust_htslib::bcf::record::Buffer::new();
 
     let record = reader.records().next();
-    let record = record.unwrap()?;
+    let record = record
+        .ok_or_eyre("Zero variants were found at the given coordinate {contig}:{variant_pos}")??;
     let gts = record.genotypes_shared_buffer(&mut gt_buffer)?;
 
     // let pos = (record.pos() + 1) as u64;
@@ -165,7 +166,7 @@ pub fn read_vcf_to_matrix(
     variant_pos: u64,
     mut range: Option<(Option<u64>, Option<u64>)>,
     wanted_samples: Option<Vec<String>>,
-    sharded: bool,
+    window: Option<u64>,
 ) -> Result<PhasedMatrix> {
     let (indexes, samples) = get_sample_names(args, contig, wanted_samples)?;
 
@@ -179,9 +180,7 @@ pub fn read_vcf_to_matrix(
     tracing::info!("Reading phased genotypes from {contig} with target position at {variant_pos}.");
     tracing::info!("Using {} samples from the VCF.", indexes.len());
 
-    let window = 10_000_000;
-
-    if sharded {
+    if let Some(window) = window {
         ensure!(get_htslib_contig_len(&args.file, contig).is_ok(), "Cannot construct HST using partial reads of the VCF if the contig length is not defined in the header");
 
         range = Some((
@@ -215,7 +214,7 @@ pub fn read_vcf_to_matrix(
         file_path: args.file.clone(),
         fetch_range,
         contig_len: get_htslib_contig_len(&args.file, contig).ok(),
-        sharded,
+        sharded: window.is_some(),
         remove_no_alt: args.no_alt,
     };
 
@@ -225,7 +224,6 @@ pub fn read_vcf_to_matrix(
         coords,
         &args.selection,
         variant_pos,
-        contig,
         metadata,
     )
 }
@@ -245,11 +243,22 @@ fn read_vcf_batch_to_matrix(
 
     let mut gt_buffer = rust_htslib::bcf::record::Buffer::new();
 
+    let mut prev_pos = 0;
     for record in reader.records() {
         let record = record?;
 
         // HTSlib is 0-based so add 1
         let pos = (record.pos() + 1) as u64;
+
+        // Check for ordering
+        if prev_pos > pos {
+            return Err(eyre!(
+                "The file is not ordered because {} > {} at {}",
+                prev_pos,
+                pos,
+                construct_coord(&record, contig, pos)
+            ));
+        }
 
         // There is a weird bug where the IndexedReader fetches records outside of the range when multithreading
         if let Some((start, stop)) = range {
@@ -311,6 +320,7 @@ fn read_vcf_batch_to_matrix(
             tracing::error!("Duplicate coord at {contig}:{pos}. Not adding the duplicate");
             let _ = markers.drain((markers.len() - diff)..);
         }
+        prev_pos = pos;
     }
 
     Ok((markers, coords))
@@ -380,7 +390,6 @@ fn construct_phased_matrix(
     coords: BTreeSet<Coord>,
     selection: &Selection,
     variant_pos: u64,
-    contig: &str,
     metadata: ReadMetadata,
 ) -> Result<PhasedMatrix> {
     let ploidy: Ploidy = selection.as_ref().into();
@@ -405,12 +414,6 @@ fn construct_phased_matrix(
     vcf.variant_idx = vcf.get_first_idx_on_right_by_pos(variant_pos);
     vcf.start_coord = vcf.get_nearest_coord_by_pos(variant_pos).clone();
 
-    if selection == &Selection::OnlyAlts || selection == &Selection::OnlyRefs {
-        vcf.idx_by_pos(variant_pos).ok_or_else(|| {
-            eyre!("Cannot select using a variant. Not found at position {contig}:{variant_pos}")
-        })?;
-    }
-
     tracing::info!(
         "Constructed a genotype matrix from {} records. Starting variant position: {}.",
         vcf.ncoords(),
@@ -419,18 +422,18 @@ fn construct_phased_matrix(
     Ok(vcf)
 }
 
-fn check_ploidy(length: usize, gts_mod: usize, selection: Selection) -> bool {
-    if gts_mod != 0 {
-        return false;
-    }
+// fn check_ploidy(length: usize, gts_mod: usize, selection: Selection) -> bool {
+//     if gts_mod != 0 {
+//         return false;
+//     }
 
-    match selection {
-        Selection::Haploid => length == 1 || length == 2,
-        Selection::OnlyAlts => length == 1,
-        Selection::OnlyRefs => length == 1,
-        _ => length == 2,
-    }
-}
+//     match selection {
+//         Selection::Haploid => length == 1 || length == 2,
+//         Selection::OnlyAlts => length == 1,
+//         Selection::OnlyRefs => length == 1,
+//         _ => length == 2,
+//     }
+// }
 
 // fn genotype_to_u8_missing(g: &GenotypeAllele) -> Option<u8> {
 //     match g {
@@ -498,11 +501,19 @@ pub fn read_shard_of_vcf(vcf: &mut PhasedMatrix, start: u64, stop: u64) -> Resul
         markers,
     )?;
 
-    let start = coords.first().unwrap();
+    let start = coords.first().unwrap().clone();
 
     vcf.insert_matrix(start.clone(), matrix);
+    tracing::debug!("Finished extending matrices.");
 
-    vcf.coords_mut().extend(coords);
+    let start = std::sync::Arc::new(start);
+
+    coords.into_iter().enumerate().for_each(|(i, v)| {
+        vcf.coords_mut().insert(v.clone());
+        vcf.indexer.insert(v, (start.clone(), i));
+    });
+    tracing::debug!("Finished extending indexer and coords.");
+
     Ok(())
 }
 

@@ -24,7 +24,7 @@ pub fn create_test_matrix() -> Result<PhasedMatrix> {
         file: PathBuf::from(TEST_VCF),
         ..Default::default()
     };
-    read_vcf_to_matrix(&args, "chr9", 32, None, None, false)
+    read_vcf_to_matrix(&args, "chr9", 32, None, None, None)
 }
 
 pub fn standard_args(selection: Selection) -> StandardArgs {

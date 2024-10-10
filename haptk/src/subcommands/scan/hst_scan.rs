@@ -9,6 +9,7 @@ use rayon::prelude::*;
 use crate::args::{Selection, StandardArgs};
 use crate::io::push_to_output;
 use crate::structs::Coord;
+use crate::subcommands::immutable_hst::construct_bhst_no_mut;
 use crate::utils::parse_coords;
 
 use color_eyre::{
@@ -19,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::io::get_output;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::subcommands::bhst_shard::{construct_bhst, HstType, Metadata, Node};
+use crate::subcommands::bhst::{HstType, Metadata, Node};
 
 #[doc(hidden)]
 pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
@@ -33,14 +34,19 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
 
     let (contig, start, stop) = parse_coords(&args.coords)?;
 
-    let mut vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, false)?;
+    let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None)?;
 
     let hsts = Vec::from_iter(vcf.coords().clone())
-        // .par_iter()
-        .into_iter()
+        .par_iter()
+        // .into_iter()
         .enumerate()
         .filter(|(n, _)| *n % step_size == 0)
-        .map(|(_, coord)| (coord.clone(), construct_bhst(&mut vcf, &coord, 4).unwrap()))
+        .map(|(_, coord)| {
+            (
+                coord.clone(),
+                construct_bhst_no_mut(&vcf, coord, 4).unwrap(),
+            )
+        })
         .collect();
 
     let metadata = Metadata::new(&vcf, &args, vcf.samples().clone(), HstType::Bhst);
@@ -53,7 +59,7 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
 }
 
 pub type Limits = (usize, usize, usize, usize);
-pub type Hst = Graph<Node, u8>;
+pub type Hst = Graph<Node, ()>;
 pub type HstMap = BTreeMap<Coord, Hst>;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -200,7 +206,7 @@ pub fn read_tree_file(path: PathBuf) -> Result<HstScan> {
 //     }
 // }
 
-pub fn return_assoc<'a, F, U>(
+pub fn return_assoc<F, U>(
     hsts: &Arc<HstScan>,
     _args: &StandardArgs,
     limits: Limits,

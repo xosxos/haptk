@@ -11,7 +11,7 @@ use crate::structs::{Coord, PhasedMatrix};
 use crate::subcommands::mrca::mrca_gamma_method;
 use crate::utils::{centromeres_hg38, parse_coords};
 
-use super::bhst_shard::Node;
+use super::bhst::Node;
 
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)]
@@ -28,11 +28,11 @@ pub fn run(args: StandardArgs, rec_rates: PathBuf, step_size: usize, no_csv: boo
 
     let (contig, start, stop) = parse_coords(&args.coords)?;
 
-    let mut vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, false)?;
+    let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None)?;
 
     let rates = read_recombination_file(rec_rates)?;
 
-    let ages = find_ages(&mut vcf, &args, rates, step_size)?;
+    let ages = find_ages(&vcf, &args, rates, step_size)?;
 
     if !no_csv {
         write_ages_to_csv(&args, &ages, args.output.clone(), &vcf)?;
@@ -42,18 +42,18 @@ pub fn run(args: StandardArgs, rec_rates: PathBuf, step_size: usize, no_csv: boo
 }
 
 fn find_ages(
-    vcf: &mut PhasedMatrix,
+    vcf: &PhasedMatrix,
     args: &StandardArgs,
     rates: BTreeMap<u64, f32>,
     step_size: usize,
 ) -> Result<Vec<(Coord, f64, bool)>> {
     match args.selection == Selection::OnlyLongest {
         true => Vec::from_iter(vcf.coords().clone())
-            .iter()
+            .par_iter()
             .enumerate()
             .filter(|(n, _)| *n % step_size == 0)
             .map(|(_, coord)| {
-                let only_longest_lengths = vcf.only_longest_lengths(coord).unwrap();
+                let only_longest_lengths = vcf.only_longest_lengths_no_shard(coord).unwrap();
 
                 let check = check_for_centromeres(vcf, &only_longest_lengths);
 
@@ -63,11 +63,11 @@ fn find_ages(
             })
             .collect(),
         false => Vec::from_iter(vcf.coords().clone())
-            .iter()
+            .par_iter()
             .enumerate()
             .filter(|(n, _)| *n % step_size == 0)
             .map(|(_, coord)| {
-                let shared_lengths = vcf.get_lengths_from_uhst(coord).unwrap();
+                let shared_lengths = vcf.get_lengths_from_uhst_no_mut(coord).unwrap();
                 let check = check_for_centromeres(vcf, &shared_lengths);
                 let ((i_tau_hat, _, _), _) = mrca_gamma_method(shared_lengths, coord.pos, &rates)?;
                 Ok((coord.clone(), i_tau_hat, check))

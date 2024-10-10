@@ -40,8 +40,8 @@ def draw_normal_tree(hst, t, samples_to_tag, colors, proportions, show_haplotype
         if show_pos:
             label = f"N={len(node_data["indexes"])}"
             haplotype = hst.haplotype_string(node_data, n_markers)
-            start = hst.get_pos(node_data['start_idx'])
-            stop = hst.get_pos(node_data['stop_idx'])
+            start = node_data['start']['pos']
+            stop = node_data['stop']['pos']
             label = f"{label}\n{haplotype}\nstart: {start}\nstop: {stop}"
 
         F = TextFace(label, tight_text=True, penwidth=30)

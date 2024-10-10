@@ -7,12 +7,14 @@ mod test_check_for_haplotype {
     use super::*;
     use std::fs::read_to_string;
     use std::path::PathBuf;
+    use std::thread::sleep;
+    use std::time::Duration;
 
     use color_eyre::Result;
 
     use common::clap_standard_args;
 
-    use haptk::{args::Selection, subcommands::uhst_shard};
+    use haptk::{args::Selection, subcommands::uhst};
     use haptk::{structs::HapVariant, subcommands::check_for_haplotype};
 
     #[rustfmt::skip]
@@ -108,7 +110,7 @@ mod test_check_for_haplotype {
 
     fn check_for_haplotype(selection: Selection) {
         let args = standard_args(Selection::OnlyLongest);
-        uhst_shard::run(args, 1, false, false).unwrap();
+        uhst::run(args, 1, false, None).unwrap();
 
         let args = clap_standard_args(selection);
         let cmd = haptk::clap::SubCommand::CheckForHaplotype {
@@ -122,5 +124,6 @@ mod test_check_for_haplotype {
         };
 
         haptk::clap::run_cmd(cmd).unwrap();
+        sleep(Duration::from_millis(1000));
     }
 }

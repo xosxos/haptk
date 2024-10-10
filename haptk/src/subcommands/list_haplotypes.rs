@@ -35,13 +35,13 @@ pub fn run(args: StandardArgs, selection_variant: Option<String>, nucleotides: b
 
     let mut vcf = match (start, stop) {
         (Some(_), Some(_)) => {
-            read_vcf_to_matrix(&args, contig, pos, Some((start, stop)), None, false)?
+            read_vcf_to_matrix(&args, contig, pos, Some((start, stop)), None, None)?
         }
-        _ => read_vcf_to_matrix(&args, contig, pos, None, None, false)?,
+        _ => read_vcf_to_matrix(&args, contig, pos, None, None, None)?,
     };
 
     if args.selection == Selection::OnlyLongest {
-        vcf.select_only_longest()?;
+        vcf.select_only_longest_no_shard()?;
     }
 
     ensure!(vcf.has_samples(), "No samples found in VCF");

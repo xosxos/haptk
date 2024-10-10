@@ -4,7 +4,7 @@ mod common;
 #[cfg(feature = "clap")]
 mod compare_hst {
     use haptk::args::Selection;
-    use haptk::subcommands::bhst_shard::Hst;
+    use haptk::subcommands::bhst::Hst;
     use std::path::PathBuf;
 
     //--- Binary tests
@@ -84,7 +84,7 @@ mod compare_hst {
             threads: 8,
             min_size: 1,
             publish: false,
-            sharded: false,
+            window: None,
         };
 
         // Build match HST

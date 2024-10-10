@@ -6,6 +6,30 @@ import gzip
 import matplotlib as mpl
 import numpy as np
 
+from bisect import bisect_left, bisect_right
+
+def find_gt(a, x):
+    'Find leftmost value greater than x'
+    i = bisect_right(a, x)
+    if i != len(a):
+        return a[i]
+    raise ValueError
+
+def find_lt(a, x):
+    'Find rightmost value less than x'
+    i = bisect_left(a, x)
+    if i:
+        return a[i-1]
+    raise ValueError
+
+def find_eq(a, x):
+    'Locate the leftmost value exactly equal to x'
+    i = bisect_left(a, x)
+    if i != len(a) and a[i] == x:
+        return i
+    raise ValueError
+
+
 def color_fader(c1,c2,mix): #fade (linear interpolate) from color c1 (at mix=0) to c2 (mix=1)
     c1=np.array(mpl.colors.to_rgb(c1))
     c2=np.array(mpl.colors.to_rgb(c2))
@@ -33,10 +57,8 @@ def tag_big_branch_to_node(hst, n, spent_parents, text_face, branch_node_amount)
                     # print(f"{n.name} is_maj")
 
                     haplotype = hst.get_node_haplotype(n.name)
-                    start_idx = hst.get_node_start_idx(n.name)
-                    stop_idx = hst.get_node_stop_idx(n.name)
-                    start = hst.coords[start_idx]
-                    stop = hst.coords[stop_idx]
+                    start = hst.get_node_start(n.name)
+                    stop = hst.get_node_stop(n.name)
                     # print(start, stop)
                     bp = stop['pos'] - start['pos']
                     # text_face.text = f"{len(haplotype)}, {bp}"
@@ -90,8 +112,8 @@ def newickify(hst, graph_dict, min_samples, hard_cut, min_start, max_stop, right
                 # start = hst.coords[parent_node['start_idx']]['pos']
                 # stop = hst.coords[parent_node['stop_idx']]['pos']
                 # print(start, stop, len(parent_node['haplotype']), min_start, max_stop)
-            start = hst.coords[node_data['start_idx']]['pos']
-            stop = hst.coords[node_data['stop_idx']]['pos']
+            start = node_data['start']['pos']
+            stop = node_data['stop']['pos']
 
             # print(start, stop, len(node_data['haplotype']), min_start, max_stop)
 

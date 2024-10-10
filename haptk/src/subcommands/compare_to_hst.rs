@@ -13,7 +13,7 @@ use crate::{
     io::push_to_output,
     read_vcf::read_vcf_to_matrix,
     structs::PhasedMatrix,
-    subcommands::bhst_shard::{read_hst_file, write_hst_file, Hst, Node},
+    subcommands::bhst::{read_hst_file, write_hst_file, Hst, Node},
     utils::parse_snp_coord,
 };
 
@@ -49,12 +49,12 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
                 variant_pos,
                 Some((Some(start.pos), Some(end.pos))),
                 None,
-                false,
+                None,
             )?
         }
         Selection::OnlyLongest => {
-            let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, false)?;
-            vcf.select_only_longest();
+            let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, None)?;
+            vcf.select_only_longest_no_shard()?;
 
             // Use start and end from the haplotype to celect columns from the matrix by range
             let start = vcf.get_first_idx_on_left_by_pos(start.pos);
@@ -116,8 +116,8 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn init_match_hst<'graph>(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> {
-    let mut match_hst: Graph<Node, u8> = Graph::new();
+pub fn init_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, ()> {
+    let mut match_hst: Graph<Node, ()> = Graph::new();
     let node_idx = NodeIndex::new(0);
     let node = hst.hst.node_weight(node_idx).unwrap();
 
@@ -135,7 +135,7 @@ pub fn init_match_hst<'graph>(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> 
         copy_idx: NodeIndex,
         node_idx: NodeIndex,
         hst: &Hst,
-        match_hst: &mut Graph<Node, u8>,
+        match_hst: &mut Graph<Node, ()>,
         _vcf: &PhasedMatrix,
     ) {
         let children = hst.hst.neighbors_directed(node_idx, Direction::Outgoing);
@@ -151,14 +151,14 @@ pub fn init_match_hst<'graph>(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> 
             };
             let copy_child_idx = match_hst.add_node(new_node);
 
-            match_hst.add_edge(copy_idx, copy_child_idx, 0);
+            match_hst.add_edge(copy_idx, copy_child_idx, ());
             recursive_copy(copy_child_idx, child_idx, hst, match_hst, _vcf)
         }
     }
     match_hst
 }
 
-pub fn create_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, u8> {
+pub fn create_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, ()> {
     let node_idx = NodeIndex::new(0);
 
     let node_idx_vecs = (0..vcf.nhaplotypes())

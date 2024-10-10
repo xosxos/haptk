@@ -11,9 +11,8 @@ use tracing_subscriber::fmt::time::OffsetTime;
 
 use crate::args::{ConciseArgs, GraphArgs, SortOption, StandardArgs};
 use crate::subcommands::{
-    bhst_shard, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst,
-    fasta_to_haplotype, haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca,
-    uhst_shard,
+    bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst,
+    fasta_to_haplotype, haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
 };
 
 // Genome-wide methods
@@ -66,8 +65,9 @@ pub enum SubCommand {
         #[arg(long)]
         publish: bool,
 
+        /// If you most likely dont need to read the entire VCF for a HST use a window e.g. 5000000 or 2000000 (5Mb or 2Mb) around the locus
         #[arg(long)]
-        sharded: bool,
+        window: Option<u64>,
     },
 
     /// Build a bidirectional haplotype sharing tree at a coordinate
@@ -90,8 +90,9 @@ pub enum SubCommand {
         #[arg(long)]
         publish: bool,
 
+        /// If you most likely dont need to read the entire VCF for a HST use a window e.g. 5000000 or 2000000 (5Mb or 2Mb) around the locus
         #[arg(long)]
-        sharded: bool,
+        window: Option<u64>,
     },
     /// Analyze the MRCA based on the Gamma method at a coordinate
     Mrca {
@@ -575,8 +576,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
                 args, haplotype, mark_samples, mark_shorter_alleles, png, npy, graph_args, sort_option,
             )?,
 
-        SubCommand::Bhst { args,  min_size, publish, sharded, .. } => bhst_shard::run(args, min_size, publish, sharded)?,
-        SubCommand::Uhst {args,  min_size, publish, sharded, .. } => uhst_shard::run(args, min_size, publish, sharded)?,
+        SubCommand::Bhst { args,  min_size, publish, window, .. } => bhst::run(args, min_size, publish, window)?,
+        SubCommand::Uhst {args,  min_size, publish, window, .. } => uhst::run(args, min_size, publish, window)?,
 
         SubCommand::CompareHaplotypes { haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides, .. }
             => compare_haplotypes::run(haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides)?,

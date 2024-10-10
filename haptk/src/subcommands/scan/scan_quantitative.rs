@@ -160,7 +160,7 @@ fn optimizer_inner(
             && node.haplotype.len() <= nmax_variants
         {
             // START OPTIMIZER CODE
-            let node = hst.node_weight(idx).unwrap();
+            let _node = hst.node_weight(idx).unwrap();
 
             let node = hst.node_weight(NodeIndex::new(0)).unwrap();
             let nhaplotypes = node.indexes.len();

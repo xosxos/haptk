@@ -1,3 +1,4 @@
+use ndarray::s;
 // use color_eyre::Result;
 use svg::node::element::path::Data;
 use svg::node::element::Element;
@@ -7,7 +8,6 @@ use svg::Document;
 use svg::Node;
 
 use crate::args::GraphArgs;
-use crate::structs::MatrixSlice;
 use crate::structs::PhasedMatrix;
 
 pub fn determine_line_color(
@@ -103,8 +103,11 @@ impl<'a> MatrixGraph<'a> {
         for (y, row_idx) in order.iter().enumerate() {
             let row = self
                 .vcf
-                .matrix_slice(MatrixSlice::Point(*row_idx), MatrixSlice::All);
-            for (x, gt) in row.iter().enumerate() {
+                .matrix
+                .values()
+                .flat_map(|matrix| matrix.slice(s![*row_idx, 0..matrix.ncols()]).into_iter());
+
+            for (x, gt) in row.enumerate() {
                 self.create_box(
                     Point {
                         gt: *gt,

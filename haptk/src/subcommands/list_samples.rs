@@ -8,7 +8,7 @@ use color_eyre::{
 
 use crate::io::read_lines;
 
-use super::bhst_shard::Hst;
+use super::bhst::Hst;
 
 #[doc(hidden)]
 fn return_double_extension_filetype(path: &Path, e1: &str) -> Result<String> {

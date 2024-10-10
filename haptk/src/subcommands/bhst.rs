@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, path::PathBuf};
+use std::{collections::BTreeSet, path::PathBuf, sync::mpsc::sync_channel};
 
 use color_eyre::{
     eyre::{ensure, eyre, Context},
@@ -11,13 +11,38 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     args::{Selection, StandardArgs},
+    error::HaptkError,
     io::{get_output, open_csv_writer, push_to_output, write_haplotype},
-    read_vcf::{get_sample_names, read_vcf_to_matrix},
-    structs::{Coord, HapVariant, IdxCoordDataSlot, PhasedMatrix, Ploidy},
+    libs::{
+        read_vcf::{get_sample_names, read_vcf_to_matrix},
+        structs::{CoordDataSlot, PhasedMatrix},
+    },
+    structs::{Coord, HapVariant, Ploidy},
     utils::parse_snp_coord,
 };
 
-pub fn read_vcf_with_selections(args: &StandardArgs) -> Result<PhasedMatrix> {
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq, PartialOrd, Hash, Eq)]
+pub struct Node {
+    pub indexes: Vec<usize>,
+    pub start: Coord,
+    pub stop: Coord,
+    pub haplotype: Vec<u8>,
+}
+
+impl std::fmt::Display for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let line = format!(
+            "n: {}\nstart: {}\nstop: {}\nblock length (bp): {}\n",
+            self.indexes.len(),
+            self.start.pos,
+            self.stop.pos,
+            self.stop.pos.saturating_sub(self.start.pos),
+        );
+        write!(f, "{line}")
+    }
+}
+
+pub fn read_vcf_with_selections(args: &StandardArgs, window: Option<u64>) -> Result<PhasedMatrix> {
     let (contig, pos) = parse_snp_coord(&args.coords)?;
 
     let (indexes, _) = get_sample_names(args, contig, None)?;
@@ -25,51 +50,53 @@ pub fn read_vcf_with_selections(args: &StandardArgs) -> Result<PhasedMatrix> {
         indexes.len() > 1,
         "Cannot build a tree with less than 2 samples."
     );
-    let mut vcf = read_vcf_to_matrix(args, contig, pos, None, None)?;
+    let mut vcf = read_vcf_to_matrix(args, contig, pos, None, None, window)?;
 
-    match &args.selection {
-        Selection::OnlyAlts | Selection::OnlyRefs => vcf.select_carriers(pos, &args.selection)?,
-        Selection::OnlyLongest => vcf.select_only_longest(),
-        _ => (),
+    if args.selection == Selection::OnlyLongest {
+        vcf.select_only_longest()?
     }
 
     Ok(vcf)
 }
 
 #[doc(hidden)]
-pub fn run(args: StandardArgs, min_size: usize, publish: bool) -> Result<()> {
+pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: Option<u64>) -> Result<()> {
     ensure!(
         args.selection != Selection::Unphased,
         "Running with unphased data is not supported."
     );
 
-    let vcf = read_vcf_with_selections(&args)?;
+    let mut vcf = read_vcf_with_selections(&args, window)?;
 
     ensure!(
-        vcf.nrows() >= min_size,
+        vcf.nhaplotypes() >= min_size,
         "VCF has less haplotypes than the required minimum node size ({} < {min_size})",
-        vcf.nrows()
+        vcf.nhaplotypes()
     );
 
-    // Construct the bilateral HST
-    let bhst = construct_bhst(&vcf, vcf.variant_idx(), min_size);
+    let start_coord = vcf.start_coord().clone();
+
+    // Construct the bidirectional HST
+    let bhst = construct_bhst(&mut vcf, &start_coord, min_size)?;
     tracing::info!("Finished HST construction.");
 
-    // Majority based haplotype
+    // Find the majority based haplotype
+    let mbah = find_mbah(&bhst, &vcf)?;
+
+    // Write it to file
     let mut sh_output = args.output.clone();
     push_to_output(&args, &mut sh_output, "bhst_mbah", "csv");
-    let writer = open_csv_writer(sh_output)?;
-    let mbah = find_mbah(&bhst, &vcf)?;
-    write_haplotype(mbah, writer)?;
+    write_haplotype(mbah, open_csv_writer(sh_output)?)?;
 
-    // Shared haplotype
+    // Find the shared core haplotype
+    let ht = find_shared_haplotype(&bhst, &vcf);
+
+    // Write it to file
     let mut sh_output = args.output.clone();
     push_to_output(&args, &mut sh_output, "bhst_shared_core_haplotype", "csv");
-    let writer = open_csv_writer(sh_output)?;
-    let ht = find_shared_haplotype(&bhst, &vcf);
-    write_haplotype(ht, writer)?;
+    write_haplotype(ht, open_csv_writer(sh_output)?)?;
 
-    // Write to .hst
+    // Write the HST to file
     let mut hst_output = args.output.clone();
     push_to_output(&args, &mut hst_output, "bhst", "hst.gz");
     write_hst_file(bhst, &vcf, hst_output, publish, args, HstType::Bhst)?;
@@ -77,90 +104,60 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool) -> Result<()> {
     Ok(())
 }
 
-#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq, PartialOrd)]
-pub struct Node {
-    pub indexes: Vec<usize>,
-    pub start_idx: usize,
-    pub stop_idx: usize,
-    pub haplotype: Vec<u8>,
-}
-
-impl std::fmt::Display for Node {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        // let nmarkers = match self.stop_idx.cmp(&self.start_idx) {
-        // std::cmp::Ordering::Greater => self.stop_idx - self.start_idx + 1,
-        // std::cmp::Ordering::Less => self.start_idx - self.stop_idx + 1,
-        // std::cmp::Ordering::Equal => 0,
-        // };
-        // let line = format!(
-        //     "n: {}\nstart_idx: {}\nstop_idx: {}\nnmarkers: {}\nblock length (bp): {}\n",
-        //     self.indexes.len(),
-        //     self.start_idx,
-        //     self.stop_idx,
-        //     nmarkers,
-        //     self.block_len,
-        // );
-        let line = format!("n: {}\n", self.indexes.len(),);
-        write!(f, "{line}")
-    }
-}
-
 #[doc(hidden)]
-pub fn construct_bhst(vcf: &PhasedMatrix, idx: usize, min_size: usize) -> Graph<Node, u8> {
-    let mut hst = initiate_hst(vcf, idx);
+pub fn construct_bhst(
+    vcf: &mut PhasedMatrix,
+    start_coord: &Coord,
+    min_size: usize,
+) -> Result<Graph<Node, ()>> {
+    // Initate the HST by inserting the root node, and two child nodes if there is a contradictory genotype right at the starting variant
+    let mut hst = initiate_hst(vcf, start_coord);
 
-    let mut min_size_blacklist = vec![];
+    let mut blacklist_nodes = vec![];
+
     loop {
-        // From all nodes find all leaf nodes with more indexes than min_size
-        let indices = find_leaf_nodes(&hst, min_size, &min_size_blacklist);
+        // Find contradictory genotypes for samples in leaf nodes
+        // Insert new nodes into a the HST using a parallel iterator and  channels
+        // Return a blacklist of nodes to not exclude from iteration each round
+        let blacklist = insert_nodes_to_bhst(vcf, &mut hst, &blacklist_nodes, min_size);
 
-        // Iterate through the filtered leaf nodes in parallel to find new nodes to add
-        let nodes = indices
-            .into_par_iter()
-            .filter_map(|node_idx| {
-                find_contradictory_gt(vcf, &hst, node_idx).map(|nodes| (node_idx, nodes))
-            })
-            .collect::<Vec<(NodeIndex, Vec<Node>)>>();
-
-        if nodes.is_empty() {
-            break;
-        }
-
-        // Add new nodes to the tree
-        for (node_idx, new_nodes) in nodes {
-            let hst_node_count_before = hst.node_count();
-
-            for new_node in new_nodes.into_iter() {
-                if new_node.indexes.len() >= min_size {
-                    let new_node_idx = hst.add_node(new_node);
-
-                    hst.add_edge(node_idx, new_node_idx, 0);
-                }
+        match blacklist {
+            Err(e) => {
+                // If data runs, and the file has not ended, read more from disk
+                vcf.read_more(e)?;
+                continue;
             }
-
-            if hst.node_count() == hst_node_count_before {
-                min_size_blacklist.push(node_idx);
+            Ok(blacklist) => {
+                if blacklist.is_empty() {
+                    break;
+                }
+                blacklist_nodes.extend(blacklist.iter().flatten());
             }
         }
     }
-    hst
+
+    Ok(hst)
 }
 
-pub fn initiate_hst(vcf: &PhasedMatrix, idx: usize) -> Graph<Node, u8> {
-    let mut hst = Graph::<_, _>::new();
+pub fn initiate_hst(vcf: &PhasedMatrix, start_coord: &Coord) -> Graph<Node, ()> {
+    let mut hst = Graph::new();
 
-    let indexes: Vec<usize> = (0..vcf.matrix.nrows()).collect();
+    let indexes: Vec<usize> = (0..vcf.nhaplotypes()).collect();
 
-    hst.add_node(Node {
-        start_idx: idx,
-        stop_idx: idx,
+    let root = Node {
+        // start: Cow::Borrowed(start_coord),
+        // stop: Cow::Borrowed(start_coord),
+        start: start_coord.clone(),
+        stop: start_coord.clone(),
         indexes: indexes.clone(),
         haplotype: vec![],
-    });
+    };
+
+    let _ = hst.add_node(root.clone());
 
     // If the first variant is already contradictory, split into two nodes
-    if vcf.is_contradictory_idx(idx, &indexes) {
-        let genotypes = vcf.get_slot_idx(idx);
+    if vcf.is_contradictory(start_coord, &indexes) {
+        let genotypes = vcf.get_slot(start_coord);
         let (mut ones, mut zeroes) = (vec![], vec![]);
 
         for i in indexes.iter() {
@@ -171,68 +168,111 @@ pub fn initiate_hst(vcf: &PhasedMatrix, idx: usize) -> Graph<Node, u8> {
         }
 
         let node1 = Node {
-            start_idx: idx,
-            stop_idx: idx,
-            haplotype: vcf.find_u8_haplotype_for_sample_idx(idx..idx + 1, ones[0]),
+            start: start_coord.clone(),
+            stop: start_coord.clone(),
+            haplotype: vcf.find_u8_haplotype_for_sample(start_coord..=start_coord, ones[0]),
             indexes: ones,
         };
 
         let node2 = Node {
-            start_idx: idx,
-            stop_idx: idx,
-            haplotype: vcf.find_u8_haplotype_for_sample_idx(idx..idx + 1, zeroes[0]),
+            start: start_coord.clone(),
+            stop: start_coord.clone(),
+            haplotype: vcf.find_u8_haplotype_for_sample(start_coord..=start_coord, zeroes[0]),
             indexes: zeroes,
         };
 
-        let node1 = hst.add_node(node1);
-        let node2 = hst.add_node(node2);
+        let node_idx1 = hst.add_node(node1.clone());
+        let node_idx2 = hst.add_node(node2.clone());
 
-        hst.add_edge(NodeIndex::new(0), node1, 0);
-        hst.add_edge(NodeIndex::new(0), node2, 0);
-    }
+        hst.add_edge(NodeIndex::new(0), node_idx1, ());
+        hst.add_edge(NodeIndex::new(0), node_idx2, ());
+    };
 
     hst
 }
 
-pub fn find_leaf_nodes(
-    hst: &Graph<Node, u8>,
+pub fn insert_nodes_to_bhst(
+    vcf: &PhasedMatrix,
+    hst: &mut Graph<Node, ()>,
+    blacklist_nodes: &[NodeIndex],
     min_size: usize,
-    min_size_blacklist: &[NodeIndex],
-) -> Vec<NodeIndex> {
-    hst.node_indices()
-        .filter(|node_idx| !min_size_blacklist.contains(node_idx))
-        .filter(|node_idx| {
-            let node = hst.node_weight(*node_idx).unwrap();
+) -> std::result::Result<Vec<Vec<NodeIndex>>, HaptkError> {
+    let (tx, rx) = sync_channel(2024);
+
+    let blacklist = hst
+        .node_indices()
+        .par_bridge()
+        .filter(|n| !blacklist_nodes.contains(n))
+        .filter_map(|node_idx| {
+            let node = hst.node_weight(node_idx).unwrap();
 
             let count = hst
-                .neighbors_directed(*node_idx, Direction::Outgoing)
+                .neighbors_directed(node_idx, Direction::Outgoing)
                 .count();
 
-            // Children count is 0, but there are still over min_size samples left
-            // Collect such nodes into the `indices` vector
-            // min_size.max(2) means use min_size if it's higher than 2, if lower, use 2
-            count == 0 && node.indexes.len() >= min_size.max(2)
+            match count == 0 && node.indexes.len() >= min_size.max(2) {
+                true => Some((node_idx, node.clone())),
+                false => None,
+            }
         })
-        .collect()
+        .map(
+            |(parent_idx, node)| match find_contradictory_gt_bhst(vcf, &node) {
+                Err(e) => Err(e),
+                Ok(Some(nodes)) => {
+                    let black_list_nodes: Vec<NodeIndex> = nodes
+                        .into_iter()
+                        .filter_map(|insert_node| {
+                            if insert_node.indexes.len() >= min_size {
+                                tx.send((parent_idx, insert_node)).unwrap();
+                                None
+                            } else {
+                                Some(parent_idx)
+                            }
+                        })
+                        .collect();
+                    Ok(black_list_nodes)
+                }
+                _ => Ok(vec![]),
+            },
+        )
+        .collect::<std::result::Result<Vec<Vec<NodeIndex>>, HaptkError>>();
+
+    drop(tx);
+
+    while let Ok((parent_idx, insert_node)) = rx.recv() {
+        let idx = hst.add_node(insert_node.clone());
+        hst.add_edge(parent_idx, idx, ());
+    }
+    blacklist
 }
 
 #[doc(hidden)]
-fn find_contradictory_gt(
+pub fn find_contradictory_gt_bhst(
     vcf: &PhasedMatrix,
-    bhst: &Graph<Node, u8>,
-    node_idx: NodeIndex,
-) -> Option<Vec<Node>> {
-    let node = bhst.node_weight(node_idx).unwrap();
-    let (left_idx, right_idx) = (node.start_idx, node.stop_idx);
+    node: &Node,
+) -> std::result::Result<Option<Vec<Node>>, HaptkError> {
+    let (left_coord, right_coord) = (&node.start, &node.stop);
 
-    // Use the CoordDataSlot trait from structs.rs to access the genotype matrix
-    // Accessing the matrix has to be behind an interface to allow for the back end logic
-    // to be switched out in the future
-    let prev = vcf.prev_contradictory_idx(left_idx, &node.indexes);
-    let next = vcf.next_contradictory_idx(right_idx, &node.indexes);
+    // NOTE: Remains to be seen what the overhead here would be
+    // let (prev, next) = thread::scope(|s| {
+    //     let prev_handle = s.spawn(|| vcf.prev_contradictory(left_coord, &node.indexes));
+    //     let next = vcf.next_contradictory(right_coord, &node.indexes);
+    //     let prev = prev_handle.join().unwrap();
+    //     (prev, next)
+    // });
 
-    // Allocate Vecs with capacity so no reallocation is required
+    let prev = vcf.prev_contradictory(left_coord, &node.indexes);
+    let next = vcf.next_contradictory(right_coord, &node.indexes);
+
+    let (prev, next) = match (prev, next) {
+        (Err(_), Err(_)) => return Err(HaptkError::HstBothEndError),
+        (_, Err(_)) => return Err(HaptkError::HstRightEndError),
+        (Err(_), _) => return Err(HaptkError::HstLeftEndError),
+        (Ok(prev), Ok(next)) => (prev, next),
+    };
+
     // NOTE: Benchmarking required
+    // Allocate Vecs with capacity so no reallocation is required
     let (mut zo, mut zz, mut oz, mut oo) = (
         Vec::with_capacity(node.indexes.len()),
         Vec::with_capacity(node.indexes.len()),
@@ -242,10 +282,7 @@ fn find_contradictory_gt(
 
     // Fill the genotype buckets and then create HST nodes from the buckets
     match (prev, next) {
-        (Some(left), Some(right)) => {
-            let left_vec = vcf.get_slot_idx(left);
-            let right_vec = vcf.get_slot_idx(right);
-
+        (Some((left, left_vec)), Some((right, right_vec))) => {
             for i in node.indexes.iter() {
                 let left_bit = left_vec[*i] == 1;
                 let right_bit = right_vec[*i] == 1;
@@ -259,15 +296,13 @@ fn find_contradictory_gt(
             }
             // Create a new node for each bucket if it is not empty
             let nodes = create_nodes_from_buckets(vcf, left, right, oo, oz, zo, zz);
-            Some(nodes)
+            Ok(Some(nodes))
         }
-        (Some(left), None) => {
+        (Some((left, left_vec)), None) => {
             tracing::warn!(
                 "Genotyping data ran out on the right with samples {:?}",
                 vcf.get_sample_names(&node.indexes)
             );
-
-            let left_vec = vcf.get_slot_idx(left);
 
             for i in node.indexes.iter() {
                 match left_vec[*i] == 1 {
@@ -276,16 +311,14 @@ fn find_contradictory_gt(
                 }
             }
             let nodes =
-                create_nodes_from_buckets(vcf, left, vcf.matrix.ncols() - 1, oo, oz, zo, zz);
-            Some(nodes)
+                create_nodes_from_buckets(vcf, left, vcf.coords().last().unwrap(), oo, oz, zo, zz);
+            Ok(Some(nodes))
         }
-        (None, Some(right)) => {
+        (None, Some((right, right_vec))) => {
             tracing::warn!(
                 "Genotyping data ran out on the left with samples {:?}",
                 vcf.get_sample_names(&node.indexes)
             );
-
-            let right_vec = vcf.get_slot_idx(right);
 
             for i in node.indexes.iter() {
                 match right_vec[*i] == 1 {
@@ -293,17 +326,25 @@ fn find_contradictory_gt(
                     false => zz.push(*i),
                 }
             }
-            let nodes = create_nodes_from_buckets(vcf, 0, right, oo, oz, zo, zz);
-            Some(nodes)
+            let nodes = create_nodes_from_buckets(
+                vcf,
+                vcf.coords().first().unwrap(),
+                right,
+                oo,
+                oz,
+                zo,
+                zz,
+            );
+            Ok(Some(nodes))
         }
-        (None, None) => None,
+        (None, None) => Ok(None),
     }
 }
 
 fn create_nodes_from_buckets(
     vcf: &PhasedMatrix,
-    left: usize,
-    right: usize,
+    left: &Coord,
+    right: &Coord,
     oo: Vec<usize>,
     oz: Vec<usize>,
     zo: Vec<usize>,
@@ -312,9 +353,9 @@ fn create_nodes_from_buckets(
     let mut nodes = Vec::with_capacity(4);
     if !zz.is_empty() {
         let node = Node {
-            start_idx: left,
-            stop_idx: right,
-            haplotype: vcf.find_u8_haplotype_for_sample_idx(left..right + 1, zz[0]),
+            start: left.clone(),
+            stop: right.clone(),
+            haplotype: vcf.find_u8_haplotype_for_sample(left..=right, zz[0]),
             indexes: zz,
         };
         nodes.push(node);
@@ -322,9 +363,9 @@ fn create_nodes_from_buckets(
 
     if !zo.is_empty() {
         let node = Node {
-            start_idx: left,
-            stop_idx: right,
-            haplotype: vcf.find_u8_haplotype_for_sample_idx(left..right + 1, zo[0]),
+            start: left.clone(),
+            stop: right.clone(),
+            haplotype: vcf.find_u8_haplotype_for_sample(left..=right, zo[0]),
             indexes: zo,
         };
         nodes.push(node);
@@ -332,9 +373,9 @@ fn create_nodes_from_buckets(
 
     if !oz.is_empty() {
         let node = Node {
-            start_idx: left,
-            stop_idx: right,
-            haplotype: vcf.find_u8_haplotype_for_sample_idx(left..right + 1, oz[0]),
+            start: left.clone(),
+            stop: right.clone(),
+            haplotype: vcf.find_u8_haplotype_for_sample(left..=right, oz[0]),
             indexes: oz,
         };
         nodes.push(node);
@@ -342,9 +383,9 @@ fn create_nodes_from_buckets(
 
     if !oo.is_empty() {
         let node = Node {
-            start_idx: left,
-            stop_idx: right,
-            haplotype: vcf.find_u8_haplotype_for_sample_idx(left..right + 1, oo[0]),
+            start: left.clone(),
+            stop: right.clone(),
+            haplotype: vcf.find_u8_haplotype_for_sample(left..=right, oo[0]),
             indexes: oo,
         };
         nodes.push(node);
@@ -354,7 +395,7 @@ fn create_nodes_from_buckets(
 
 // HST UTILS
 
-pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Result<Vec<HapVariant>> {
+pub fn find_mbah(g: &Graph<Node, ()>, vcf: &PhasedMatrix) -> Result<Vec<HapVariant>> {
     let start_idx = NodeIndex::new(0);
     let nodes = find_majority_nodes(g, start_idx);
 
@@ -362,6 +403,7 @@ pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Result<Vec<HapVaria
         nodes.len() > 2,
         "The majority branch has less than 3 nodes."
     );
+
     let mut iter = nodes.iter().rev();
     let (last_node, _last_node_idx) = iter.next().unwrap();
     let (second_last_node, _) = iter.next().unwrap();
@@ -377,105 +419,102 @@ pub fn find_mbah(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Result<Vec<HapVaria
             }),
     );
 
-    Ok(vcf.find_haplotype_for_sample_idx(
-        vcf.get_contig(),
-        // Start and stop idxs are the first deviating genotype and it cannot be a part of the haplotype
-        // last_node.start_idx..last_node.stop_idx + 1,
-        last_node.start_idx + 1..last_node.stop_idx,
-        last_node.indexes[0],
-    ))
+    // Start and stop idxs are the first deviating genotype and it cannot be a part of the haplotype
+    let start = vcf.coords().range(&last_node.start..).nth(1).unwrap();
+
+    let start = match start > &last_node.stop {
+        true => &last_node.start,
+        false => start,
+    };
+
+    Ok(vcf.find_haplotype_for_sample(start..&last_node.stop, last_node.indexes[0]))
 }
 
-pub fn find_shared_haplotype(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Vec<HapVariant> {
+pub fn find_shared_haplotype(g: &Graph<Node, ()>, vcf: &PhasedMatrix) -> Vec<HapVariant> {
     let start_idx = NodeIndex::new(0);
     let nodes = find_majority_nodes(g, start_idx);
     let (second_node, _second_node_idx) = nodes[1];
 
-    vcf.find_haplotype_for_sample_idx(
-        vcf.get_contig(),
-        second_node.start_idx + 1..second_node.stop_idx,
-        second_node.indexes[0],
-    )
+    let start = vcf.coords().range(&second_node.start..).nth(1).unwrap();
+
+    let start = match start > &second_node.stop {
+        true => &second_node.start,
+        false => start,
+    };
+
+    vcf.find_haplotype_for_sample(start..&second_node.stop, second_node.indexes[0])
 }
 
-pub fn calculate_block_len(vcf: &PhasedMatrix, node: &Node) -> u64 {
-    match node.stop_idx.cmp(&node.start_idx) {
-        std::cmp::Ordering::Greater => vcf.get_pos(node.stop_idx) - vcf.get_pos(node.start_idx),
-        std::cmp::Ordering::Less => vcf.get_pos(node.start_idx) - vcf.get_pos(node.stop_idx),
+pub fn calculate_block_len(node: &Node) -> u64 {
+    match node.stop.cmp(&node.start) {
+        std::cmp::Ordering::Greater => node.stop.pos - node.start.pos,
+        std::cmp::Ordering::Less => node.start.pos - node.stop.pos,
         std::cmp::Ordering::Equal => 0,
     }
 }
 
-pub fn find_majority_nodes(g: &Graph<Node, u8>, start_idx: NodeIndex) -> Vec<(&Node, NodeIndex)> {
+pub fn find_majority_nodes(g: &Graph<Node, ()>, start_idx: NodeIndex) -> Vec<(&Node, NodeIndex)> {
     let mut idx = start_idx;
     let start_node = g.node_weight(idx).unwrap();
     let mut majority_nodes = vec![(start_node, idx)];
 
-    loop {
-        let nodes = g
-            .neighbors_directed(idx, Direction::Outgoing)
-            .map(|idx| (g.node_weight(idx).unwrap(), idx))
-            .collect::<Vec<(&_, NodeIndex)>>();
-
-        if nodes.is_empty() {
-            break;
-        }
-
-        if let Some(max) = nodes
-            .iter()
-            .max_by(|x, y| x.0.indexes.len().cmp(&y.0.indexes.len()))
-        {
-            majority_nodes.push(*max);
-            idx = max.1;
-        } else {
-            // Max by returns None if the iterator is empty, thus when a leaf node is reached
-            break;
-        }
+    // Max by returns None if the iterator is empty, thus when a leaf node is reached
+    while let Some(max) = g
+        .neighbors_directed(idx, Direction::Outgoing)
+        .map(|idx| (g.node_weight(idx).unwrap(), idx))
+        .max_by(|x, y| x.0.indexes.len().cmp(&y.0.indexes.len()))
+    {
+        majority_nodes.push(max);
+        idx = max.1;
     }
 
     majority_nodes
 }
 
-pub fn find_lowest_start_idx(g: &Graph<Node, u8>) -> usize {
-    let mut start_idx = usize::MAX;
+pub fn find_lowest_start(g: &Graph<Node, ()>) -> Coord {
+    let mut start = &Coord {
+        pos: u64::MAX,
+        contig: String::from(""),
+        reference: String::from(""),
+        alt: String::from(""),
+    };
 
     for node in g.node_weights() {
-        if node.start_idx < start_idx {
-            start_idx = node.start_idx;
+        if node.start.pos < start.pos {
+            start = &node.start;
         }
     }
-    assert_ne!(start_idx, usize::MAX);
-    start_idx
+    assert_ne!(start.pos, u64::MAX);
+    start.clone()
 }
 
-pub fn find_highest_stop_idx(g: &Graph<Node, u8>) -> usize {
-    let mut stop_idx = usize::MIN;
+pub fn find_highest_stop(g: &Graph<Node, ()>) -> Coord {
+    let mut stop = &Coord {
+        pos: u64::MIN,
+        contig: String::from(""),
+        reference: String::from(""),
+        alt: String::from(""),
+    };
 
     for node in g.node_weights() {
-        if node.stop_idx > stop_idx {
-            stop_idx = node.stop_idx;
+        if node.stop.pos > stop.pos {
+            stop = &node.stop;
         }
     }
-    assert_ne!(stop_idx, usize::MIN);
-    stop_idx
+    assert_ne!(stop.pos, u64::MIN);
+    stop.clone()
 }
 
-pub fn find_coord_list(g: &Graph<Node, u8>, vcf: &PhasedMatrix) -> Vec<Coord> {
-    let start_idx = find_lowest_start_idx(g);
-    let stop_idx = find_highest_stop_idx(g);
-    let mut coords = vec![];
+pub fn find_coord_list(g: &Graph<Node, ()>, vcf: &PhasedMatrix) -> Vec<Coord> {
+    let start_idx = find_lowest_start(g);
+    let stop_idx = find_highest_stop(g);
 
-    for i in start_idx..=stop_idx {
-        coords.push(vcf.get_coord(i).clone());
-    }
-    coords
+    vcf.coords().range(start_idx..=stop_idx).cloned().collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hst {
-    // pub coords: Vec<Coord>,
-    pub hst: Graph<Node, u8>,
-    // pub samples: Vec<String>,
+    pub hst: Graph<Node, ()>,
     // #[serde(default)]
     pub metadata: Metadata,
 }
@@ -484,15 +523,13 @@ impl Hst {
     pub fn get_haplotype(&self, node_idx: NodeIndex) -> Vec<HapVariant> {
         let node = self.hst.node_weight(node_idx).unwrap();
 
-        if node.haplotype.is_empty() && node.start_idx == node.stop_idx {
+        if node.haplotype.is_empty() && node.start.pos == node.stop.pos {
             return vec![];
         }
-        let start = self.metadata.coords.iter().nth(node.start_idx).unwrap();
-        let stop = self.metadata.coords.iter().nth(node.stop_idx).unwrap();
 
         self.metadata
             .coords
-            .range(start..=stop)
+            .range(&node.start..=&node.stop)
             .enumerate()
             .map(|(hap_index, coord)| HapVariant {
                 contig: coord.contig.to_string(),
@@ -502,10 +539,6 @@ impl Hst {
                 gt: node.haplotype[hap_index],
             })
             .collect()
-    }
-
-    pub fn get_pos(&self, idx: usize) -> u64 {
-        self.metadata.coords.iter().nth(idx).unwrap().pos
     }
 }
 
@@ -549,7 +582,7 @@ impl Metadata {
 }
 
 pub fn write_hst_file(
-    mut hst: Graph<Node, u8>,
+    mut hst: Graph<Node, ()>,
     vcf: &PhasedMatrix,
     path: PathBuf,
     publish: bool,
@@ -568,9 +601,7 @@ pub fn write_hst_file(
     }
 
     let hst_export = Hst {
-        // coords: vcf.coords().clone(),
         hst,
-        // samples,
         metadata: Metadata::new(vcf, &args, samples, hst_type),
     };
 
