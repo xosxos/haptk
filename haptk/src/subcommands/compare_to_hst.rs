@@ -1,9 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use color_eyre::{
-    eyre::{eyre, WrapErr},
-    Result,
-};
+use color_eyre::{eyre::eyre, Result};
 use ndarray::parallel::prelude::*;
 use petgraph::Graph;
 use petgraph::{prelude::NodeIndex, Direction};
@@ -25,13 +22,6 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
 
     // File reads
     let hst_import = read_hst_file(hst_path)?;
-
-    // IMG output
-    let mut img_output = args.output.clone();
-    push_to_output(&args, &mut img_output, "hst_comparison", "svg");
-
-    svg::save(&img_output, &svg::Document::new())
-        .wrap_err(eyre!("Failed writing to {:?}", img_output))?;
 
     // VCF read
     let (contig, variant_pos) = parse_snp_coord(&args.coords)?;
@@ -105,7 +95,8 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     );
 
     let hst_type = hst_import.metadata.hst_type.clone();
-    let match_hst = create_match_hst(&vcf, &hst_import);
+
+    let match_hst = populate_imported_hst(&vcf, hst_import);
 
     // Write .hst to file
     let mut hst_output = args.output.clone();
@@ -116,77 +107,44 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn init_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, ()> {
-    let mut match_hst: Graph<Node, ()> = Graph::new();
-    let node_idx = NodeIndex::new(0);
-    let node = hst.hst.node_weight(node_idx).unwrap();
-
-    let new_node = Node {
-        start: node.start.clone(),
-        stop: node.stop.clone(),
-        indexes: vec![],
-        haplotype: vec![],
-    };
-    let copy_idx = match_hst.add_node(new_node);
-
-    recursive_copy(copy_idx, node_idx, hst, &mut match_hst, vcf);
-
-    fn recursive_copy(
-        copy_idx: NodeIndex,
-        node_idx: NodeIndex,
-        hst: &Hst,
-        match_hst: &mut Graph<Node, ()>,
-        _vcf: &PhasedMatrix,
-    ) {
-        let children = hst.hst.neighbors_directed(node_idx, Direction::Outgoing);
-        for child_idx in children {
-            let child = hst.hst.node_weight(child_idx).unwrap();
-
-            // let ref_samples = vec!["s".to_string(); child.indexes.len()];
-            let new_node = Node {
-                start: child.start.clone(),
-                stop: child.stop.clone(),
-                indexes: vec![],
-                haplotype: vec![],
-            };
-            let copy_child_idx = match_hst.add_node(new_node);
-
-            match_hst.add_edge(copy_idx, copy_child_idx, ());
-            recursive_copy(copy_child_idx, child_idx, hst, match_hst, _vcf)
-        }
-    }
-    match_hst
-}
-
-pub fn create_match_hst(vcf: &PhasedMatrix, hst: &Hst) -> Graph<Node, ()> {
+pub fn populate_imported_hst(vcf: &PhasedMatrix, mut original_hst: Hst) -> Graph<Node, ()> {
     let node_idx = NodeIndex::new(0);
 
-    let node_idx_vecs = (0..vcf.nhaplotypes())
+    let nodes_without_contradictory_ht = (0..vcf.nhaplotypes())
         .into_par_iter()
         .map(|sample_idx| {
             // Return a list of node_idxs where the haplotype has no contradictory genotypes for the sample
-            let mut node_idxs = vec![];
-            recursive_haplotype_comparison(vcf, node_idx, hst, sample_idx, &mut node_idxs);
-            node_idxs
-        })
-        .collect::<Vec<Vec<NodeIndex>>>();
+            let mut nodes_without_contradictory_ht = vec![];
 
-    let mut match_hst = init_match_hst(vcf, hst);
+            recursive_haplotype_comparison(
+                vcf,
+                node_idx,
+                &original_hst,
+                sample_idx,
+                &mut nodes_without_contradictory_ht,
+            );
+
+            (sample_idx, nodes_without_contradictory_ht)
+        })
+        .collect::<Vec<(usize, Vec<NodeIndex>)>>();
 
     let mut map = HashMap::new();
-    for (sample_idx, vec) in node_idx_vecs.into_iter().enumerate() {
-        for node_idx in vec {
+    for (sample_idx, nodes) in nodes_without_contradictory_ht {
+        for node_idx in nodes {
             map.entry(node_idx).or_insert(Vec::new()).push(sample_idx);
         }
     }
 
-    for (key, value) in map.into_iter() {
-        let node = match_hst.node_weight_mut(key).unwrap();
-        node.indexes.extend(value);
+    for node in original_hst.hst.node_weights_mut() {
+        node.indexes = vec![];
     }
-    // println!("{match_hst:?}");
 
-    match_hst
+    for (key, value) in map.into_iter() {
+        let node = original_hst.hst.node_weight_mut(key).unwrap();
+        node.indexes = value;
+    }
+
+    original_hst.hst
 }
 
 // Travel all nodes and check if haplotypes are concordant with sample haplotypes
@@ -195,51 +153,40 @@ pub fn recursive_haplotype_comparison(
     node_idx: NodeIndex,
     hst: &Hst,
     sample_idx: usize,
-    found_node_idxs: &mut Vec<NodeIndex>,
+    nodes_without_contradictory_ht: &mut Vec<NodeIndex>,
 ) {
-    let children = hst.hst.neighbors_directed(node_idx, Direction::Outgoing);
-    for child_idx in children {
-        if !haplotype_has_contradictory_genotypes(vcf, hst, child_idx, sample_idx) {
-            found_node_idxs.push(child_idx);
-        }
+    hst.hst
+        // Find outgoing nodes from node idx
+        .neighbors_directed(node_idx, Direction::Outgoing)
+        .for_each(|child_idx| {
+            let child_node = hst.hst.node_weight(child_idx).unwrap();
 
-        recursive_haplotype_comparison(vcf, child_idx, hst, sample_idx, found_node_idxs);
-    }
+            if no_contradictory_genotypes_in_ht(vcf, hst, child_node, sample_idx) {
+                nodes_without_contradictory_ht.push(child_idx);
+            }
+
+            recursive_haplotype_comparison(
+                vcf,
+                child_idx,
+                hst,
+                sample_idx,
+                nodes_without_contradictory_ht,
+            );
+        })
 }
 
-// Check if the node haplotype has any contradictory genotypes to the sample haplotype
-pub fn haplotype_has_contradictory_genotypes(
+// Check if the node haplotype has contradictory genotypes to the sample haplotype
+pub fn no_contradictory_genotypes_in_ht(
     vcf: &PhasedMatrix,
     hst: &Hst,
-    node_idx: NodeIndex,
+    node: &Node,
     sample_idx: usize,
 ) -> bool {
-    let child = hst.hst.node_weight(node_idx).unwrap();
+    let (start, stop) = (&node.start, &node.stop);
 
-    // How to handle direction and missing variants here?
-    let start_idx = &child.start;
-    let stop_idx = &child.stop;
-    if start_idx == stop_idx {
-        return false;
-    }
+    let sample_haplotype = vcf.find_haplotype_for_sample(start..=stop, sample_idx);
 
-    let sample_haplotype = vcf.find_haplotype_for_sample(start_idx..=stop_idx, sample_idx);
-
-    // let start_pos = child.start.pos;
-    // let stop_pos = child.stop.pos;
-    // let start = vcf.get_first_idx_on_left_by_pos(start_pos);
-    // let mut stop = vcf.get_first_idx_on_right_by_pos(stop_pos);
-    // if stop != vcf.ncoords() {
-    //     stop += 1;
-    // }
-
-    // let sample_haplotype =
-    //     vcf.find_haplotype_for_sample_idx(vcf.get_contig(), start..stop, sample_idx);
-
-    let ref_haplotype = hst.get_haplotype(node_idx);
-    // for ht in &ref_haplotype {
-    // println!("{ht}");
-    // }
+    let ref_haplotype = hst.get_haplotype(node);
 
     let has_contradictory_markers = ref_haplotype.iter().any(|r| {
         sample_haplotype
@@ -247,27 +194,5 @@ pub fn haplotype_has_contradictory_genotypes(
             .any(|s| s.reference == r.reference && s.alt == r.alt && s.pos == r.pos && s.gt != r.gt)
     });
 
-    // let contradictory_marker_pos = ref_haplotype.iter().position(|r| {
-    // sample_haplotype
-    // .iter()
-    // .any(|s| s.reference == r.reference && s.alt == r.alt && s.pos == r.pos && s.gt != r.gt)
-    // });
-    // let samples_gt: Vec<usize> = ref_haplotype
-    // .iter()
-    // .filter_map(|r| {
-    // sample_haplotype.iter().position(|s| {
-    // s.reference == r.reference && s.alt == r.alt && s.pos == r.pos && s.gt != r.gt
-    // })
-    // })
-    // .collect();
-    // if let Some(contradictory_marker_pos) = contradictory_marker_pos {
-    // println!("here {}", ref_haplotype[contradictory_marker_pos]);
-    // println!("heree {}", sample_haplotype[samples_gt[0]]);
-    // }
-    // println!(
-    // "comparing {} vs {}",
-    // sample_haplotype.len(),
-    // ref_haplotype.len()
-    // );
-    has_contradictory_markers
+    !has_contradictory_markers
 }

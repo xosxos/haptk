@@ -520,10 +520,8 @@ pub struct Hst {
 }
 
 impl Hst {
-    pub fn get_haplotype(&self, node_idx: NodeIndex) -> Vec<HapVariant> {
-        let node = self.hst.node_weight(node_idx).unwrap();
-
-        if node.haplotype.is_empty() && node.start.pos == node.stop.pos {
+    pub fn get_haplotype(&self, node: &Node) -> Vec<HapVariant> {
+        if node.haplotype.is_empty() {
             return vec![];
         }
 

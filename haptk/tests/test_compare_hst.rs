@@ -6,6 +6,8 @@ mod compare_hst {
     use haptk::args::Selection;
     use haptk::subcommands::bhst::Hst;
     use std::path::PathBuf;
+    // use std::thread::sleep;
+    // use std::time::Duration;
 
     //--- Binary tests
 
@@ -66,7 +68,7 @@ mod compare_hst {
     }
 
     fn run_compare_to_hst(selection: Selection) {
-        // Build match HST
+        // Compare vcf to the built HST
         let args = haptk::args::StandardArgs {
             file: PathBuf::from("tests/data/test.vcf.gz"),
             output: PathBuf::from("tests/results"),
@@ -78,33 +80,29 @@ mod compare_hst {
             no_alt: false,
         };
 
-        let cmd = haptk::clap::SubCommand::Bhst {
-            args,
+        let cmd = haptk::clap::SubCommand::CompareToHst {
+            args: args.clone(),
+            hst: PathBuf::from("tests/results/bhst.hst.gz"),
             log_and_verbosity: crate::common::silent_verbosity(),
             threads: 8,
-            min_size: 1,
-            publish: false,
-            window: None,
         };
 
-        // Build match HST
         haptk::clap::run_cmd(cmd).unwrap();
 
-        // Compare vcf to the built HST
         let args = haptk::args::StandardArgs {
-            file: PathBuf::from("tests/data/test_match.vcf.gz"),
+            file: PathBuf::from("tests/data/test.vcf.gz"),
             output: PathBuf::from("tests/results"),
             coords: String::from("chr9:32"),
             selection,
             samples: None,
             info_limit: None,
-            prefix: None,
+            prefix: Some(String::from("left")),
             no_alt: false,
         };
 
         let cmd = haptk::clap::SubCommand::CompareToHst {
             args,
-            hst: PathBuf::from("tests/results/bhst_only_longest.hst.gz"),
+            hst: PathBuf::from("tests/results/uhst_left.hst.gz"),
             log_and_verbosity: crate::common::silent_verbosity(),
             threads: 8,
         };

@@ -1,4 +1,4 @@
 Independent genealogy:
-age: 15.482 CI (11.908, 20.152)
+age: 16.141 CI (12.414, 21.010)
 Correlated genealogy:
-age: 19.231 CI (4.212, 34.796)
+age: 20.521 CI (3.985, 37.537)
