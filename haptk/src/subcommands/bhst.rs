@@ -157,7 +157,7 @@ pub fn initiate_hst(vcf: &PhasedMatrix, start_coord: &Coord) -> Graph<Node, ()> 
 
     // If the first variant is already contradictory, split into two nodes
     if vcf.is_contradictory(start_coord, &indexes) {
-        let genotypes = vcf.get_slot(start_coord);
+        let genotypes = vcf.matrix_column(start_coord);
         let (mut ones, mut zeroes) = (vec![], vec![]);
 
         for i in indexes.iter() {

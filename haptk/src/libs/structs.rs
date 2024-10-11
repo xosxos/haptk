@@ -780,9 +780,6 @@ impl PhasedMatrix {
 }
 
 pub trait CoordDataSlot {
-    fn read_more(&mut self, error: HaptkError) -> Result<()>;
-    fn is_file_end(&self, side: LocDirection) -> bool;
-    fn get_slot(&self, coord: &Coord) -> ArrayView1<u8>;
     fn is_contradictory(&self, coord: &Coord, positions: &[usize]) -> bool;
 
     fn prev_contradictory(
@@ -796,21 +793,21 @@ pub trait CoordDataSlot {
         coord: &Coord,
         sample_idxs: &[usize],
     ) -> std::result::Result<Option<(&Coord, ArrayView1<u8>)>, HaptkError>;
+
+    fn is_file_end(&self, side: LocDirection) -> bool;
+    fn read_more(&mut self, error: HaptkError) -> Result<()>;
 }
 
-pub fn is_contradictory(matrix: &Array2<u8>, positions: &[usize], index: usize) -> bool {
+pub fn is_contradictory_by_idx(matrix: &Array2<u8>, positions: &[usize], index: usize) -> bool {
     let slot = matrix.index_axis(Axis(1), index);
     let first = positions[0];
     slot.len() > 1 && positions.iter().any(|x| slot[*x] != slot[first])
 }
 
 impl CoordDataSlot for PhasedMatrix {
-    fn get_slot(&self, coord: &Coord) -> ArrayView1<u8> {
-        self.matrix_column(coord)
-    }
-    // Slot is contractory if it contains both 0 and 1.
+    // A column is contractory if it contains both 0 and 1.
     fn is_contradictory(&self, coord: &Coord, positions: &[usize]) -> bool {
-        let slot = self.get_slot(coord);
+        let slot = self.matrix_column(coord);
         let first = positions[0];
         slot.len() > 1 && positions.iter().any(|x| slot[*x] != slot[first])
     }
@@ -835,7 +832,7 @@ impl CoordDataSlot for PhasedMatrix {
             }
 
             while index >= 0 {
-                match is_contradictory(prev_matrix, positions, index as usize) {
+                match is_contradictory_by_idx(prev_matrix, positions, index as usize) {
                     true => {
                         let new_coord = self.coords().range(..coord).rev().nth(travel).unwrap();
                         let view = prev_matrix.index_axis(Axis(1), index as usize);
@@ -874,7 +871,7 @@ impl CoordDataSlot for PhasedMatrix {
             }
 
             while index < next_matrix.ncols() {
-                match is_contradictory(next_matrix, positions, index) {
+                match is_contradictory_by_idx(next_matrix, positions, index) {
                     true => {
                         let new_coord = self.coords().range(coord..).skip(1).nth(travel).unwrap();
                         let view = next_matrix.index_axis(Axis(1), index);
@@ -911,7 +908,6 @@ impl CoordDataSlot for PhasedMatrix {
     }
 
     fn read_more(&mut self, error: HaptkError) -> Result<()> {
-        // println!("trying to fetch more");
         let start = self.coords.first().unwrap().clone();
         let stop = self.coords.last().unwrap().clone();
 
