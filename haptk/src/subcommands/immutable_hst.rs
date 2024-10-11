@@ -24,7 +24,7 @@ pub fn construct_bhst_no_mut(
 
         match blacklist {
             Err(_) => {
-                panic!()
+                unreachable!()
             }
             Ok(blacklist) => {
                 if blacklist.is_empty() {
