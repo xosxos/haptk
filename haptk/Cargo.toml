@@ -1,6 +1,6 @@
 [package]
 name = "haptk"
-version = "0.2.5"
+version = "0.3.0"
 authors = ["Osma S. Rautila"]
 edition = "2021"
 description = "HAPTK - Haplotype analysis toolkit"
@@ -24,6 +24,7 @@ path = "src/bin.rs"
 
 [features]
 default = ["clap"]
+experimental = ["clap"]
 clap = ["dep:clap", "dep:anstyle"]
 
 [dependencies]

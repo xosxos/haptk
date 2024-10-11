@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
+#[allow(unused_imports)]
 use color_eyre::{
     eyre::{ensure, eyre},
     Result,
@@ -9,16 +10,22 @@ use tracing::Level;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::fmt::time::OffsetTime;
 
-use crate::args::{ConciseArgs, GraphArgs, SortOption, StandardArgs};
+use crate::args::{GraphArgs, SortOption, StandardArgs};
 use crate::subcommands::{
     bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst,
     fasta_to_haplotype, haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
 };
 
 // Genome-wide methods
-use crate::subcommands::mrca_scan;
-use crate::subcommands::scan::{
-    hst_scan, scan_branch_mrca, scan_nodes, scan_quantitative, scan_segregate,
+#[cfg(feature = "experimental")]
+use crate::{
+    args::ConciseArgs,
+    subcommands::{
+        mrca_scan,
+        scan::{
+            hst_scan, scan_branch_mrca, scan_nodes, scan_quantitative, scan_segregate,
+        }
+    }
 };
 
 #[derive(Parser, Debug)]
@@ -108,6 +115,7 @@ pub enum SubCommand {
     },
 
     ///  (experimental) Analyze the MRCA every x markers along a given contig
+    #[cfg(feature = "experimental")]
     MrcaScan {
         #[command(flatten)]
         args: StandardArgs,
@@ -282,6 +290,7 @@ pub enum SubCommand {
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
     },
+
     /// Convert fasta sequences to haplotype csv format
     FastaToHaplotype {
         file: PathBuf,
@@ -296,6 +305,8 @@ pub enum SubCommand {
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
     },
+
+    #[cfg(feature = "experimental")]
     /// (experimental) bHST scan
     BhstScan {
         #[command(flatten)]
@@ -312,6 +323,8 @@ pub enum SubCommand {
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
     },
+
+    #[cfg(feature = "experimental")]
     /// (experimental) Scan all nodes of all trees for a node specific value
     ScanNodes {
         #[command(flatten)]
@@ -341,6 +354,7 @@ pub enum SubCommand {
         threads: usize,
     },
 
+    #[cfg(feature = "experimental")]
     /// (experimental) Scan all nodes of all trees for a difference in a quantative variable
     ScanQuantitative {
         #[command(flatten)]
@@ -378,6 +392,7 @@ pub enum SubCommand {
         var_name: String,
     },
 
+    #[cfg(feature = "experimental")]
     /// (experimental) Scan all branches of all trees for the smallest MRCA value
     ScanBranchMrca {
         #[command(flatten)]
@@ -411,6 +426,7 @@ pub enum SubCommand {
         recombination_rates: PathBuf,
     },
 
+    #[cfg(feature = "experimental")]
     /// (experimental) Find bHST based segregated haplotypes genome-wide
     ScanSegregate {
         #[command(flatten)]
@@ -450,14 +466,17 @@ impl SubCommand {
         match self {
             SubCommand::CompareToHaplotype { threads, .. }
             | SubCommand::CompareToHst { threads, .. }
-            | SubCommand::MrcaScan { threads, .. }
             | SubCommand::Uhst { threads, .. }
-            | SubCommand::Bhst { threads, .. }
+            | SubCommand::Bhst { threads, .. } => *threads,
+
+            #[cfg(feature = "experimental")]
+            SubCommand::MrcaScan { threads, .. }
             | SubCommand::BhstScan { threads, .. }
             | SubCommand::ScanSegregate { threads, .. }
             | SubCommand::ScanBranchMrca { threads, .. }
             | SubCommand::ScanQuantitative { threads, .. }
             | SubCommand::ScanNodes { threads, .. } => *threads,
+
             _ => 1,
         }
     }
@@ -471,22 +490,26 @@ impl SubCommand {
             | SubCommand::CompareToHst { log_and_verbosity, .. }
             | SubCommand::CompareHaplotypes { log_and_verbosity, .. }
             | SubCommand::Mrca { log_and_verbosity, .. }
-            | SubCommand::MrcaScan { log_and_verbosity, .. }
             | SubCommand::Uhst { log_and_verbosity, .. }
             | SubCommand::Bhst { log_and_verbosity, .. }
+            | SubCommand::Samples { log_and_verbosity, .. }
+            | SubCommand::Markers { log_and_verbosity, .. }
+            | SubCommand::HaplotypeToVcf { log_and_verbosity, .. }
+            | SubCommand::FastaToHaplotype { log_and_verbosity, .. } 
+            => (log_and_verbosity.verbosity, &log_and_verbosity.log_file, log_and_verbosity.silent),
+
+            #[cfg(feature = "experimental")]
+            SubCommand::MrcaScan { log_and_verbosity, .. }
             | SubCommand::BhstScan { log_and_verbosity,  .. }
             | SubCommand::ScanSegregate { log_and_verbosity,  .. }
             | SubCommand::ScanBranchMrca { log_and_verbosity,  .. }
             | SubCommand::ScanQuantitative { log_and_verbosity,  .. }
             | SubCommand::ScanNodes { log_and_verbosity,  .. }
-            | SubCommand::Samples { log_and_verbosity, .. }
-            | SubCommand::Markers { log_and_verbosity, .. }
-            | SubCommand::HaplotypeToVcf { log_and_verbosity, .. }
-            | SubCommand::FastaToHaplotype { log_and_verbosity, .. }
             => (log_and_verbosity.verbosity, &log_and_verbosity.log_file, log_and_verbosity.silent),
         }
     }
 
+    #[cfg(feature = "experimental")]
     pub fn check_sample_size(&self) -> Result<()> {
         match self {
             SubCommand::ScanNodes {
@@ -517,19 +540,24 @@ impl SubCommand {
             | SubCommand::CompareToHst { args: StandardArgs { output, .. }, ..}
             | SubCommand::CompareHaplotypes { output, .. }
             | SubCommand::Mrca { args: StandardArgs { output, .. }, ..}
-            | SubCommand::MrcaScan { args: StandardArgs { output, .. }, ..}
             | SubCommand::Uhst { args: StandardArgs { output, .. }, ..}
             | SubCommand::Bhst { args: StandardArgs { output, .. }, ..}
+            => Some(output.clone()),
+
+            SubCommand::Samples { .. }
+            | SubCommand::HaplotypeToVcf { .. }
+            | SubCommand::FastaToHaplotype { .. }
+            | SubCommand::Markers { .. } => None,
+
+            #[cfg(feature = "experimental")]
+            SubCommand::MrcaScan { args: StandardArgs { output, .. }, ..}
             | SubCommand::BhstScan { args: StandardArgs { output, .. }, ..}
             | SubCommand::ScanSegregate { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanBranchMrca { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanQuantitative { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanNodes { args: ConciseArgs { output, .. }, ..}
             => Some(output.clone()),
-            SubCommand::Samples { .. }
-            | SubCommand::HaplotypeToVcf { .. }
-            | SubCommand::FastaToHaplotype { .. }
-            | SubCommand::Markers { .. } => None
+
         }
     }
 }
@@ -591,27 +619,33 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         SubCommand::HaplotypeToVcf { file, sample_name, output, .. } => haplotype_to_vcf::run(file, sample_name, output)?,
         SubCommand::FastaToHaplotype { file, seq_name, output, .. } => fasta_to_haplotype::run(file, seq_name, output)?,
 
+        #[cfg(feature = "experimental")]
         // Genome-wide methods
         SubCommand::MrcaScan { args, recombination_rates, step_size, no_csv, .. }
         => mrca_scan::run(args, recombination_rates, step_size, no_csv)?,
 
+        #[cfg(feature = "experimental")]
         SubCommand::BhstScan { args, step_size, .. } => hst_scan::run(args, step_size)?,
 
+        #[cfg(feature = "experimental")]
         SubCommand::ScanNodes { args, min_sample_size, max_sample_size, min_ht_len, max_ht_len,  .. }
         => scan_nodes::run(args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len))?,
 
+        #[cfg(feature = "experimental")]
         SubCommand::ScanQuantitative {
             args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, var_data, var_name, ..
         } => scan_quantitative::run(
                 args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), var_data, var_name,
             )?,
 
+        #[cfg(feature = "experimental")]
         SubCommand::ScanBranchMrca {
             args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, recombination_rates, ..
         } => scan_branch_mrca::run(
                 args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), recombination_rates,
             )?,
 
+        #[cfg(feature = "experimental")]
         SubCommand::ScanSegregate {
             args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, samples, ..
         } => scan_segregate::run(
