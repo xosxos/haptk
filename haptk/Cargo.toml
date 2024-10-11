@@ -24,7 +24,7 @@ path = "src/bin.rs"
 
 [features]
 default = ["clap"]
-experimental = ["clap"]
+experimental = ["clap", "dep:fishers_exact"]
 clap = ["dep:clap", "dep:anstyle"]
 
 [dependencies]
@@ -52,15 +52,16 @@ petgraph = { version = "0.6", default-features = false, features = ["serde-1"] }
 rust-htslib = { version = "0.44", default-features = false, features = ['bzip2'] }
 polars = { version = "=0.33.2", default-features = false, features = ["lazy", "is_in", "csv", "fmt", "serde"]}
 image = { version = "0.24.5", default-features = false, features = ['png'] }
-plotters = { version = "0.3", default-features = false, features = ['bitmap_backend', 'line_series', 'bitmap_encoder'] }
 statrs = { version = "0.16", default-features = false }
 chrono = { version = "=0.4.31" }
 
-fishers_exact = "1.0.1"
-
-# Optional
+# Cli
 clap = { version = "=4.5.7", optional = true, features = ["derive"] }
 anstyle = { version = "1.0.7", optional = true }
+
+# Genome-wide
+fishers_exact = { version="1.0.1", optional=true }
+
 
 [dev-dependencies]
 insta = { version = "1.26.0", default-features = false, features = ["yaml"] }
