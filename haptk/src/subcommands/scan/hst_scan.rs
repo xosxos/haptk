@@ -1,5 +1,5 @@
-use std::{collections::BTreeMap, hash::DefaultHasher, path::PathBuf, sync::Arc};
-
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 
 use petgraph::graph::NodeIndex;
