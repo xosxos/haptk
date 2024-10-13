@@ -109,6 +109,14 @@ pub enum SubCommand {
         /// Recombination rate file
         #[arg(short = 'r', long)]
         recombination_rates: PathBuf,
+
+        /// Number of threads
+        #[arg(short = 't', long, default_value_t = 8)]
+        threads: usize,
+
+        /// If you most likely dont need to read the entire VCF for a HST use a window e.g. 5000000 or 2000000 (5Mb or 2Mb) around the locus
+        #[arg(long)]
+        window: Option<u64>,
     },
 
     ///  (experimental) Analyze the MRCA every x markers along a given contig
@@ -463,6 +471,7 @@ impl SubCommand {
         match self {
             SubCommand::CompareToHaplotype { threads, .. }
             | SubCommand::CompareToHst { threads, .. }
+            | SubCommand::Mrca { threads, .. }
             | SubCommand::Uhst { threads, .. }
             | SubCommand::Bhst { threads, .. } => *threads,
 
@@ -601,7 +610,7 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
         SubCommand::CompareToHst { args, hst, .. } => compare_to_hst::run(args, hst)?,
         SubCommand::CheckForHaplotype { args, haplotype, .. } => check_for_haplotype::run(args, haplotype)?,
-        SubCommand::Mrca { args, recombination_rates, .. } => mrca::run(args, recombination_rates)?,
+        SubCommand::Mrca { args, recombination_rates, window, .. } => mrca::run(args, recombination_rates, window)?,
         SubCommand::Haplotypes { args, selection_variant, nucleotides, .. } => list_haplotypes::run(args, selection_variant, nucleotides)?,
         SubCommand::Samples { file, .. } => list_samples::run(file)?, 
         SubCommand::Markers { file, .. } => list_markers::run(file)?,

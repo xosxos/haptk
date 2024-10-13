@@ -17,7 +17,7 @@ use crate::{
 pub type Age = (f64, f64, f64);
 
 #[doc(hidden)]
-pub fn run(args: StandardArgs, rec_rates: PathBuf) -> Result<()> {
+pub fn run(args: StandardArgs, rec_rates: PathBuf, window: Option<u64>) -> Result<()> {
     if args.selection == Selection::Unphased {
         return Err(eyre!("Running with unphased data is not supported."));
     }
@@ -29,7 +29,7 @@ pub fn run(args: StandardArgs, rec_rates: PathBuf) -> Result<()> {
 
     let rates = read_recombination_file(rec_rates)?;
 
-    let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, None)?;
+    let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, window)?;
 
     if args.selection == Selection::OnlyLongest {
         vcf.select_only_longest()?;
