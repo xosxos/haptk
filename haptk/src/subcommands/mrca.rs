@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use color_eyre::eyre::Context;
 use color_eyre::{eyre::eyre, Result};
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Gamma;
@@ -118,7 +119,8 @@ pub fn independent(
     // Compare it with the pure MLE i.e. the mean of the gamma distribution = α / λ
     let i_tau_hat = (b_c * 2.0 * n) / sum;
 
-    let gamma = Gamma::new(2.0 * n, 2.0 * n * b_c)?;
+    let gamma =
+        Gamma::new(2.0 * n, 2.0 * n * b_c).wrap_err(eyre!("Not enough samples to analyze MRCA"))?;
     let g_l = gamma.inverse_cdf((1.0 - cc) / 2.0);
     let g_u = gamma.inverse_cdf(cc + (1.0 - cc) / 2.0);
 
@@ -179,7 +181,8 @@ pub fn correlated(
         n_star = n / (1.0 + (n - 1.0) * rho_hat.abs());
     };
 
-    let gamma = Gamma::new(2.0 * n_star, 2.0 * n_star * b_c)?;
+    let gamma = Gamma::new(2.0 * n_star, 2.0 * n_star * b_c)
+        .wrap_err(eyre!("Not enough samples to analyze MRCA"))?;
     let c_l = gamma.inverse_cdf((1.0 - cc) / 2.0);
     let c_u = gamma.inverse_cdf(cc + (1.0 - cc) / 2.0);
 
