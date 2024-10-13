@@ -9,14 +9,29 @@ use color_eyre::{
     Result,
 };
 use petgraph::graph::NodeIndex;
+use polars::prelude::*;
 
 use crate::args::{ConciseArgs, Selection, StandardArgs};
 use crate::io::{open_csv_writer, push_to_output};
+use crate::structs::Coord;
 use crate::subcommands::scan::{read_tree_file, return_assoc, write_assoc, AssocRow, Hst, HstScan};
 use crate::utils::parse_coords;
-use crate::{io::read_variable_data_file, structs::Coord};
 
 use super::hst_scan::{top_node_from_hsts, zygosity_from_node, Limits};
+
+pub fn read_variable_data_file(path: PathBuf) -> Result<DataFrame> {
+    let df = CsvReader::from_path(path)?
+        .with_null_values(Some(NullValues::AllColumnsSingle("NA".to_string())))
+        .infer_schema(Some(500))
+        .has_header(true)
+        .finish()?;
+
+    Ok(df)
+}
+
+pub fn get_variable_data(indexes: &[usize], hm: &HashMap<usize, f64>) -> Vec<f64> {
+    indexes.iter().filter_map(|v| hm.get(v)).copied().collect()
+}
 
 const HEADER: &[&str] = &[
     "contig",
@@ -202,6 +217,27 @@ fn optimizer_inner(
     Some((coord.clone(), top_node_idx, optimized_value))
 }
 
-pub fn get_variable_data(indexes: &[usize], hm: &HashMap<usize, f64>) -> Vec<f64> {
-    indexes.iter().filter_map(|v| hm.get(v)).copied().collect()
+#[cfg(test)]
+#[rustfmt::skip]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_variable_data() {
+        let path = PathBuf::from("tests/data/clinical_data.csv");
+        let df = read_variable_data_file(path).unwrap();
+
+        let array = df["id"].utf8().unwrap();
+        let vec: Vec<_> = array.into_iter().flatten().collect();
+        assert_eq!(vec[0], "SAMPLE1");
+
+        let array = df["aoo"].i64().unwrap();
+        let vec: Vec<_> = array.into_iter().flatten().collect();
+        assert_eq!(vec[0], 88);
+        assert_eq!(vec[2], 58);
+
+        let path = PathBuf::from("tests/data/does_not_exist.csv");
+        let res = read_variable_data_file(path);
+        assert!(res.is_err());
+    }
 }

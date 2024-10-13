@@ -53,23 +53,4 @@ mod io {
         let res = haptk::io::read_sample_ids(&Some(path));
         assert!(res.is_err());
     }
-
-    #[test]
-    fn read_variable_data() {
-        let path = PathBuf::from("tests/data/clinical_data.csv");
-        let df = haptk::io::read_variable_data_file(path).unwrap();
-
-        let array = df["id"].utf8().unwrap();
-        let vec: Vec<_> = array.into_iter().flatten().collect();
-        assert_eq!(vec[0], "SAMPLE1");
-
-        let array = df["aoo"].i64().unwrap();
-        let vec: Vec<_> = array.into_iter().flatten().collect();
-        assert_eq!(vec[0], 88);
-        assert_eq!(vec[2], 58);
-
-        let path = PathBuf::from("tests/data/does_not_exist.csv");
-        let res = haptk::io::read_variable_data_file(path);
-        assert!(res.is_err());
-    }
 }

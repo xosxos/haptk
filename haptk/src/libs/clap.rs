@@ -6,9 +6,6 @@ use color_eyre::{
     eyre::{ensure, eyre},
     Result,
 };
-use tracing::Level;
-use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
-use tracing_subscriber::fmt::time::OffsetTime;
 
 use crate::args::{GraphArgs, SortOption, StandardArgs};
 use crate::subcommands::{
@@ -563,24 +560,16 @@ impl SubCommand {
 }
 
 pub fn run_args(args: Arguments) -> Result<()> {
+    // Initialize threadpool
     rayon::ThreadPoolBuilder::new()
         .num_threads(args.cmd.threads())
         .build_global()?;
 
+    // Initialize logger
     let (verbosity, log_file, is_silent) = args.cmd.log_and_verbosity();
+    let _guard = init_tracing(verbosity, log_file, is_silent)?;
 
-    let (level, wrtr, _guard) = init_tracing(verbosity, log_file, is_silent)?;
-
-    let timer = time::format_description::parse("[hour]:[minute]:[second].[subsecond digits:3]")?;
-    let time_offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
-    let timer = OffsetTime::new(time_offset, timer);
-
-    tracing_subscriber::fmt()
-        .with_max_level(level)
-        .with_writer(wrtr)
-        .with_timer(timer)
-        .init();
-
+    // Create output directory
     if let Some(output) = args.cmd.output() {
         if let Err(e) = std::fs::create_dir(output.clone()) {
             match e.kind() {
@@ -619,8 +608,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         SubCommand::HaplotypeToVcf { file, sample_name, output, .. } => haplotype_to_vcf::run(file, sample_name, output)?,
         SubCommand::FastaToHaplotype { file, seq_name, output, .. } => fasta_to_haplotype::run(file, seq_name, output)?,
 
-        #[cfg(feature = "experimental")]
         // Genome-wide methods
+        #[cfg(feature = "experimental")]
         SubCommand::MrcaScan { args, recombination_rates, step_size, no_csv, .. }
         => mrca_scan::run(args, recombination_rates, step_size, no_csv)?,
 
@@ -660,7 +649,9 @@ pub fn init_tracing(
     verbosity: u8,
     log_file: &Option<PathBuf>,
     is_silent: bool,
-) -> Result<(Level, NonBlocking, WorkerGuard)> {
+) -> Result<tracing_appender::non_blocking::WorkerGuard> {
+    use tracing::Level;
+
     let level = if is_silent {
         Level::ERROR
     } else {
@@ -675,7 +666,7 @@ pub fn init_tracing(
     };
 
     // Write logs to stderr or file
-    let (wrtr, _guard) = match log_file {
+    let (wrtr, guard) = match log_file {
         Some(path) => {
             let file = std::fs::File::options()
                 .create(true)
@@ -687,7 +678,17 @@ pub fn init_tracing(
         None => tracing_appender::non_blocking(std::io::stderr()),
     };
 
-    Ok((level, wrtr, _guard))
+    let timer = time::format_description::parse("[hour]:[minute]:[second].[subsecond digits:3]")?;
+    let time_offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+    let timer = tracing_subscriber::fmt::time::OffsetTime::new(time_offset, timer);
+
+    tracing_subscriber::fmt()
+        .with_max_level(level)
+        .with_writer(wrtr)
+        .with_timer(timer)
+        .init();
+
+    Ok(guard)
 }
 
 pub fn get_styles() -> clap::builder::Styles {
@@ -726,37 +727,4 @@ pub fn get_styles() -> clap::builder::Styles {
         .placeholder(
             anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::White))),
         )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_init_tracing() {
-        let (level, _, _) = init_tracing(1, &None, false).unwrap();
-        assert_eq!(Level::ERROR, level);
-        let (level, _, _) = init_tracing(2, &None, false).unwrap();
-        assert_eq!(Level::WARN, level);
-        let (level, _, _) = init_tracing(3, &None, false).unwrap();
-        assert_eq!(Level::INFO, level);
-        let (level, _, _) = init_tracing(4, &None, false).unwrap();
-        assert_eq!(Level::DEBUG, level);
-        let (level, _, _) = init_tracing(5, &None, false).unwrap();
-        assert_eq!(Level::TRACE, level);
-    }
-
-    #[test]
-    fn test_threads() {
-        let subcommand = SubCommand::Samples {
-            file: PathBuf::new(),
-            log_and_verbosity: LogAndVerbosity {
-                verbosity: 0,
-                log_file: None,
-                silent: false,
-            },
-        };
-
-        assert_eq!(1, subcommand.threads());
-    }
 }

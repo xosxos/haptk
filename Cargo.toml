@@ -1,7 +1,29 @@
 [workspace]
 resolver = "2"
-members = [
+members  = [
   "haptk",
   # "haptk-gui",
   # "haptk-tree",
 ]
+
+[profile.dev]
+codegen-units   = 16
+debug           = false
+overflow-checks = true
+lto             = "thin"
+opt-level       = 3
+strip           = true
+incremental     = false
+
+[profile.release]
+codegen-units = 1
+debug         = false
+lto           = true
+opt-level     = 3
+strip         = true
+incremental   = false
+
+[profile.release-samply]
+inherits = "release"
+debug    = true
+strip    = false

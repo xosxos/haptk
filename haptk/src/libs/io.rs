@@ -11,22 +11,11 @@ use bgzip::tabix::Tabix;
 use color_eyre::eyre::{eyre, OptionExt, WrapErr};
 use color_eyre::Result;
 use csv::{QuoteStyle, Reader, ReaderBuilder, Writer, WriterBuilder};
-use polars::prelude::*;
 use rust_htslib::bcf::{header::HeaderRecord, IndexedReader, Read};
 
 use crate::args::{Selection, StandardArgs};
 use crate::structs::HapVariant;
 use crate::utils::strip_prefix;
-
-pub fn read_variable_data_file(path: PathBuf) -> Result<DataFrame> {
-    let df = CsvReader::from_path(path)?
-        .with_null_values(Some(NullValues::AllColumnsSingle("NA".to_string())))
-        .infer_schema(Some(500))
-        .has_header(true)
-        .finish()?;
-
-    Ok(df)
-}
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct RecombinationRow<'a> {
