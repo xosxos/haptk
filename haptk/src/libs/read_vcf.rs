@@ -317,7 +317,7 @@ fn read_vcf_batch_to_matrix(
         }
 
         if !coords.insert(construct_coord(&record, contig, pos)) {
-            tracing::error!("Duplicate coord at {contig}:{pos}. Not adding the duplicate");
+            tracing::warn!("Duplicate coord at {contig}:{pos}. Not adding the duplicate");
             let _ = markers.drain((markers.len() - diff)..);
         }
         prev_pos = pos;
