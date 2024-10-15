@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::BTreeSet, path::PathBuf};
 
 use color_eyre::{
     eyre::{eyre, WrapErr},
@@ -6,19 +6,19 @@ use color_eyre::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::structs::Coord;
+use crate::{structs::Coord, subcommands::bhst::Metadata};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct HstCoords {
-    coords: Vec<Coord>,
+    metadata: Metadata,
 }
 
-pub fn read_hst_coords(path: PathBuf) -> Result<Vec<Coord>> {
+pub fn read_hst_coords(path: PathBuf) -> Result<BTreeSet<Coord>> {
     let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
     let reader = bgzip::BGZFReader::new(file)?;
     let hst: HstCoords = serde_json::from_reader(reader)?;
 
-    Ok(hst.coords)
+    Ok(hst.metadata.coords)
 }
 
 #[doc(hidden)]
