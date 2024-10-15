@@ -4,14 +4,17 @@ use std::collections::{BTreeMap, HashSet};
 use std::io::{self};
 use std::path::PathBuf;
 
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::{
+    eyre::{ensure, eyre},
+    Result,
+};
 use csv::{Reader, ReaderBuilder};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use termion::color;
 
 use crate::io::{get_csv_writer, get_input};
-use crate::structs::{Coord, HapVariant};
+use crate::structs::Coord;
 use crate::utils::strip_prefix;
 
 pub fn get_csv_reader<R: io::Read>(input: R) -> Reader<R> {
@@ -169,6 +172,9 @@ pub fn run(
     nucleotides: bool,
 ) -> Result<()> {
     tracing::debug!("Reading in haplotypes: {:?}", haplotypes);
+
+    ensure!(!haplotypes.is_empty(), "No haplotypes were given");
+
     match strip_prefix(prefix) {
         None => output.push("ht_comparison.csv"),
         Some(prefix) => output.push(format!("{prefix}_ht_comparison.csv")),
@@ -204,7 +210,80 @@ pub struct HaplotypeAligner {
     filenames: Vec<String>,
     ht_names: Vec<Vec<String>>,
     freq_data: Vec<(Vec<String>, Vec<String>)>,
-    alignment: BTreeMap<Coord, (Vec<Option<HapVariant>>, String)>,
+    alignment: BTreeMap<Coord, (Vec<Option<u8>>, String)>,
+}
+
+fn create_btreemap(
+    haplotypes: &[Vec<CompareHaplotype>],
+    n_gts_count: usize,
+) -> BTreeMap<Coord, (Vec<Option<u8>>, String)> {
+    let mut tree_map: BTreeMap<Coord, (Vec<Option<u8>>, String)> = BTreeMap::new();
+    let mut last_contig = &haplotypes[0][0].contig;
+    let mut cum_sum = 0;
+
+    // Loop all haplotypes and variants in haplotypes
+    for ht in haplotypes {
+        let ngenotypes = ht[0].gts.len();
+        let curr_contig = &ht[0].contig;
+        if last_contig != curr_contig {
+            panic!("Haplotypes are from different contigs {last_contig} vs {curr_contig}")
+        }
+        last_contig = curr_contig;
+
+        for variant in ht {
+            // Insert variant to map
+            match tree_map.entry(variant.into()) {
+                Entry::Occupied(entry) => {
+                    if entry.key().alt == "-" {
+                        let (_gts, ann) = entry.get();
+                        let new_ann = match &variant.ann {
+                            Some(new_ann) => format!("{ann} {new_ann}"),
+                            None => ann.to_string(),
+                        };
+                        entry.remove_entry();
+
+                        let init_gts = initiate_genotypes(cum_sum, n_gts_count, variant);
+                        tree_map.insert(variant.into(), (init_gts, new_ann));
+                    } else {
+                        let (gts, ann) = entry.into_mut();
+                        gts.iter_mut()
+                            .skip(cum_sum)
+                            .enumerate()
+                            .take(ngenotypes)
+                            .for_each(|(i, v)| *v = Some(variant.gts[i]));
+
+                        if let Some(new_ann) = &variant.ann {
+                            *ann = format!("{ann} {new_ann}");
+                        }
+                    }
+                }
+                Entry::Vacant(entry) => {
+                    let init_gts = initiate_genotypes(cum_sum, n_gts_count, variant);
+                    entry.insert((init_gts, variant.ann.clone().unwrap_or(String::from(""))));
+                }
+            };
+        }
+        cum_sum += ngenotypes;
+    }
+    tree_map
+}
+
+fn initiate_genotypes(
+    cum_sum: usize,
+    n_gts_count: usize,
+    variant: &CompareHaplotype,
+) -> Vec<Option<u8>> {
+    let genotypes: Vec<Option<u8>> = (0..cum_sum)
+        // Add cum_sum amount of Nones
+        .map(|_| None)
+        // Add genotypes
+        .chain(variant.gts.iter().map(|gt| Some(*gt)))
+        // Fill the rest with nones
+        .chain((0..(n_gts_count - cum_sum - variant.gts.len())).map(|_| None))
+        .collect();
+
+    assert_eq!(genotypes.len(), n_gts_count);
+    genotypes
 }
 
 impl HaplotypeAligner {
@@ -215,74 +294,11 @@ impl HaplotypeAligner {
         freq_data: Vec<(Vec<String>, Vec<String>)>,
     ) -> Self {
         let n_gts_count: usize = ht_names.iter().map(|v| v.len()).sum();
-        let mut last_contig = &haplotypes[0][0].contig;
-
-        // Register all positions first and initialize a vec of None's corresponding to the number of haplotypes to study
-        let mut tree_map: BTreeMap<Coord, (Vec<Option<HapVariant>>, String)> = BTreeMap::new();
-
-        for ht in &haplotypes {
-            let curr_contig = &ht[0].contig;
-            if last_contig != curr_contig {
-                panic!("Haplotypes are from different contigs {last_contig} vs {curr_contig}")
-            }
-            last_contig = curr_contig;
-
-            for variant in ht {
-                match tree_map.entry(variant.into()) {
-                    Entry::Occupied(entry) => {
-                        if entry.key().alt == "-" {
-                            entry.remove_entry();
-                            tree_map
-                                .insert(variant.into(), (vec![None; n_gts_count], String::new()));
-                        }
-                    }
-                    Entry::Vacant(entry) => {
-                        entry.insert((vec![None; n_gts_count], String::new()));
-                    }
-                };
-            }
-        }
-
-        // Register present or missing genotypes for each position into the vec for each position
-        for (coord, (genotypes, annotations)) in tree_map.iter_mut() {
-            let mut cum_sum = 0;
-            for ht in haplotypes.iter() {
-                let mut found = false;
-                for hap_variant in ht {
-                    if coord == hap_variant {
-                        found = true;
-                        // Change a None into Some if the haplotype has a genotype at this position
-                        for gt in &hap_variant.gts {
-                            let gt = HapVariant {
-                                contig: hap_variant.contig.clone(),
-                                pos: hap_variant.pos,
-                                reference: hap_variant.reference.clone(),
-                                alt: hap_variant.alt.clone(),
-                                gt: *gt,
-                            };
-
-                            genotypes[cum_sum] = Some(gt);
-                            cum_sum += 1;
-                        }
-
-                        if let Some(annotation) = &hap_variant.ann {
-                            annotations.push(' ');
-                            annotations.push_str(annotation);
-                        }
-                        break;
-                    }
-                }
-                if !found {
-                    cum_sum += ht[0].gts.len();
-                }
-            }
-        }
-
         Self {
             ht_names,
             freq_data,
             filenames,
-            alignment: tree_map,
+            alignment: create_btreemap(&haplotypes, n_gts_count),
         }
     }
 
@@ -325,7 +341,7 @@ impl HaplotypeAligner {
                 .iter()
                 .map(|gt| match gt {
                     None => "-".to_string(),
-                    Some(gt) => gt.gt.to_string(),
+                    Some(gt) => gt.to_string(),
                 })
                 .fold(String::new(), |s, r| format!("{s} {r}"));
 
@@ -365,7 +381,7 @@ impl HaplotypeAligner {
         println!("{n_line}");
     }
 
-    fn find_mismatch(&self, genotypes: &[Option<HapVariant>]) -> (bool, bool) {
+    fn find_mismatch(&self, genotypes: &[Option<u8>]) -> (bool, bool) {
         let mut is_some_count = 0;
         let hash_set = genotypes
             .iter()
@@ -441,15 +457,15 @@ impl HaplotypeAligner {
                 ],
             };
 
-            genotypes.iter().for_each(|hap_var| match hap_var {
+            genotypes.iter().for_each(|gt| match gt {
                 None => record.push("-".to_string()),
-                Some(hap_var) => match yes_nucleotides {
-                    true => match hap_var.gt {
-                        0 => record.push(hap_var.reference.clone()),
-                        1 => record.push(hap_var.alt.clone()),
+                Some(gt) => match yes_nucleotides {
+                    true => match gt {
+                        0 => record.push(coord.reference.clone()),
+                        1 => record.push(coord.alt.clone()),
                         _ => panic!("multiallelic haplotypes not yet allowed"),
                     },
-                    false => record.push(hap_var.gt.to_string()),
+                    false => record.push(gt.to_string()),
                 },
             });
 
