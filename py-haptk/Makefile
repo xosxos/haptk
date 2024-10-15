@@ -3,4 +3,4 @@ run_tests:
 build:
 	python3 -m build
 install:
-	pip3 install dist/haptk-0.0.4-py3-none-any.whl --force-reinstall --verbose
+	pip3 install dist/haptk-0.0.6-py3-none-any.whl --force-reinstall --verbose

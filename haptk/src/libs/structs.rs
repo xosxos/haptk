@@ -291,9 +291,23 @@ impl PhasedMatrix {
     }
 
     pub fn matrix_point_coord(&self, x: usize, coord: &Coord) -> u8 {
-        let (matrix_key, index) = self.indexer.get(coord).unwrap();
-        let matrix = self.matrix.get(matrix_key).unwrap();
-        matrix[[x, *index]]
+        match self.indexer.get(coord) {
+            Some((matrix_key, index)) => {
+                let matrix = self.matrix.get(matrix_key).unwrap();
+                matrix[[x, *index]]
+            }
+            None => {
+                let nearest_coord = self.get_nearest_coord_by_pos(coord.pos);
+                tracing::warn!(
+                    "Could not find coord {}, using {} instead",
+                    coord,
+                    nearest_coord
+                );
+                let (matrix_key, index) = self.indexer.get(nearest_coord).unwrap();
+                let matrix = self.matrix.get(matrix_key).unwrap();
+                matrix[[x, *index]]
+            }
+        }
     }
 
     pub fn matrix_column(&self, coord: &Coord) -> ArrayView1<u8> {

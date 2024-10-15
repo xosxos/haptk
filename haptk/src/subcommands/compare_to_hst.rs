@@ -46,16 +46,6 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
             let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, None)?;
             vcf.select_only_longest_no_shard()?;
 
-            // Use start and end from the haplotype to celect columns from the matrix by range
-            let start = vcf.get_first_idx_on_left_by_pos(start.pos);
-            let mut stop = vcf.get_first_idx_on_right_by_pos(end.pos);
-            if stop != vcf.ncoords() {
-                stop += 1;
-            }
-            vcf.select_columns_by_range_idx(
-                // inclusive range not possible due to ndarray range generics being so difficult
-                start..stop,
-            );
             vcf
         }
         Selection::Unphased => unreachable!(),
@@ -129,6 +119,7 @@ pub fn populate_imported_hst(vcf: &PhasedMatrix, mut original_hst: Hst) -> Graph
         .collect::<Vec<(usize, Vec<NodeIndex>)>>();
 
     let mut map = HashMap::new();
+
     for (sample_idx, nodes) in nodes_without_contradictory_ht {
         for node_idx in nodes {
             map.entry(node_idx).or_insert(Vec::new()).push(sample_idx);

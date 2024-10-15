@@ -9,7 +9,7 @@ from haptk import utils
 from haptk.circle_tree import draw_circle_tree, circle_tree_style
 from haptk.index_tree import draw_index_tree, index_tree_style
 from haptk.normal_tree import draw_normal_tree, normal_tree_style
-from haptk.match_tree import draw_match_tree, match_tree_style
+from haptk.match_tree import circle_match_tree_style, draw_match_tree, match_tree_style
 from haptk.leaf_neighbors import find_leaf_neighbors
 from haptk.iterate_tree import iterate_tree_inner, iterate_tree_style
 
@@ -181,9 +181,12 @@ class HST:
         t = iterate_tree_inner(self, t, to_tag, df, optimizer)
         t.render(output, units="px", w=w, h=h, tree_style=tree_style, dpi=dpi)
 
-    def match_tree(self, other_hst, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=match_tree_style()): 
+    def match_tree(self, other_hst, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=match_tree_style(), circle=False): 
         other_t = create_ete3_tree(other_hst, min_size, hard_cut, min_start, max_stop, right_up=False)
-        t = draw_match_tree(self.G, other_t, output, self.samples, to_tag, colors, proportions)
+        t = draw_match_tree(self.G, other_t, output, self.samples, to_tag, colors, proportions, circle)
+
+        if circle:
+            tree_style=circle_match_tree_style()
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
 
