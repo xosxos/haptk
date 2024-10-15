@@ -1,3 +1,4 @@
+sample,sex,id,origin,origin_long,continent,ancestry,origin2,project
 HG00271,male,SAME123417,FIN,Finnish,EUR,European Ancestry,FIN,1000 Genomes on GRCh38;1000 Genomes 30x on GRCh38;1000 Genomes phase 3 release;1000 Genomes phase 1 release;Geuvadis
 HG00276,female,SAME123424,FIN,Finnish,EUR,European Ancestry,FIN,1000 Genomes on GRCh38;1000 Genomes 30x on GRCh38;1000 Genomes phase 3 release;1000 Genomes phase 1 release;Geuvadis
 HG00288,female,SAME1839246,FIN,Finnish,EUR,European Ancestry,FIN,1000 Genomes on GRCh38;1000 Genomes 30x on GRCh38;1000 Genomes phase 3 release
