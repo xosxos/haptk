@@ -248,7 +248,7 @@ mod core {
             ]
         );
 
-        let idxs = vcf.get_sample_idxs(&names).unwrap();
+        let idxs = vcf.get_idxs_for_samples(&names).unwrap();
         assert_eq!(idxs, vec![0, 1, 2, 3, 20, 21]);
 
         let name = vcf.get_sample_name(0);

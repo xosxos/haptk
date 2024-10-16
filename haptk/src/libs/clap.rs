@@ -218,6 +218,10 @@ pub enum SubCommand {
         #[arg(long)]
         hst: PathBuf,
 
+        /// Filter out every match for each sample, except the longest match measured in basepairs
+        #[arg(long)]
+        only_longest_leafs: bool,
+
         /// Number of threads
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
@@ -608,7 +612,9 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         SubCommand::CompareHaplotypes { haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides, .. }
             => compare_haplotypes::run(haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides)?,
 
-        SubCommand::CompareToHst { args, hst, .. } => compare_to_hst::run(args, hst)?,
+        SubCommand::CompareToHst { args, hst, only_longest_leafs, .. }
+            => compare_to_hst::run(args, hst, only_longest_leafs)?,
+
         SubCommand::CheckForHaplotype { args, haplotype, .. } => check_for_haplotype::run(args, haplotype)?,
         SubCommand::Mrca { args, recombination_rates, window, .. } => mrca::run(args, recombination_rates, window)?,
         SubCommand::Haplotypes { args, selection_variant, nucleotides, .. } => list_haplotypes::run(args, selection_variant, nucleotides)?,

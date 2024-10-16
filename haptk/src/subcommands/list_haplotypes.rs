@@ -60,7 +60,7 @@ pub fn get_unique_haplotypes_map(vcf: &PhasedMatrix) -> Result<HaplotypeMap> {
     let samples = vcf.samples().iter().collect::<IndexSet<_>>();
 
     for sample_name in samples {
-        let idxs = vcf.get_sample_idxs(&[sample_name.clone()])?;
+        let idxs = vcf.get_idxs_for_samples(&[sample_name.clone()])?;
 
         for idx in idxs.iter() {
             let haplotype = vcf.find_haplotype_for_sample(

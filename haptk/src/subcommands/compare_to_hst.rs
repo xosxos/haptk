@@ -5,6 +5,7 @@ use ndarray::parallel::prelude::*;
 use petgraph::Graph;
 use petgraph::{prelude::NodeIndex, Direction};
 
+use crate::read_vcf::read_vcf_to_matrix_by_indexes;
 use crate::{
     args::{Selection, StandardArgs},
     io::push_to_output,
@@ -15,7 +16,7 @@ use crate::{
 };
 
 #[doc(hidden)]
-pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
+pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> Result<()> {
     if args.selection == Selection::Unphased {
         return Err(eyre!("Running with unphased data is not supported."));
     }
@@ -43,10 +44,23 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
             )?
         }
         Selection::OnlyLongest => {
-            let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, None)?;
-            vcf.select_only_longest_no_shard()?;
+            let mut vcf =
+                read_vcf_to_matrix(&args, contig, variant_pos, None, None, Some(5_000_000))?;
 
-            vcf
+            let only_longest_lookups = vcf.get_only_longest_lookups()?;
+
+            read_vcf_to_matrix_by_indexes(
+                &args.file,
+                variant_pos,
+                contig,
+                Some((Some(start.pos), Some(end.pos))),
+                vcf.samples().clone(),
+                vcf.metadata.indexes,
+                only_longest_lookups,
+                None,
+                args.no_alt,
+                &Selection::Haploid,
+            )?
         }
         Selection::Unphased => unreachable!(),
     };
@@ -71,11 +85,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
         .metadata
         .coords
         .iter()
-        .filter(|r| {
-            vcf.coords()
-                .iter()
-                .any(|s| s.reference == r.reference && s.alt == r.alt && s.pos == r.pos)
-        })
+        .filter_map(|r| vcf.coords().get(r))
         .count();
 
     tracing::info!(
@@ -86,7 +96,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
 
     let hst_type = hst_import.metadata.hst_type.clone();
 
-    let match_hst = populate_imported_hst(&vcf, hst_import);
+    let match_hst = populate_imported_hst(&vcf, hst_import, only_longest_leafs);
 
     // Write .hst to file
     let mut hst_output = args.output.clone();
@@ -97,7 +107,11 @@ pub fn run(args: StandardArgs, hst_path: PathBuf) -> Result<()> {
     Ok(())
 }
 
-pub fn populate_imported_hst(vcf: &PhasedMatrix, mut original_hst: Hst) -> Graph<Node, ()> {
+pub fn populate_imported_hst(
+    vcf: &PhasedMatrix,
+    mut original_hst: Hst,
+    only_longest: bool,
+) -> Graph<Node, ()> {
     let node_idx = NodeIndex::new(0);
 
     let nodes_without_contradictory_ht = (0..vcf.nhaplotypes())
@@ -120,7 +134,12 @@ pub fn populate_imported_hst(vcf: &PhasedMatrix, mut original_hst: Hst) -> Graph
 
     let mut map = HashMap::new();
 
-    for (sample_idx, nodes) in nodes_without_contradictory_ht {
+    for (sample_idx, nodes) in nodes_without_contradictory_ht.into_iter() {
+        let nodes = match only_longest {
+            true => remove_non_max_leaf_nodes(&original_hst, nodes),
+            false => nodes,
+        };
+
         for node_idx in nodes {
             map.entry(node_idx).or_insert(Vec::new()).push(sample_idx);
         }
@@ -136,6 +155,47 @@ pub fn populate_imported_hst(vcf: &PhasedMatrix, mut original_hst: Hst) -> Graph
     }
 
     original_hst.hst
+}
+
+pub fn remove_non_max_leaf_nodes(hst: &Hst, nodes: Vec<NodeIndex>) -> Vec<NodeIndex> {
+    // Helper function
+    let is_leaf_node = |node_idx| {
+        hst.hst
+            .neighbors_directed(node_idx, Direction::Outgoing)
+            .count()
+            == 0
+    };
+
+    let mut max_bp_len = 0;
+
+    // Find max bp_len for leaf nodes
+    for node_idx in &nodes {
+        let node = hst.hst.node_weight(*node_idx).unwrap();
+        let bp_len = node.stop.pos.saturating_sub(node.start.pos);
+
+        if is_leaf_node(*node_idx) && bp_len > max_bp_len {
+            max_bp_len = bp_len;
+        }
+    }
+
+    // Many leaf nodes can have max bp_len, so re-iterate to get max_nodes
+    let max_nodes: Vec<NodeIndex> = nodes
+        .iter()
+        .filter(|&node_idx| {
+            let node = hst.hst.node_weight(*node_idx).unwrap();
+            let bp_len = node.stop.pos.saturating_sub(node.start.pos);
+
+            is_leaf_node(*node_idx) && bp_len == max_bp_len
+        })
+        .copied()
+        .collect();
+
+    // Return nodes
+    nodes
+        .into_iter()
+        // Keep, if node == max_node, or if the node is not a leaf node
+        .filter(|idx| max_nodes.contains(idx) || !is_leaf_node(*idx))
+        .collect()
 }
 
 // Travel all nodes and check if haplotypes are concordant with sample haplotypes
@@ -177,13 +237,19 @@ pub fn no_contradictory_genotypes_in_ht(
 
     let sample_haplotype = vcf.find_haplotype_for_sample(start..=stop, sample_idx);
 
-    let ref_haplotype = hst.get_haplotype(node);
-
-    let has_contradictory_markers = ref_haplotype.iter().any(|r| {
-        sample_haplotype
-            .iter()
-            .any(|s| s.reference == r.reference && s.alt == r.alt && s.pos == r.pos && s.gt != r.gt)
-    });
+    let has_contradictory_markers = hst
+        .metadata
+        .coords
+        // This gets the hst haplotype
+        .range(start..=stop)
+        .enumerate()
+        .map(|(hap_index, coord)| (coord, node.haplotype[hap_index]))
+        // And compares all the markers in it
+        .any(|(r, other_gt)| {
+            sample_haplotype.iter().any(|s| {
+                s.reference == r.reference && s.alt == r.alt && s.pos == r.pos && s.gt != other_gt
+            })
+        });
 
     !has_contradictory_markers
 }

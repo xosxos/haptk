@@ -157,8 +157,6 @@ impl std::fmt::Display for Coord {
     }
 }
 
-pub type ClinicalData = (f64, f64);
-
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Ploidy {
     Mixed,
@@ -480,7 +478,7 @@ impl PhasedMatrix {
         indexes.iter().map(|i| self.get_sample_name(*i)).collect()
     }
 
-    pub fn get_sample_idxs(&self, samples: &[String]) -> Result<Vec<usize>> {
+    pub fn get_idxs_for_samples(&self, samples: &[String]) -> Result<Vec<usize>> {
         let idxs: Vec<_> = self
             .samples
             .iter()
@@ -523,6 +521,25 @@ impl PhasedMatrix {
         let lengths = self.get_lengths_from_uhst(&start)?;
 
         Ok(self.lengths_to_indexes(lengths))
+    }
+
+    pub fn get_only_longest_lookups(&mut self) -> Result<Vec<[bool; 2]>> {
+        let indexes = self.only_longest_indexes()?;
+
+        let mut lookups = vec![];
+
+        for idx in indexes {
+            let idxs = self.get_idxs_for_samples(&[self.get_sample_name(idx)])?;
+            let pos = idxs.iter().position(|i| idx == *i).unwrap();
+            let lookup = match pos {
+                0 => [true, false],
+                1 => [false, true],
+                _ => unreachable!("Only diploid genotypes are supported"),
+            };
+            lookups.push(lookup);
+        }
+
+        Ok(lookups)
     }
 
     pub fn only_longest_indexes_no_shard(&self) -> Result<Vec<usize>> {

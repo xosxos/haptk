@@ -13,7 +13,7 @@ use crate::{
     args::{GraphArgs, Selection, SortOption, StandardArgs},
     graphs::MatrixGraph,
     io::{open_csv_writer, push_to_output, read_haplotype_file, read_sample_ids},
-    read_vcf::read_vcf_to_matrix,
+    read_vcf::{read_vcf_to_matrix, read_vcf_to_matrix_by_indexes},
     structs::{HapVariant, PhasedMatrix},
     utils::parse_snp_coord,
 };
@@ -96,27 +96,24 @@ pub fn run(
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
         }
         Selection::OnlyLongest => {
-            let vcf = read_vcf_to_matrix(
-                &args,
-                contig,
+            let mut vcf =
+                read_vcf_to_matrix(&args, contig, variant_pos, None, None, Some(5_000_000))?;
+
+            let only_longest_lookups = vcf.get_only_longest_lookups()?;
+
+            let vcf = read_vcf_to_matrix_by_indexes(
+                &args.file,
                 variant_pos,
+                contig,
                 Some((Some(start.pos), Some(end.pos))),
+                vcf.samples().clone(),
+                vcf.metadata.indexes,
+                only_longest_lookups,
                 None,
-                None,
+                args.no_alt,
+                &Selection::Haploid,
             )?;
-
-            let mut vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?;
-
-            // Do only longest selection after swithing to the given haplotype as the refernce
-            vcf.select_only_longest_no_shard()?;
-
-            // Use start and end from the haplotype to select columns from the matrix by range
-
-            let start = vcf.get_first_idx_on_left_by_pos(start.pos);
-            let stop = vcf.get_first_idx_on_right_by_pos(end.pos);
-
-            vcf.select_columns_by_range_idx(start..=stop);
-            vcf
+            transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
         }
         Selection::Haploid => {
             let vcf = read_vcf_to_matrix(

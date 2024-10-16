@@ -85,6 +85,7 @@ mod compare_hst {
             hst: PathBuf::from("tests/results/bhst.hst.gz"),
             log_and_verbosity: crate::common::silent_verbosity(),
             threads: 8,
+            only_longest_leafs: false,
         };
 
         haptk::clap::run_cmd(cmd).unwrap();
@@ -105,6 +106,7 @@ mod compare_hst {
             hst: PathBuf::from("tests/results/uhst_left.hst.gz"),
             log_and_verbosity: crate::common::silent_verbosity(),
             threads: 8,
+            only_longest_leafs: false,
         };
 
         haptk::clap::run_cmd(cmd).unwrap();

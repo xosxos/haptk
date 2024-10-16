@@ -164,7 +164,7 @@ pub fn read_vcf_to_matrix(
     args: &StandardArgs,
     contig: &str,
     variant_pos: u64,
-    mut range: Option<(Option<u64>, Option<u64>)>,
+    range: Option<(Option<u64>, Option<u64>)>,
     wanted_samples: Option<Vec<String>>,
     window: Option<u64>,
 ) -> Result<PhasedMatrix> {
@@ -176,12 +176,39 @@ pub fn read_vcf_to_matrix(
         _ => (indexes.iter().map(|_| [true, true]).collect(), samples),
     };
 
-    tracing::info!("Input VCF: {:?}", args.file);
+    read_vcf_to_matrix_by_indexes(
+        &args.file,
+        variant_pos,
+        contig,
+        range,
+        samples,
+        indexes,
+        lookups,
+        window,
+        args.no_alt,
+        &args.selection,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn read_vcf_to_matrix_by_indexes(
+    file: &PathBuf,
+    variant_pos: u64,
+    contig: &str,
+    mut range: Option<(Option<u64>, Option<u64>)>,
+    samples: Vec<String>,
+    indexes: Vec<usize>,
+    lookups: Vec<[bool; 2]>,
+    window: Option<u64>,
+    no_alt: bool,
+    selection: &Selection,
+) -> Result<PhasedMatrix> {
+    tracing::info!("Input VCF: {:?}", file);
     tracing::info!("Reading phased genotypes from {contig} with target position at {variant_pos}.");
     tracing::info!("Using {} samples from the VCF.", indexes.len());
 
     if let Some(window) = window {
-        ensure!(get_htslib_contig_len(&args.file, contig).is_ok(), "Cannot construct HST using partial reads of the VCF if the contig length is not defined in the header");
+        ensure!(get_htslib_contig_len(file, contig).is_ok(), "Cannot construct HST using partial reads of the VCF if the contig length is not defined in the header");
 
         range = Some((
             Some(variant_pos.saturating_sub(window)),
@@ -194,14 +221,12 @@ pub fn read_vcf_to_matrix(
         );
     }
 
-    // let (markers, coords) =
-    // read_vcf_batch_to_matrix(&args.file, contig, range, &indexes, &lookups, args.no_alt)?;
-    let (markers, coords) = match get_htslib_contig_len(&args.file, contig).is_err() {
+    let (markers, coords) = match get_htslib_contig_len(file, contig).is_err() {
         true => {
             tracing::info!("No contig {contig} length in the VCF. Reading single-threaded.");
-            read_vcf_batch_to_matrix(&args.file, contig, range, &indexes, &lookups, args.no_alt)?
+            read_vcf_batch_to_matrix(file, contig, range, &indexes, &lookups, no_alt)?
         }
-        false => read_parallel(&args.file, contig, range, &indexes, &lookups, args.no_alt)?,
+        false => read_parallel(file, contig, range, &indexes, &lookups, no_alt)?,
     };
 
     let start = coords.first().unwrap();
@@ -211,21 +236,14 @@ pub fn read_vcf_to_matrix(
     let metadata = ReadMetadata {
         indexes,
         lookups,
-        file_path: args.file.clone(),
+        file_path: file.clone(),
         fetch_range,
-        contig_len: get_htslib_contig_len(&args.file, contig).ok(),
+        contig_len: get_htslib_contig_len(file, contig).ok(),
         sharded: window.is_some(),
-        remove_no_alt: args.no_alt,
+        remove_no_alt: no_alt,
     };
 
-    construct_phased_matrix(
-        samples,
-        markers,
-        coords,
-        &args.selection,
-        variant_pos,
-        metadata,
-    )
+    construct_phased_matrix(samples, markers, coords, selection, variant_pos, metadata)
 }
 
 fn read_vcf_batch_to_matrix(
