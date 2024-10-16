@@ -460,7 +460,7 @@ impl PhasedMatrix {
     }
 
     pub fn select_only_longest_no_shard(&mut self) -> Result<()> {
-        let longest_indexes = self.only_longest_indexes_no_shard()?;
+        let longest_indexes = self.only_longest_indexes_no_shard(self.start_coord())?;
 
         self.select_rows(longest_indexes);
         self.ploidy = Ploidy::Haploid;
@@ -495,9 +495,8 @@ impl PhasedMatrix {
         Ok(lookups)
     }
 
-    pub fn only_longest_indexes_no_shard(&self) -> Result<Vec<usize>> {
-        let start = self.start_coord().clone();
-        let lengths = self.get_lengths_from_uhst_no_mut(&start)?;
+    pub fn only_longest_indexes_no_shard(&self, start: &Coord) -> Result<Vec<usize>> {
+        let lengths = self.get_lengths_from_uhst_no_mut(start)?;
 
         Ok(self.lengths_to_indexes(lengths))
     }
@@ -509,7 +508,7 @@ impl PhasedMatrix {
                 if lnode.start == rnode.stop {
                     0
                 } else {
-                    let stop = self.coords().range(..&rnode.stop).next_back().unwrap();
+                    let stop = self.coords().range(..=&rnode.stop).next_back().unwrap();
 
                     let start = self.coords().range(&lnode.start..).nth(1).unwrap();
                     stop.pos - start.pos + 1

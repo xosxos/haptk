@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use petgraph::graph::NodeIndex;
 use petgraph::Graph;
 use rayon::prelude::*;
+use serde_with::serde_as;
 
 use crate::args::{Selection, StandardArgs};
 use crate::io::push_to_output;
@@ -23,9 +24,11 @@ use crate::read_vcf::read_vcf_to_matrix;
 use crate::subcommands::bhst::{HstType, Metadata, Node};
 
 #[doc(hidden)]
-pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
+pub fn run(args: StandardArgs, step_size: usize, min_sample_size: usize) -> Result<()> {
     ensure!(
-        args.selection == Selection::All || args.selection == Selection::Haploid,
+        args.selection == Selection::All
+            || args.selection == Selection::Haploid
+            || args.selection == Selection::OnlyLongest,
         "Running only with phased data and all chromsomes is supported."
     );
 
@@ -36,18 +39,32 @@ pub fn run(args: StandardArgs, step_size: usize) -> Result<()> {
 
     let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None)?;
 
-    let hsts = Vec::from_iter(vcf.coords().clone())
-        .par_iter()
-        // .into_iter()
-        .enumerate()
-        .filter(|(n, _)| *n % step_size == 0)
-        .map(|(_, coord)| {
-            (
-                coord.clone(),
-                construct_bhst_no_mut(&vcf, coord, 4).unwrap(),
-            )
-        })
-        .collect();
+    let hsts = if args.selection == Selection::OnlyLongest {
+        Vec::from_iter(vcf.coords().clone())
+            .par_iter()
+            .enumerate()
+            .filter(|(n, _)| *n % step_size == 0)
+            .map(|(_, coord)| {
+                let start_idxs = vcf.only_longest_indexes_no_shard(coord).unwrap();
+                (
+                    coord.clone(),
+                    construct_bhst_no_mut(&vcf, coord, min_sample_size, Some(start_idxs)).unwrap(),
+                )
+            })
+            .collect()
+    } else {
+        Vec::from_iter(vcf.coords().clone())
+            .par_iter()
+            .enumerate()
+            .filter(|(n, _)| *n % step_size == 0)
+            .map(|(_, coord)| {
+                (
+                    coord.clone(),
+                    construct_bhst_no_mut(&vcf, coord, min_sample_size, None).unwrap(),
+                )
+            })
+            .collect()
+    };
 
     let metadata = Metadata::new(&vcf, &args, vcf.samples().clone(), HstType::Bhst);
 
@@ -62,10 +79,12 @@ pub type Limits = (usize, usize, usize, usize);
 pub type Hst = Graph<Node, ()>;
 pub type HstMap = BTreeMap<Coord, Hst>;
 
+#[serde_as]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct HstScan {
     pub metadata: Metadata,
-    pub hsts: HstMap,
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub hsts: BTreeMap<Coord, Hst>,
 }
 
 impl HstScan {
@@ -127,19 +146,15 @@ impl HstScan {
 }
 
 fn write_hsts(trees: HstScan, path: PathBuf) -> Result<()> {
-    // use std::io::{BufWriter, Write};
-
     tracing::info!("Writing trees to file.");
     let now = std::time::Instant::now();
     let mut output = get_output(Some(path))?;
 
     let mut writer = bgzip::BGZFWriter::new(&mut output, bgzip::Compression::default());
-    // let mut writer = BufWriter::new(output);
 
     serde_json::to_writer(&mut writer, &trees)?;
 
     writer.close()?;
-    // writer.flush()?;
 
     tracing::info!("Finished writing trees to file.");
     tracing::debug!("Wrote trees file in {:?}", now.elapsed());
@@ -163,49 +178,6 @@ pub fn read_tree_file(path: PathBuf) -> Result<HstScan> {
     Ok(hst_scan)
 }
 
-// impl std::fmt::Display for Node {
-//     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-//         let nmarkers = match self.stop_idx.cmp(&self.start_idx) {
-//             std::cmp::Ordering::Greater => self.stop_idx - self.start_idx + 1,
-//             std::cmp::Ordering::Less => self.start_idx - self.stop_idx + 1,
-//             std::cmp::Ordering::Equal => 0,
-//         };
-//         let line = format!(
-//             "n: {}\nstart_idx: {}\nstop_idx: {}\nnmarkers: {}\nblock length (bp): {}\n",
-//             self.indexes.len(),
-//             self.start_idx,
-//             self.stop_idx,
-//             nmarkers,
-//             self.haplotype.len(),
-//         );
-//         write!(f, "{line}")
-//     }
-// }
-
-// #[allow(unused_variables)]
-// pub fn get_sender<'a>(
-//     write_bam: bool,
-//     args: &StandardArgs,
-//     hsts: Arc<HstScan>,
-// ) -> Option<Sender<(&'a Coord, NodeIndex, f64)>> {
-//     match write_bam {
-//         true => {
-//             let (tx, rx) = std::sync::mpsc::channel();
-
-//             std::thread::spawn(move || {
-//                 while let Ok((tree_idx, top_node_idx, optimized_value)) = rx.recv() {
-//                     todo!()
-//                     // let record =
-//                     // create_bam_record(hsts.clone(), tree_idx, top_node_idx, optimized_value);
-//                     // out.write(&record).unwrap();
-//                 }
-//             });
-//             Some(tx)
-//         }
-//         false => None,
-//     }
-// }
-
 pub fn return_assoc<F, U>(
     hsts: &Arc<HstScan>,
     _args: &StandardArgs,
@@ -221,17 +193,9 @@ where
         + Clone,
     U: Fn(Arc<HstScan>, &Coord, NodeIndex, f64) -> AssocRow + Sync + Send,
 {
-    // let tx = get_sender(write_bam, args, hsts.clone());
-
     hsts.hsts
         .par_iter()
         .filter_map(|(coord, hst)| optimizer(hsts.clone(), hst, coord, limits))
-        // .map_with(tx, |tx, optimizer_tuple| {
-        //     if let Some(tx) = tx {
-        //         tx.send(optimizer_tuple).unwrap();
-        //     }
-        //     optimizer_tuple
-        // })
         .map(|(coord, top_node_idx, optimized_value)| {
             rower(hsts.clone(), &coord, top_node_idx, optimized_value)
         })
@@ -379,7 +343,7 @@ pub fn get_marker_id(top_node: &Node) -> String {
 }
 
 pub fn top_node_from_hsts<'a>(
-    hsts: &'a HstMap,
+    hsts: &'a BTreeMap<Coord, Hst>,
     coord: &Coord,
     top_node_idx: NodeIndex,
 ) -> &'a Node {

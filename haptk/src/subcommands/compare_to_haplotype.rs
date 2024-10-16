@@ -86,7 +86,7 @@ pub fn run(
                 None,
             )?;
             let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?;
-            only_longest = Some(vcf.only_longest_indexes_no_shard()?);
+            only_longest = Some(vcf.only_longest_indexes_no_shard(vcf.start_coord())?);
             vcf
         }
         Selection::OnlyAlts | Selection::OnlyRefs => {

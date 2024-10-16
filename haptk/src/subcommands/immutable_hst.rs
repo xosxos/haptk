@@ -15,8 +15,9 @@ pub fn construct_bhst_no_mut(
     vcf: &PhasedMatrix,
     start_coord: &Coord,
     min_size: usize,
+    start_indexes: Option<Vec<usize>>,
 ) -> Result<Graph<Node, ()>> {
-    let mut hst = initiate_hst(vcf, start_coord);
+    let mut hst = initiate_hst(vcf, start_coord, start_indexes);
     let mut blacklist_nodes = vec![];
 
     loop {
@@ -46,7 +47,7 @@ pub fn construct_uhst_no_mut(
     min_size: usize,
     only_majority: bool,
 ) -> Result<Graph<Node, ()>> {
-    let mut hst = initiate_hst(vcf, start_coord);
+    let mut hst = initiate_hst(vcf, start_coord, None);
     let mut blacklist_nodes = vec![];
 
     loop {

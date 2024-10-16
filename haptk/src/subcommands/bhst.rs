@@ -111,7 +111,7 @@ pub fn construct_bhst(
     min_size: usize,
 ) -> Result<Graph<Node, ()>> {
     // Initate the HST by inserting the root node, and two child nodes if there is a contradictory genotype right at the starting variant
-    let mut hst = initiate_hst(vcf, start_coord);
+    let mut hst = initiate_hst(vcf, start_coord, None);
 
     let mut blacklist_nodes = vec![];
 
@@ -139,10 +139,14 @@ pub fn construct_bhst(
     Ok(hst)
 }
 
-pub fn initiate_hst(vcf: &PhasedMatrix, start_coord: &Coord) -> Graph<Node, ()> {
+pub fn initiate_hst(
+    vcf: &PhasedMatrix,
+    start_coord: &Coord,
+    indexes: Option<Vec<usize>>,
+) -> Graph<Node, ()> {
     let mut hst = Graph::new();
 
-    let indexes: Vec<usize> = (0..vcf.nhaplotypes()).collect();
+    let indexes = indexes.unwrap_or_else(|| (0..vcf.nhaplotypes()).collect());
 
     let root = Node {
         // start: Cow::Borrowed(start_coord),

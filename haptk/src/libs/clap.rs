@@ -20,7 +20,7 @@ use crate::{
     subcommands::{
         mrca_scan,
         scan::{
-            hst_scan, scan_branch_mrca, scan_nodes, scan_quantitative, scan_segregate,
+            hst_scan, scan_branch_mrca, scan_nodes, scan_quantitative, scan_segregate, scan_sum_hsts
         }
     }
 };
@@ -328,6 +328,10 @@ pub enum SubCommand {
         #[arg(long)]
         step_size: usize,
 
+        /// Branch sample size to end recursion
+        #[arg(long, default_value_t = 1)]
+        min_sample_size: usize,
+
         /// Number of threads
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
@@ -468,7 +472,33 @@ pub enum SubCommand {
         #[arg(short = 'S', long)]
         samples: PathBuf,
     },
+
+    #[cfg(feature = "experimental")]
+    /// (experimental) Scan all leaf nodes to quantify haplotype sharing
+    ScanSumHst {
+        #[command(flatten)]
+        args: ConciseArgs,
+
+        #[command(flatten)]
+        log_and_verbosity: LogAndVerbosity,
+
+        /// Number of threads
+        #[arg(short = 't', long, default_value_t = 8)]
+        threads: usize,
+
+        /// Recombination rate file
+        #[arg(short = 'r', long)]
+        recombination_rates: PathBuf,
+
+        /// List of samples for HST construction (one ID per row)
+        #[arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. )]
+        samples: Option<Vec<PathBuf>>,
+    },
+
 }
+
+
+
 
 impl SubCommand {
     pub fn threads(&self) -> usize {
@@ -485,6 +515,7 @@ impl SubCommand {
             | SubCommand::ScanSegregate { threads, .. }
             | SubCommand::ScanBranchMrca { threads, .. }
             | SubCommand::ScanQuantitative { threads, .. }
+            | SubCommand::ScanSumHst { threads, .. }
             | SubCommand::ScanNodes { threads, .. } => *threads,
 
             _ => 1,
@@ -514,6 +545,7 @@ impl SubCommand {
             | SubCommand::ScanSegregate { log_and_verbosity,  .. }
             | SubCommand::ScanBranchMrca { log_and_verbosity,  .. }
             | SubCommand::ScanQuantitative { log_and_verbosity,  .. }
+            | SubCommand::ScanSumHst { log_and_verbosity, .. }
             | SubCommand::ScanNodes { log_and_verbosity,  .. }
             => (log_and_verbosity.verbosity, &log_and_verbosity.log_file, log_and_verbosity.silent),
         }
@@ -565,6 +597,7 @@ impl SubCommand {
             | SubCommand::ScanSegregate { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanBranchMrca { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanQuantitative { args: ConciseArgs { output, .. }, ..}
+            | SubCommand::ScanSumHst { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanNodes { args: ConciseArgs { output, .. }, ..}
             => Some(output.clone()),
 
@@ -629,7 +662,7 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         => mrca_scan::run(args, recombination_rates, step_size, no_csv)?,
 
         #[cfg(feature = "experimental")]
-        SubCommand::BhstScan { args, step_size, .. } => hst_scan::run(args, step_size)?,
+        SubCommand::BhstScan { args, step_size, min_sample_size, .. } => hst_scan::run(args, step_size, min_sample_size)?,
 
         #[cfg(feature = "experimental")]
         SubCommand::ScanNodes { args, min_sample_size, max_sample_size, min_ht_len, max_ht_len,  .. }
@@ -648,6 +681,10 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         } => scan_branch_mrca::run(
                 args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), recombination_rates,
             )?,
+
+        #[cfg(feature = "experimental")]
+        SubCommand::ScanSumHst { args, recombination_rates, samples, .. }
+        => scan_sum_hsts::run(args, recombination_rates, samples)?,
 
         #[cfg(feature = "experimental")]
         SubCommand::ScanSegregate {
@@ -743,3 +780,4 @@ pub fn get_styles() -> clap::builder::Styles {
             anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::White))),
         )
 }
+

@@ -144,7 +144,7 @@ pub fn construct_uhst(
     min_size: usize,
     only_majority: bool,
 ) -> Result<Graph<Node, ()>> {
-    let mut hst = bhst::initiate_hst(vcf, start_coord);
+    let mut hst = bhst::initiate_hst(vcf, start_coord, None);
 
     let mut blacklist_nodes = vec![];
 
