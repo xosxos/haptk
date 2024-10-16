@@ -5,10 +5,11 @@ use color_eyre::{
     eyre::{eyre, WrapErr},
     Result,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::io::read_lines;
+use crate::subcommands::bhst::Metadata;
 
-use super::bhst::Hst;
 use super::list_markers::HstMetadata;
 
 #[doc(hidden)]
@@ -50,6 +51,21 @@ pub fn get_sample_names(path: PathBuf) -> Result<Vec<String>> {
         "hst.gz" | "hst" => {
             let samples = read_hst_samples(path)?;
             ids.extend(samples);
+        }
+        "json.gz" => {
+            #[derive(Serialize, Deserialize, Clone)]
+            pub struct HstMetadata {
+                pub metadata: Metadata,
+            }
+
+            let file =
+                std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
+            let reader = bgzip::BGZFReader::new(file)?;
+
+            let metadata: HstMetadata = serde_json::from_reader(reader).wrap_err(eyre!(
+        "Failed deserializing HSTs from the json.gz. Are you sure the input file is correct?"
+    ))?;
+            ids.extend(metadata.metadata.samples);
         }
         "fam" => {
             for line in read_lines(path)?.map_while(Result::ok) {
