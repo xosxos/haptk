@@ -9,14 +9,14 @@ use serde::{Deserialize, Serialize};
 use crate::{structs::Coord, subcommands::bhst::Metadata};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct HstCoords {
-    metadata: Metadata,
+pub struct HstMetadata {
+    pub metadata: Metadata,
 }
 
 pub fn read_hst_coords(path: PathBuf) -> Result<BTreeSet<Coord>> {
     let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
     let reader = bgzip::BGZFReader::new(file)?;
-    let hst: HstCoords = serde_json::from_reader(reader)?;
+    let hst: HstMetadata = serde_json::from_reader(reader)?;
 
     Ok(hst.metadata.coords)
 }

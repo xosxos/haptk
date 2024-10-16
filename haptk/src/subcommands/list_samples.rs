@@ -9,6 +9,7 @@ use color_eyre::{
 use crate::io::read_lines;
 
 use super::bhst::Hst;
+use super::list_markers::HstMetadata;
 
 #[doc(hidden)]
 fn return_double_extension_filetype(path: &Path, e1: &str) -> Result<String> {
@@ -67,7 +68,7 @@ pub fn get_sample_names(path: PathBuf) -> Result<Vec<String>> {
 pub fn read_hst_samples(path: PathBuf) -> Result<Vec<String>> {
     let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
     let reader = bgzip::BGZFReader::new(file)?;
-    let hst: Hst = serde_json::from_reader(reader)?;
+    let hst: HstMetadata = serde_json::from_reader(reader)?;
 
     Ok(hst.metadata.samples)
 }
