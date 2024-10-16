@@ -27,3 +27,12 @@ incremental   = false
 inherits = "release"
 debug    = true
 strip    = false
+
+[profile.test]
+inherits        = "dev"
+codegen-units   = 256
+debug           = true
+overflow-checks = true
+lto             = false
+opt-level       = 0
+strip           = "none"
