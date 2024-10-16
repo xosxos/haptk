@@ -176,7 +176,7 @@ pub enum SubCommand {
         log_and_verbosity: LogAndVerbosity,
 
         /// Haplotype for comparing to
-        #[arg(short = 'h', long)]
+        #[arg(short = 'H', long)]
         haplotype: PathBuf,
 
         /// Number of threads

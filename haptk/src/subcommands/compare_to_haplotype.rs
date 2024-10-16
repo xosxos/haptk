@@ -1,5 +1,8 @@
 #![allow(clippy::comparison_chain)]
-use std::{collections::BTreeSet, path::PathBuf};
+use std::{
+    collections::{BTreeSet, HashMap},
+    path::PathBuf,
+};
 
 use color_eyre::{
     eyre::{eyre, WrapErr},
@@ -14,7 +17,7 @@ use crate::{
     graphs::MatrixGraph,
     io::{open_csv_writer, push_to_output, read_haplotype_file, read_sample_ids},
     read_vcf::{read_vcf_to_matrix, read_vcf_to_matrix_by_indexes},
-    structs::{HapVariant, PhasedMatrix},
+    structs::{Coord, HapVariant, PhasedMatrix},
     utils::parse_snp_coord,
 };
 // use crate::graphs::matrix_graph::matrix_graph_png;
@@ -66,7 +69,10 @@ pub fn run(
 
     // VCF read
     let (contig, variant_pos) = parse_snp_coord(&args.coords)?;
-    let (start, end) = (ht.first().unwrap(), ht.last().unwrap());
+    let (start, end) = (ht.first().unwrap().pos, ht.last().unwrap().pos);
+
+    // Vec into Map for speed up
+    let ht: HashMap<Coord, HapVariant> = ht.into_iter().map(|v| (v.clone().into(), v)).collect();
 
     let mut only_longest = None;
     let vcf = match args.selection {
@@ -75,7 +81,7 @@ pub fn run(
                 &args,
                 contig,
                 variant_pos,
-                Some((Some(start.pos), Some(end.pos))),
+                Some((Some(start), Some(end))),
                 None,
                 None,
             )?;
@@ -88,7 +94,7 @@ pub fn run(
                 &args,
                 contig,
                 variant_pos,
-                Some((Some(start.pos), Some(end.pos))),
+                Some((Some(start), Some(end))),
                 None,
                 None,
             )?;
@@ -105,7 +111,7 @@ pub fn run(
                 &args.file,
                 variant_pos,
                 contig,
-                Some((Some(start.pos), Some(end.pos))),
+                Some((Some(start), Some(end))),
                 vcf.samples().clone(),
                 vcf.metadata.indexes,
                 only_longest_lookups,
@@ -120,7 +126,7 @@ pub fn run(
                 &args,
                 contig,
                 variant_pos,
-                Some((Some(start.pos), Some(end.pos))),
+                Some((Some(start), Some(end))),
                 None,
                 None,
             )?;
@@ -132,13 +138,13 @@ pub fn run(
 
     if ht.len() > vcf.ncoords() {
         tracing::warn!(
-            "Haplotype has more variants than the VCF {} vs {}",
+            "Haplotype has more variants than the VCF: {} vs {}",
             ht.len(),
             vcf.ncoords()
         );
     } else if ht.len() < vcf.ncoords() {
         tracing::warn!(
-            "Haplotype has less variants than the VCF {} vs {}",
+            "Haplotype has less variants than the VCF: {} vs {}",
             ht.len(),
             vcf.ncoords()
         );
@@ -191,38 +197,35 @@ pub fn run(
 
 pub fn transform_gt_matrix_to_match_matrix(
     mut vcf: PhasedMatrix,
-    ht: &[HapVariant],
+    ht: &HashMap<Coord, HapVariant>,
     variant_pos: u64,
 ) -> Result<PhasedMatrix> {
     let mut match_matrix: Vec<u8> = vec![];
     let mut coords_na = 0;
     let mut coords = BTreeSet::new();
-    vcf.matrix_axis_iter(1)
-        .enumerate()
-        .for_each(|(var_idx, col)| {
-            if let Some(hv) = ht.iter().find(|hv| *hv == vcf.get_coord(var_idx)) {
-                coords.insert(vcf.get_coord(var_idx).clone());
-                match_matrix.extend(col.iter().map(|gt| match hv.gt == *gt {
-                    true => 1,
-                    false => 0,
-                }));
-            } else {
-                coords_na += 1;
-                tracing::trace!(
-                    "Coord not found in the haplotype: {}",
-                    &vcf.get_coord(var_idx)
-                );
-            }
-        });
+
+    vcf.coords().iter().for_each(|coord| {
+        if let Some(hv) = ht.get(coord) {
+            coords.insert(coord.clone());
+            let col = vcf.matrix_column(coord);
+            match_matrix.extend(col.iter().map(|gt| match hv.gt == *gt {
+                true => 1,
+                false => 0,
+            }));
+        } else {
+            coords_na += 1;
+            tracing::trace!("Coord not found in the haplotype: {}", coord);
+        }
+    });
 
     if coords_na != 0 {
         tracing::warn!(
-            "In the haplotype range {coords_na} markers were present in the VCF, but not in the haplotype. These were disregarded."
+            "In the haplotype range, {coords_na} markers were present in the VCF, but not in the haplotype. These were disregarded."
         );
     }
 
     tracing::info!(
-        "The haplotype and the VCF had {} markers in common.",
+        "The haplotype and the VCF shared {} variants in common.",
         coords.len()
     );
 
