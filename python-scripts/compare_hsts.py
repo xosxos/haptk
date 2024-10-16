@@ -32,5 +32,5 @@ if args.ids:
         samples_to_tag.append(ids)
 
 # Render the tree
-match_hst.match_tree(hst, args.output, to_tag=samples_to_tag, min_size=args.min_size, hard_cut=args.hard_cut)
+match_hst.match_tree(hst, args.output, to_tag=samples_to_tag, min_size=args.min_size, hard_cut=args.hard_cut, circle=True)
 

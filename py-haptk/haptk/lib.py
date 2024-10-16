@@ -183,7 +183,7 @@ class HST:
 
     def match_tree(self, other_hst, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=match_tree_style(), circle=False): 
         other_t = create_ete3_tree(other_hst, min_size, hard_cut, min_start, max_stop, right_up=False)
-        t = draw_match_tree(self.G, other_t, output, self.samples, to_tag, colors, proportions, circle)
+        t = draw_match_tree(self, other_t, output, self.samples, to_tag, colors, proportions, circle)
 
         if circle:
             tree_style=circle_match_tree_style()

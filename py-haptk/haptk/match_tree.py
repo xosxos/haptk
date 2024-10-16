@@ -40,7 +40,12 @@ def draw_match_tree(hst, t, output, samples, samples_to_tag, colors, proportions
         
             indexes = hst.get_node_indexes(n.name)
             if not n.is_leaf():
-                label = len(indexes)
+
+                if n.name == '0':
+                    label = "ROOT"
+                else:
+                    label = len(indexes)
+
                 F = TextFace(label, tight_text=True, penwidth=30, fsize=8)
                 F.rotation = 270
                 n.add_face(F, column=0)
@@ -60,11 +65,11 @@ def draw_match_tree(hst, t, output, samples, samples_to_tag, colors, proportions
         for n in t.traverse():
             n.set_style(style)
 
-            node_data = hst.get_node_data(int(n.name))
+            indexes = hst.get_node_indexes(n.name)
             if n.name == '0':
                 label = "ROOT"
             else:
-                label = len(node_data["indexes"])
+                label = len(indexes)
 
                 if proportions:
                     prc = label / len(samples)
@@ -77,13 +82,13 @@ def draw_match_tree(hst, t, output, samples, samples_to_tag, colors, proportions
             if n.is_leaf():
 
                 if samples_to_tag == []:
-                    n.set_style(utils.return_node_style("#000", 1))
+                    n.set_style(utils.return_node_style("#000", 0))
                     n.img_style["bgcolor"] = "#FFF"
 
                 for (color_i, sample_list) in enumerate(samples_to_tag):
-                    results = [i for i in node_data["indexes"] if samples[i] in sample_list]
+                    results = [i for i in indexes if hst.samples[i] in sample_list]
                     if results:
-                        n.set_style(utils.return_node_style(colors[color_i], 5))
+                        n.set_style(utils.return_node_style(colors[color_i], 0))
                         n.img_style["bgcolor"] = colors[color_i]
 
 
