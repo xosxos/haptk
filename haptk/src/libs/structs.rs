@@ -315,37 +315,8 @@ impl PhasedMatrix {
         matrix.index_axis(Axis(1), *index)
     }
 
-    pub fn matrix_axis_iter(&self, axis: usize) -> AxisIter<'_, u8, ndarray::Dim<[usize; 1]>> {
-        let (_, matrix) = self.matrix.iter().nth(0).unwrap();
-        matrix.axis_iter(Axis(axis))
-    }
-
-    pub fn slice_cols<R: RangeBounds<usize>>(&self, col_range: R) -> ArrayView2<u8> {
-        let (col_first_idx, col_last_idx) = match (col_range.start_bound(), col_range.end_bound()) {
-            (Bound::Included(first), Bound::Excluded(last)) => (*first, last.saturating_sub(1)),
-            (Bound::Included(first), Bound::Included(last)) => (*first, *last),
-            _ => panic!("Range problem"),
-        };
-
-        let (_, matrix) = self.matrix.iter().nth(0).unwrap();
-
-        matrix.slice(s![.., col_first_idx..=col_last_idx])
-    }
-
-    pub fn matrix(&self) -> &Array2<u8> {
-        let (_, matrix) = self.matrix.iter().nth(0).unwrap();
-        matrix
-    }
-
     pub fn insert_matrix(&mut self, start_coord: Coord, matrix: Array2<u8>) {
         self.matrix.insert(Arc::new(start_coord), matrix);
-    }
-
-    pub fn set_matrix(&mut self, start_coord: Coord, matrix: Array2<u8>) {
-        let mut map = BTreeMap::new();
-
-        map.insert(Arc::new(start_coord), matrix);
-        self.matrix = map;
     }
 
     // Sort inside select_rows to avoid bugs down the line
@@ -375,10 +346,6 @@ impl PhasedMatrix {
 
     pub fn samples(&self) -> &Vec<String> {
         &self.samples
-    }
-
-    pub fn has_samples(&self) -> bool {
-        !self.samples.is_empty()
     }
 
     pub fn variant_idx(&self) -> usize {
@@ -433,21 +400,7 @@ impl PhasedMatrix {
     }
 
     pub fn get_contig(&self) -> &String {
-        &self.coords.get(&self.start_coord).unwrap().contig
-    }
-
-    pub fn get_first_idx_on_right_by_pos(&self, pos: u64) -> usize {
-        match self.coords.iter().position(|c| c.pos >= pos) {
-            Some(idx) => idx,
-            None => self.coords.len() - 1,
-        }
-    }
-
-    pub fn get_first_idx_on_left_by_pos(&self, pos: u64) -> usize {
-        match self.coords.iter().position(|c| c.pos > pos) {
-            Some(idx) => idx.saturating_sub(1),
-            None => 0,
-        }
+        &self.coords.first().unwrap().contig
     }
 
     pub fn get_nearest_coord_by_pos(&self, pos: u64) -> &Coord {
@@ -751,63 +704,35 @@ impl PhasedMatrix {
             .collect()
     }
 
-    pub fn select_columns_by_range_idx<R: RangeBounds<usize>>(&mut self, range: R) {
-        let (first_idx, last_idx) = match (range.start_bound(), range.end_bound()) {
+    // NOTE: Legacy compare-to-haplotype methods, will be deprecated when index based access to matrices is completely removed
+    pub fn matrix_axis_iter(&self, axis: usize) -> AxisIter<'_, u8, ndarray::Dim<[usize; 1]>> {
+        let (_, matrix) = self.matrix.iter().nth(0).unwrap();
+        matrix.axis_iter(Axis(axis))
+    }
+
+    pub fn set_matrix(&mut self, start_coord: Coord, matrix: Array2<u8>) {
+        let mut map = BTreeMap::new();
+
+        map.insert(Arc::new(start_coord), matrix);
+        self.matrix = map;
+    }
+
+    pub fn slice_cols<R: RangeBounds<usize>>(&self, col_range: R) -> ArrayView2<u8> {
+        let (col_first_idx, col_last_idx) = match (col_range.start_bound(), col_range.end_bound()) {
             (Bound::Included(first), Bound::Excluded(last)) => (*first, last.saturating_sub(1)),
             (Bound::Included(first), Bound::Included(last)) => (*first, *last),
             _ => panic!("Range problem"),
         };
 
-        let first = self.get_coord(first_idx).clone();
+        let (_, matrix) = self.matrix.iter().nth(0).unwrap();
 
-        let last_idx = last_idx.min(self.ncoords() - 1);
-        let last = self.get_coord(last_idx).clone();
-
-        self.coords = self.coords.range(first..=last).cloned().collect();
-
-        let offset_coord_start = self.coords.first().unwrap().clone();
-
-        self.set_matrix(
-            offset_coord_start,
-            self.slice_cols(first_idx..last_idx).to_owned(),
-        );
-
-        let new_var_idx = self.variant_idx - first_idx;
-        self.set_variant_idx(new_var_idx);
+        matrix.slice(s![.., col_first_idx..=col_last_idx])
     }
 
-    // pub fn select_columns_by_range<R: RangeBounds<Coord>>(&mut self, range: R) {
-    //     let (first, last) = match (range.start_bound(), range.end_bound()) {
-    //         (Bound::Included(first), Bound::Excluded(last)) => {
-    //             let last_idx = self.get_coord_idx(last);
-    //             (
-    //                 first.clone(),
-    //                 self.get_coord(last_idx.saturating_sub(1)).clone(),
-    //             )
-    //         }
-    //         (Bound::Included(first), Bound::Included(last)) => (first.clone(), last.clone()),
-    //         _ => panic!("Range problem"),
-    //     };
-
-    //     let first_idx = self.get_coord_idx(&first);
-    //     let last_idx = self.get_coord_idx(&last);
-
-    //     let last_idx = last_idx.min(self.ncoords() - 1);
-
-    //     self.coords = self.coords.range(first..=last).cloned().collect();
-
-    //     let offset_coord_start = self.coords.first().unwrap().clone();
-    //     let offset_coord_end = self.coords.last().unwrap().clone();
-
-    //     self.set_matrix(
-    //         offset_coord_start,
-    //         offset_coord_end,
-    //         self.slice_cols(first_idx..last_idx).to_owned(),
-    //     );
-
-    //     let coord_idx = self.get_coord_idx(self.start_coord());
-    //     self.start_coord = self.get_coord(coord_idx - first_idx).clone();
-    // }
+    pub fn matrix(&self) -> &Array2<u8> {
+        let (_, matrix) = self.matrix.iter().nth(0).unwrap();
+        matrix
+    }
 }
 
 pub trait CoordDataSlot {

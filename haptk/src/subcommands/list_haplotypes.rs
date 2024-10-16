@@ -9,7 +9,7 @@ use indexmap::{IndexMap, IndexSet};
 use crate::{
     args::{Selection, StandardArgs},
     io::{open_csv_writer, push_to_output},
-    read_vcf::read_vcf_to_matrix,
+    read_vcf::{read_vcf_to_matrix, read_vcf_to_matrix_by_indexes},
     structs::{HapVariant, PhasedMatrix},
     subcommands::check_for_haplotype::identical_haplotype_count,
     utils::{parse_coords, parse_snp_coord, precision_f64},
@@ -33,18 +33,33 @@ pub fn run(args: StandardArgs, selection_variant: Option<String>, nucleotides: b
 
     let (contig, start, stop) = parse_coords(&args.coords)?;
 
-    let mut vcf = match (start, stop) {
-        (Some(_), Some(_)) => {
-            read_vcf_to_matrix(&args, contig, pos, Some((start, stop)), None, None)?
-        }
-        _ => read_vcf_to_matrix(&args, contig, pos, None, None, None)?,
+    let range = match (start, stop) {
+        (Some(_), Some(_)) => Some((start, stop)),
+        _ => None,
     };
 
-    if args.selection == Selection::OnlyLongest {
-        vcf.select_only_longest_no_shard()?;
-    }
+    let vcf = if args.selection == Selection::OnlyLongest {
+        let mut vcf = read_vcf_to_matrix(&args, contig, pos, None, None, Some(5_000_000))?;
 
-    ensure!(vcf.has_samples(), "No samples found in VCF");
+        let only_longest_lookups = vcf.get_only_longest_lookups()?;
+
+        read_vcf_to_matrix_by_indexes(
+            &args.file,
+            pos,
+            contig,
+            range,
+            vcf.samples().clone(),
+            vcf.metadata.indexes,
+            only_longest_lookups,
+            None,
+            args.no_alt,
+            &Selection::Haploid,
+        )?
+    } else {
+        read_vcf_to_matrix(&args, contig, pos, range, None, None)?
+    };
+
+    ensure!(!vcf.samples().is_empty(), "No samples found in VCF");
 
     let unique_haplotypes_map = get_unique_haplotypes_map(&vcf)?;
 

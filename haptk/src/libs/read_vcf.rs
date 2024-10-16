@@ -429,8 +429,9 @@ fn construct_phased_matrix(
         metadata,
     );
 
-    vcf.variant_idx = vcf.get_first_idx_on_right_by_pos(variant_pos);
+    // vcf.variant_idx = vcf.get_first_idx_on_right_by_pos(variant_pos);
     vcf.start_coord = vcf.get_nearest_coord_by_pos(variant_pos).clone();
+    vcf.variant_idx = vcf.get_coord_idx(&vcf.start_coord);
 
     tracing::info!(
         "Constructed a genotype matrix from {} records. Starting variant position: {}.",
