@@ -127,6 +127,7 @@ pub enum SubCommand {
 
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
+
         /// Recombination rate file
         #[arg(short = 'r', long)]
         recombination_rates: PathBuf,
@@ -139,20 +140,13 @@ pub enum SubCommand {
         #[arg(long)]
         no_csv: bool,
 
-        /// Draw plot
-        #[arg(long)]
-        plot: bool,
-
         /// Number of threads
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
 
-        #[command(flatten)]
-        graph_args: GraphArgs,
-
-        /// Only supports hg38! Mark the centromere to the graph
-        #[arg(long)]
-        mark_centromere: bool,
+        /// The percentage of haplotypes that can overlap centromeres before tagging the position "centromeric"
+        #[arg(long, default_value_t = 0.1)]
+        centromere_cut_off: f32,
     },
 
     /// Check if samples share a given haplotype
@@ -486,6 +480,10 @@ pub enum SubCommand {
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
 
+        /// The percentage of haplotypes that can overlap centromeres before tagging the position "centromeric"
+        #[arg(long, default_value_t = 0.1)]
+        centromere_cut_off: f32,
+
         /// Recombination rate file
         #[arg(short = 'r', long)]
         recombination_rates: PathBuf,
@@ -658,8 +656,9 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
         // Genome-wide methods
         #[cfg(feature = "experimental")]
-        SubCommand::MrcaScan { args, recombination_rates, step_size, no_csv, .. }
-        => mrca_scan::run(args, recombination_rates, step_size, no_csv)?,
+        SubCommand::MrcaScan { args, recombination_rates, step_size, no_csv, centromere_cut_off, .. }
+        => mrca_scan::run(args, recombination_rates, step_size, no_csv,centromere_cut_off)?,
+
 
         #[cfg(feature = "experimental")]
         SubCommand::BhstScan { args, step_size, min_sample_size, .. } => hst_scan::run(args, step_size, min_sample_size)?,
@@ -683,8 +682,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
             )?,
 
         #[cfg(feature = "experimental")]
-        SubCommand::ScanSumHst { args, recombination_rates, samples, .. }
-        => scan_sum_hsts::run(args, recombination_rates, samples)?,
+        SubCommand::ScanSumHst { args, recombination_rates, samples, centromere_cut_off, .. }
+        => scan_sum_hsts::run(args, recombination_rates, samples, centromere_cut_off)?,
 
         #[cfg(feature = "experimental")]
         SubCommand::ScanSegregate {

@@ -15,7 +15,13 @@ use super::bhst::Node;
 
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)]
-pub fn run(args: StandardArgs, rec_rates: PathBuf, step_size: usize, no_csv: bool) -> Result<()> {
+pub fn run(
+    args: StandardArgs,
+    rec_rates: PathBuf,
+    step_size: usize,
+    no_csv: bool,
+    centromere_cut_off: f32,
+) -> Result<()> {
     match args.selection {
         Selection::OnlyAlts | Selection::OnlyRefs | Selection::Unphased => {
             return Err(eyre!(
@@ -32,7 +38,7 @@ pub fn run(args: StandardArgs, rec_rates: PathBuf, step_size: usize, no_csv: boo
 
     let rates = read_recombination_file(rec_rates)?;
 
-    let ages = find_ages(&vcf, &args, rates, step_size)?;
+    let ages = find_ages(&vcf, &args, rates, step_size, centromere_cut_off)?;
 
     if !no_csv {
         write_ages_to_csv(&args, &ages, args.output.clone(), &vcf)?;
@@ -46,6 +52,7 @@ fn find_ages(
     args: &StandardArgs,
     rates: BTreeMap<u64, f32>,
     step_size: usize,
+    centromere_cut_off: f32,
 ) -> Result<Vec<(Coord, f64, bool)>> {
     match args.selection == Selection::OnlyLongest {
         true => Vec::from_iter(vcf.coords().clone())
@@ -55,7 +62,7 @@ fn find_ages(
             .map(|(_, coord)| {
                 let only_longest_lengths = vcf.only_longest_lengths_no_shard(coord).unwrap();
 
-                let check = check_for_centromeres(vcf, &only_longest_lengths);
+                let check = check_for_centromeres(vcf, &only_longest_lengths, centromere_cut_off);
 
                 let ((i_tau_hat, _, _), _) =
                     mrca_gamma_method(only_longest_lengths, coord.pos, &rates)?;
@@ -68,7 +75,7 @@ fn find_ages(
             .filter(|(n, _)| *n % step_size == 0)
             .map(|(_, coord)| {
                 let shared_lengths = vcf.get_lengths_from_uhst_no_mut(coord).unwrap();
-                let check = check_for_centromeres(vcf, &shared_lengths);
+                let check = check_for_centromeres(vcf, &shared_lengths, centromere_cut_off);
                 let ((i_tau_hat, _, _), _) = mrca_gamma_method(shared_lengths, coord.pos, &rates)?;
                 Ok((coord.clone(), i_tau_hat, check))
             })
@@ -76,7 +83,11 @@ fn find_ages(
     }
 }
 
-fn check_for_centromeres(vcf: &PhasedMatrix, lengths: &Vec<(Node, Node)>) -> bool {
+fn check_for_centromeres(
+    vcf: &PhasedMatrix,
+    lengths: &Vec<(Node, Node)>,
+    centromere_cut_off: f32,
+) -> bool {
     let (c_start, c_stop) = centromeres_hg38(vcf.get_contig());
 
     let mut overlapping_centromere = 0;
@@ -94,8 +105,8 @@ fn check_for_centromeres(vcf: &PhasedMatrix, lengths: &Vec<(Node, Node)>) -> boo
         }
     }
 
-    // If over 20% of lengths overlap a centromere, flag as true
-    overlapping_centromere as f32 / lengths.len() as f32 > 0.1
+    // If over x% of lengths overlap a centromere, flag as true
+    overlapping_centromere as f32 / lengths.len() as f32 > centromere_cut_off
 }
 
 fn write_ages_to_csv(
