@@ -5,6 +5,7 @@ use ndarray::parallel::prelude::*;
 use petgraph::Graph;
 use petgraph::{prelude::NodeIndex, Direction};
 
+use crate::io::get_htslib_contig_len;
 use crate::read_vcf::read_vcf_to_matrix_by_indexes;
 use crate::{
     args::{Selection, StandardArgs},
@@ -44,10 +45,16 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
             )?
         }
         Selection::OnlyLongest => {
-            let mut vcf =
-                read_vcf_to_matrix(&args, contig, variant_pos, None, None, Some(5_000_000))?;
-
-            let only_longest_lookups = vcf.get_only_longest_lookups()?;
+            let (only_longest_lookups, vcf) = if get_htslib_contig_len(&args.file, contig).is_ok() {
+                let mut vcf =
+                    read_vcf_to_matrix(&args, contig, variant_pos, None, None, Some(5_000_000))?;
+                let lookups = vcf.get_only_longest_lookups()?;
+                (lookups, vcf)
+            } else {
+                let vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, None)?;
+                let lookups = vcf.get_only_longest_lookups_no_shard()?;
+                (lookups, vcf)
+            };
 
             read_vcf_to_matrix_by_indexes(
                 &args.file,

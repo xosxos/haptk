@@ -15,7 +15,10 @@ use ndarray::{Array2, ShapeBuilder};
 use crate::{
     args::{GraphArgs, Selection, SortOption, StandardArgs},
     graphs::MatrixGraph,
-    io::{open_csv_writer, push_to_output, read_haplotype_file, read_sample_ids},
+    io::{
+        get_htslib_contig_len, open_csv_writer, push_to_output, read_haplotype_file,
+        read_sample_ids,
+    },
     read_vcf::{read_vcf_to_matrix, read_vcf_to_matrix_by_indexes},
     structs::{Coord, HapVariant, PhasedMatrix},
     utils::parse_snp_coord,
@@ -102,10 +105,16 @@ pub fn run(
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
         }
         Selection::OnlyLongest => {
-            let mut vcf =
-                read_vcf_to_matrix(&args, contig, variant_pos, None, None, Some(5_000_000))?;
-
-            let only_longest_lookups = vcf.get_only_longest_lookups()?;
+            let (only_longest_lookups, vcf) = if get_htslib_contig_len(&args.file, contig).is_ok() {
+                let mut vcf =
+                    read_vcf_to_matrix(&args, contig, variant_pos, None, None, Some(5_000_000))?;
+                let lookups = vcf.get_only_longest_lookups()?;
+                (lookups, vcf)
+            } else {
+                let vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, None)?;
+                let lookups = vcf.get_only_longest_lookups_no_shard()?;
+                (lookups, vcf)
+            };
 
             let vcf = read_vcf_to_matrix_by_indexes(
                 &args.file,

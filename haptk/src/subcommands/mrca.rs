@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use color_eyre::eyre::Context;
 use color_eyre::{eyre::eyre, Result};
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Gamma;
@@ -119,15 +118,25 @@ pub fn independent(
     // Compare it with the pure MLE i.e. the mean of the gamma distribution = α / λ
     let i_tau_hat = (b_c * 2.0 * n) / sum;
 
-    let gamma = Gamma::new(2.0 * n, 2.0 * n * b_c)
-        .wrap_err(eyre!("Not enough samples to estimate MRCA"))?;
-    let g_l = gamma.inverse_cdf((1.0 - cc) / 2.0);
-    let g_u = gamma.inverse_cdf(cc + (1.0 - cc) / 2.0);
+    match Gamma::new(2.0 * n, 2.0 * n * b_c) {
+        Ok(gamma) => {
+            let g_l = gamma.inverse_cdf((1.0 - cc) / 2.0);
+            let g_u = gamma.inverse_cdf(cc + (1.0 - cc) / 2.0);
 
-    let i_tau_hat_l = i_tau_hat * g_l;
-    let i_tau_hat_u = i_tau_hat * g_u;
+            let i_tau_hat_l = i_tau_hat * g_l;
+            let i_tau_hat_u = i_tau_hat * g_u;
 
-    Ok((i_tau_hat, i_tau_hat_l, i_tau_hat_u))
+            Ok((i_tau_hat, i_tau_hat_l, i_tau_hat_u))
+        }
+        Err(e) => {
+            tracing::error!(
+                "Could not estimate the mrca for {} samples: {e:?}",
+                l_lengths.len()
+            );
+            tracing::error!("Returning all zeros for the MRCA estimate");
+            Ok((0.0, 0.0, 0.0))
+        }
+    }
 }
 
 // Correlated genealogy
@@ -181,15 +190,25 @@ pub fn correlated(
         n_star = n / (1.0 + (n - 1.0) * rho_hat.abs());
     };
 
-    let gamma = Gamma::new(2.0 * n_star, 2.0 * n_star * b_c)
-        .wrap_err(eyre!("Not enough samples to estimate MRCA"))?;
-    let c_l = gamma.inverse_cdf((1.0 - cc) / 2.0);
-    let c_u = gamma.inverse_cdf(cc + (1.0 - cc) / 2.0);
+    match Gamma::new(2.0 * n_star, 2.0 * n_star * b_c) {
+        Ok(gamma) => {
+            let c_l = gamma.inverse_cdf((1.0 - cc) / 2.0);
+            let c_u = gamma.inverse_cdf(cc + (1.0 - cc) / 2.0);
 
-    let c_tau_hat_l = c_tau_hat * c_l;
-    let c_tau_hat_u = c_tau_hat * c_u;
+            let c_tau_hat_l = c_tau_hat * c_l;
+            let c_tau_hat_u = c_tau_hat * c_u;
 
-    Ok((c_tau_hat, c_tau_hat_l, c_tau_hat_u))
+            Ok((c_tau_hat, c_tau_hat_l, c_tau_hat_u))
+        }
+        Err(e) => {
+            tracing::error!(
+                "Could not estimate the mrca for {} samples: {e:?}",
+                l_lengths.len()
+            );
+            tracing::error!("Returning all zeros for the MRCA estimate");
+            Ok((0.0, 0.0, 0.0))
+        }
+    }
 }
 
 ///

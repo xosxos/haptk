@@ -495,6 +495,25 @@ impl PhasedMatrix {
         Ok(lookups)
     }
 
+    pub fn get_only_longest_lookups_no_shard(&self) -> Result<Vec<[bool; 2]>> {
+        let indexes = self.only_longest_indexes_no_shard(self.start_coord())?;
+
+        let mut lookups = vec![];
+
+        for idx in indexes {
+            let idxs = self.get_idxs_for_samples(&[self.get_sample_name(idx)])?;
+            let pos = idxs.iter().position(|i| idx == *i).unwrap();
+            let lookup = match pos {
+                0 => [true, false],
+                1 => [false, true],
+                _ => unreachable!("Only diploid genotypes are supported"),
+            };
+            lookups.push(lookup);
+        }
+
+        Ok(lookups)
+    }
+
     pub fn only_longest_indexes_no_shard(&self, start: &Coord) -> Result<Vec<usize>> {
         let lengths = self.get_lengths_from_uhst_no_mut(start)?;
 
@@ -555,7 +574,7 @@ impl PhasedMatrix {
             } else {
                 let stop = self.coords().range(..&rnode.stop).next_back().unwrap();
                 let start = self.coords().range(&lnode.start..).nth(1).unwrap();
-                stop.pos - start.pos + 1
+                stop.pos.saturating_sub(start.pos + 1)
             }
         };
 

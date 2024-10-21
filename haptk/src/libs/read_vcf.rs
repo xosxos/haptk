@@ -208,8 +208,6 @@ pub fn read_vcf_to_matrix_by_indexes(
     tracing::info!("Using {} samples from the VCF.", indexes.len());
 
     if let Some(window) = window {
-        ensure!(get_htslib_contig_len(file, contig).is_ok(), "Cannot construct HST using partial reads of the VCF if the contig length is not defined in the header");
-
         range = Some((
             Some(variant_pos.saturating_sub(window)),
             Some(variant_pos + window),
