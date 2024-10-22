@@ -310,8 +310,8 @@ pub enum SubCommand {
     },
 
     #[cfg(feature = "experimental")]
-    /// (experimental) bHST scan
-    BhstScan {
+    /// (experimental) HST scan
+    HstScan {
         #[command(flatten)]
         args: StandardArgs,
 
@@ -509,7 +509,7 @@ impl SubCommand {
 
             #[cfg(feature = "experimental")]
             SubCommand::MrcaScan { threads, .. }
-            | SubCommand::BhstScan { threads, .. }
+            | SubCommand::HstScan { threads, .. }
             | SubCommand::ScanSegregate { threads, .. }
             | SubCommand::ScanBranchMrca { threads, .. }
             | SubCommand::ScanQuantitative { threads, .. }
@@ -539,7 +539,7 @@ impl SubCommand {
 
             #[cfg(feature = "experimental")]
             SubCommand::MrcaScan { log_and_verbosity, .. }
-            | SubCommand::BhstScan { log_and_verbosity,  .. }
+            | SubCommand::HstScan { log_and_verbosity,  .. }
             | SubCommand::ScanSegregate { log_and_verbosity,  .. }
             | SubCommand::ScanBranchMrca { log_and_verbosity,  .. }
             | SubCommand::ScanQuantitative { log_and_verbosity,  .. }
@@ -591,7 +591,7 @@ impl SubCommand {
 
             #[cfg(feature = "experimental")]
             SubCommand::MrcaScan { args: StandardArgs { output, .. }, ..}
-            | SubCommand::BhstScan { args: StandardArgs { output, .. }, ..}
+            | SubCommand::HstScan { args: StandardArgs { output, .. }, ..}
             | SubCommand::ScanSegregate { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanBranchMrca { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanQuantitative { args: ConciseArgs { output, .. }, ..}
@@ -661,7 +661,7 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
 
         #[cfg(feature = "experimental")]
-        SubCommand::BhstScan { args, step_size, min_sample_size, .. } => hst_scan::run(args, step_size, min_sample_size)?,
+        SubCommand::HstScan { args, step_size, min_sample_size, .. } => hst_scan::run(args, step_size, min_sample_size)?,
 
         #[cfg(feature = "experimental")]
         SubCommand::ScanNodes { args, min_sample_size, max_sample_size, min_ht_len, max_ht_len,  .. }
