@@ -32,8 +32,13 @@ pub fn run(
     step_size: usize,
     min_sample_size: usize,
     no_alt: bool,
+    length_in_bp: bool,
 ) -> Result<()> {
-    let rec_rates = read_recombination_file(rec_rates)?;
+    let rec_rates = match length_in_bp {
+        true => None,
+        false => Some(read_recombination_file(rec_rates)?),
+    };
+    let rec_rates = rec_rates.as_ref();
 
     // There was suprisingly very little in common with these if elses, this still needs to be refactored
     if construct_hsts_ad_hoc {
@@ -90,6 +95,7 @@ pub fn run(
                     &rec_rates,
                     &Some(vcf.samples()),
                     centromere_cut_off,
+                    length_in_bp,
                 )
             })
             .collect();
@@ -143,6 +149,7 @@ pub fn run(
                     &rec_rates,
                     &samples.as_ref(),
                     centromere_cut_off,
+                    length_in_bp,
                 )
             })
             .collect();
@@ -186,46 +193,74 @@ fn overlaps_centromeres(lengths: Vec<(u64, u64)>, contig: &str, centromere_cut_o
     overlapping_centromere as f32 / lengths_len as f32 > centromere_cut_off
 }
 
+#[allow(clippy::too_many_arguments)]
 fn sum<'a>(
     vcf_samples: &[String],
     ploidy: usize,
     hst: &Hst,
     coord: &'a Coord,
-    rec_rates: &BTreeMap<u64, f32>,
+    rec_rates: &Option<&BTreeMap<u64, f32>>,
     samples: &Option<&Vec<String>>,
     centromere_cut_off: f32,
+    length_in_bp: bool,
 ) -> (&'a Coord, f32, bool) {
     let mut sum = 0.;
     let mut positions: Vec<(u64, u64)> = vec![];
 
-    for node_idx in hst.node_indices() {
-        let node = hst.node_weight(node_idx).unwrap();
-        if hst
-            .neighbors_directed(node_idx, Direction::Outgoing)
-            .count()
-            == 0
-        {
-            let (_, start_cm) = rec_rates
-                .range(..=node.start.pos)
-                .next_back()
-                .unwrap_or_else(|| rec_rates.range(node.start.pos..).nth(1).unwrap());
+    if length_in_bp {
+        for node_idx in hst.node_indices() {
+            let node = hst.node_weight(node_idx).unwrap();
+            if hst
+                .neighbors_directed(node_idx, Direction::Outgoing)
+                .count()
+                == 0
+            {
+                for idx in &node.indexes {
+                    if let Some(samples) = samples {
+                        let sample = &vcf_samples[idx / ploidy];
 
-            let (_, stop_cm) = rec_rates
-                .range(node.stop.pos..)
-                .next()
-                .unwrap_or_else(|| rec_rates.range(..node.stop.pos).next_back().unwrap());
+                        if samples.contains(sample) {
+                            sum += (node.stop.pos as f32 - node.start.pos as f32).max(0.);
+                            positions.push((node.start.pos, node.stop.pos));
+                        }
+                    } else {
+                        sum += (node.stop.pos as f32 - node.start.pos as f32).max(0.);
+                        positions.push((node.start.pos, node.stop.pos));
+                    }
+                }
+            }
+        }
+    } else {
+        let rec_rates = rec_rates.unwrap();
+        for node_idx in hst.node_indices() {
+            let node = hst.node_weight(node_idx).unwrap();
+            if hst
+                .neighbors_directed(node_idx, Direction::Outgoing)
+                .count()
+                == 0
+            {
+                let (_, start_cm) = rec_rates
+                    .range(..=node.start.pos)
+                    .next_back()
+                    .unwrap_or_else(|| rec_rates.range(node.start.pos..).nth(1).unwrap());
 
-            for idx in &node.indexes {
-                if let Some(samples) = samples {
-                    let sample = &vcf_samples[idx / ploidy];
+                let (_, stop_cm) = rec_rates
+                    .range(node.stop.pos..)
+                    .next()
+                    .unwrap_or_else(|| rec_rates.range(..node.stop.pos).next_back().unwrap());
 
-                    if samples.contains(sample) {
+                for idx in &node.indexes {
+                    if let Some(samples) = samples {
+                        let sample = &vcf_samples[idx / ploidy];
+
+                        if samples.contains(sample) {
+                            sum += (stop_cm - start_cm).max(0.);
+                            positions.push((node.start.pos, node.stop.pos));
+                        }
+                    } else {
                         sum += (stop_cm - start_cm).max(0.);
                         positions.push((node.start.pos, node.stop.pos));
                     }
-                } else {
-                    sum += (stop_cm - start_cm).max(0.);
-                    positions.push((node.start.pos, node.stop.pos));
                 }
             }
         }
