@@ -7,7 +7,7 @@ use color_eyre::{
     Result,
 };
 
-use crate::args::{GraphArgs, Selection, SortOption, StandardArgs};
+use crate::args::{GraphArgs, SortOption, StandardArgs};
 use crate::subcommands::{
     bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst,
     fasta_to_haplotype, haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
@@ -16,7 +16,7 @@ use crate::subcommands::{
 // Genome-wide methods
 #[cfg(feature = "experimental")]
 use crate::{
-    args::ConciseArgs,
+    args::{ConciseArgs, Selection},
     subcommands::{
         mrca_scan,
         scan::{
