@@ -8,7 +8,7 @@ use indexmap::{IndexMap, IndexSet};
 
 use crate::{
     args::{Selection, StandardArgs},
-    io::{open_csv_writer, push_to_output},
+    io::{get_htslib_contig_len, open_csv_writer, push_to_output},
     read_vcf::{read_vcf_to_matrix, read_vcf_to_matrix_by_indexes},
     structs::{HapVariant, PhasedMatrix},
     subcommands::check_for_haplotype::identical_haplotype_count,
@@ -39,9 +39,16 @@ pub fn run(args: StandardArgs, selection_variant: Option<String>, nucleotides: b
     };
 
     let vcf = if args.selection == Selection::OnlyLongest {
-        let mut vcf = read_vcf_to_matrix(&args, contig, pos, None, None, Some(5_000_000))?;
-
-        let only_longest_lookups = vcf.get_only_longest_lookups()?;
+        let (only_longest_lookups, vcf) = if get_htslib_contig_len(&args.file, contig).is_ok() {
+            let mut vcf =
+                read_vcf_to_matrix(&args, contig, pos, None, None, Some(5_000_000), false)?;
+            let lookups = vcf.get_only_longest_lookups()?;
+            (lookups, vcf)
+        } else {
+            let vcf = read_vcf_to_matrix(&args, contig, pos, None, None, None, false)?;
+            let lookups = vcf.get_only_longest_lookups_no_shard()?;
+            (lookups, vcf)
+        };
 
         read_vcf_to_matrix_by_indexes(
             &args.file,
@@ -54,9 +61,10 @@ pub fn run(args: StandardArgs, selection_variant: Option<String>, nucleotides: b
             None,
             args.no_alt,
             &Selection::Haploid,
+            false,
         )?
     } else {
-        read_vcf_to_matrix(&args, contig, pos, range, None, None)?
+        read_vcf_to_matrix(&args, contig, pos, range, None, None, false)?
     };
 
     ensure!(!vcf.samples().is_empty(), "No samples found in VCF");

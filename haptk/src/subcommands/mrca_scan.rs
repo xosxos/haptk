@@ -34,7 +34,7 @@ pub fn run(
 
     let (contig, start, stop) = parse_coords(&args.coords)?;
 
-    let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None)?;
+    let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
 
     let rates = read_recombination_file(rec_rates)?;
 

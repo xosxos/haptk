@@ -87,6 +87,7 @@ pub fn run(
                 Some((Some(start), Some(end))),
                 None,
                 None,
+                false,
             )?;
             let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?;
             only_longest = Some(vcf.only_longest_indexes_no_shard(vcf.start_coord())?);
@@ -100,18 +101,26 @@ pub fn run(
                 Some((Some(start), Some(end))),
                 None,
                 None,
+                false,
             )?;
 
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
         }
         Selection::OnlyLongest => {
             let (only_longest_lookups, vcf) = if get_htslib_contig_len(&args.file, contig).is_ok() {
-                let mut vcf =
-                    read_vcf_to_matrix(&args, contig, variant_pos, None, None, Some(5_000_000))?;
+                let mut vcf = read_vcf_to_matrix(
+                    &args,
+                    contig,
+                    variant_pos,
+                    None,
+                    None,
+                    Some(5_000_000),
+                    false,
+                )?;
                 let lookups = vcf.get_only_longest_lookups()?;
                 (lookups, vcf)
             } else {
-                let vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, None)?;
+                let vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, None, false)?;
                 let lookups = vcf.get_only_longest_lookups_no_shard()?;
                 (lookups, vcf)
             };
@@ -127,6 +136,7 @@ pub fn run(
                 None,
                 args.no_alt,
                 &Selection::Haploid,
+                false,
             )?;
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
         }
@@ -138,6 +148,7 @@ pub fn run(
                 Some((Some(start), Some(end))),
                 None,
                 None,
+                false,
             )?;
 
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?

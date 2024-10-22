@@ -39,6 +39,7 @@ mod test_compare_to_haplotype {
             Some((Some(start.pos), Some(end.pos))),
             None,
             None,
+            false,
         )
         .unwrap();
 

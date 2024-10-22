@@ -50,7 +50,7 @@ pub fn read_vcf_with_selections(args: &StandardArgs, window: Option<u64>) -> Res
         indexes.len() > 1,
         "Cannot build a tree with less than 2 samples."
     );
-    let mut vcf = read_vcf_to_matrix(args, contig, pos, None, None, window)?;
+    let mut vcf = read_vcf_to_matrix(args, contig, pos, None, None, window, false)?;
 
     if args.selection == Selection::OnlyLongest {
         vcf.select_only_longest()?
@@ -303,10 +303,12 @@ pub fn find_contradictory_gt_bhst(
             Ok(Some(nodes))
         }
         (Some((left, left_vec)), None) => {
-            tracing::warn!(
-                "Genotyping data ran out on the right with samples {:?}",
-                vcf.get_sample_names(&node.indexes)
-            );
+            if !vcf.is_genome_wide() {
+                tracing::warn!(
+                    "Genotyping data ran out on the right with samples {:?}",
+                    vcf.get_sample_names(&node.indexes)
+                );
+            }
 
             for i in node.indexes.iter() {
                 match left_vec[*i] == 1 {
@@ -319,10 +321,12 @@ pub fn find_contradictory_gt_bhst(
             Ok(Some(nodes))
         }
         (None, Some((right, right_vec))) => {
-            tracing::warn!(
-                "Genotyping data ran out on the left with samples {:?}",
-                vcf.get_sample_names(&node.indexes)
-            );
+            if !vcf.is_genome_wide() {
+                tracing::warn!(
+                    "Genotyping data ran out on the left with samples {:?}",
+                    vcf.get_sample_names(&node.indexes)
+                );
+            }
 
             for i in node.indexes.iter() {
                 match right_vec[*i] == 1 {

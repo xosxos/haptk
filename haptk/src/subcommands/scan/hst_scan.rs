@@ -37,7 +37,7 @@ pub fn run(args: StandardArgs, step_size: usize, min_sample_size: usize) -> Resu
 
     let (contig, start, stop) = parse_coords(&args.coords)?;
 
-    let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None)?;
+    let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
 
     let hsts = if args.selection == Selection::OnlyLongest {
         Vec::from_iter(vcf.coords().clone())

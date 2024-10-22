@@ -167,6 +167,7 @@ pub fn read_vcf_to_matrix(
     range: Option<(Option<u64>, Option<u64>)>,
     wanted_samples: Option<Vec<String>>,
     window: Option<u64>,
+    is_genome_wide: bool,
 ) -> Result<PhasedMatrix> {
     let (indexes, samples) = get_sample_names(args, contig, wanted_samples)?;
 
@@ -187,6 +188,7 @@ pub fn read_vcf_to_matrix(
         window,
         args.no_alt,
         &args.selection,
+        is_genome_wide,
     )
 }
 
@@ -202,6 +204,7 @@ pub fn read_vcf_to_matrix_by_indexes(
     window: Option<u64>,
     no_alt: bool,
     selection: &Selection,
+    is_genome_wide: bool,
 ) -> Result<PhasedMatrix> {
     tracing::info!("Input VCF: {:?}", file);
     tracing::info!("Reading phased genotypes from {contig} with target position at {variant_pos}.");
@@ -239,6 +242,7 @@ pub fn read_vcf_to_matrix_by_indexes(
         contig_len: get_htslib_contig_len(file, contig).ok(),
         sharded: window.is_some(),
         remove_no_alt: no_alt,
+        is_genome_wide,
     };
 
     construct_phased_matrix(samples, markers, coords, selection, variant_pos, metadata)

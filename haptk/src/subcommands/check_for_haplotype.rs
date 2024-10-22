@@ -35,6 +35,7 @@ pub fn run(args: StandardArgs, haplotype_path: PathBuf) -> Result<()> {
         Some((Some(start.pos), Some(end.pos))),
         None,
         None,
+        false,
     )?;
     match args.selection {
         Selection::OnlyLongest => vcf.select_only_longest_no_shard()?,

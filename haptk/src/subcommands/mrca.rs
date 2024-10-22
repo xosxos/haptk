@@ -29,7 +29,7 @@ pub fn run(args: StandardArgs, rec_rates: PathBuf, window: Option<u64>) -> Resul
 
     let rates = read_recombination_file(rec_rates)?;
 
-    let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, window)?;
+    let mut vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, window, false)?;
 
     if args.selection == Selection::OnlyLongest {
         vcf.select_only_longest()?;

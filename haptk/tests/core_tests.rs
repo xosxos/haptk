@@ -280,8 +280,16 @@ mod core {
             file: PathBuf::from(TEST_VCF),
             ..Default::default()
         };
-        let vcf2 =
-            read_vcf_to_matrix(&args, "chr9", 16, Some((Some(1), Some(32))), None, None).unwrap();
+        let vcf2 = read_vcf_to_matrix(
+            &args,
+            "chr9",
+            16,
+            Some((Some(1), Some(32))),
+            None,
+            None,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(
             &vcf1
@@ -302,7 +310,7 @@ mod core {
             ..Default::default()
         };
 
-        let res = read_vcf_to_matrix(&args, "chr9", 32, None, None, None);
+        let res = read_vcf_to_matrix(&args, "chr9", 32, None, None, None, false);
         assert!(res.is_err());
         Ok(())
     }

@@ -299,12 +299,14 @@ pub fn find_contradictory_gt_uhst(
         return Ok(Some((n1, n2)));
     }
 
-    tracing::warn!(
-        "Genotyping data ran out on {} side for samples {:?} starting from position {}",
-        direction,
-        vcf.get_sample_names(&node.indexes),
-        node.start.pos
-    );
+    if !vcf.is_genome_wide() {
+        tracing::warn!(
+            "Genotyping data ran out on {} side for samples {:?} starting from position {}",
+            direction,
+            vcf.get_sample_names(&node.indexes),
+            node.start.pos
+        );
+    }
 
     Ok(None)
 }

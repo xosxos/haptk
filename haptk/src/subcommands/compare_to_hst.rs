@@ -42,16 +42,24 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
                 Some((Some(start.pos), Some(end.pos))),
                 None,
                 None,
+                false,
             )?
         }
         Selection::OnlyLongest => {
             let (only_longest_lookups, vcf) = if get_htslib_contig_len(&args.file, contig).is_ok() {
-                let mut vcf =
-                    read_vcf_to_matrix(&args, contig, variant_pos, None, None, Some(5_000_000))?;
+                let mut vcf = read_vcf_to_matrix(
+                    &args,
+                    contig,
+                    variant_pos,
+                    None,
+                    None,
+                    Some(5_000_000),
+                    false,
+                )?;
                 let lookups = vcf.get_only_longest_lookups()?;
                 (lookups, vcf)
             } else {
-                let vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, None)?;
+                let vcf = read_vcf_to_matrix(&args, contig, variant_pos, None, None, None, false)?;
                 let lookups = vcf.get_only_longest_lookups_no_shard()?;
                 (lookups, vcf)
             };
@@ -67,6 +75,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
                 None,
                 args.no_alt,
                 &Selection::Haploid,
+                false,
             )?
         }
         Selection::Unphased => unreachable!(),

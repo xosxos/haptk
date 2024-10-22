@@ -223,6 +223,7 @@ pub struct ReadMetadata {
     pub contig_len: Option<u64>,
     pub sharded: bool,
     pub remove_no_alt: bool,
+    pub is_genome_wide: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -346,6 +347,10 @@ impl PhasedMatrix {
 
     pub fn samples(&self) -> &Vec<String> {
         &self.samples
+    }
+
+    pub fn is_genome_wide(&self) -> bool {
+        self.metadata.is_genome_wide
     }
 
     pub fn variant_idx(&self) -> usize {
@@ -544,12 +549,14 @@ impl PhasedMatrix {
                     .take(*self.ploidy);
 
                 let (max_idx, max_len) = lengths.clone().max_by_key(|(_, l)| *l).unwrap();
-                if lengths.filter(|(_, l)| *l == max_len).count() > 1 {
+
+                if !self.is_genome_wide() && lengths.filter(|(_, l)| *l == max_len).count() > 1 {
                     tracing::warn!(
                         "Sample {} has two equally long haplotypes in only-longest selection.",
                         self.get_sample_name(i)
                     );
                 }
+
                 max_idx
             })
             .collect()
@@ -592,12 +599,16 @@ impl PhasedMatrix {
                     .unwrap();
 
                 let max_len = calculate_len(max_nodes);
-                if lengths.filter(|(_, l)| calculate_len(l) == max_len).count() > 1 {
+
+                if !self.is_genome_wide()
+                    && lengths.filter(|(_, l)| calculate_len(l) == max_len).count() > 1
+                {
                     tracing::warn!(
                         "Sample {} has two equally long haplotypes.",
                         self.get_sample_name(i)
                     );
                 }
+
                 max_nodes.clone()
             })
             .collect()
