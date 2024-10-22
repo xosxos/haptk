@@ -160,6 +160,7 @@ pub fn run(
             ])?;
         }
     };
+    tracing::info!("Finished the HST scan.");
 
     Ok(())
 }

@@ -37,7 +37,11 @@ pub fn run(
 
     let rates = read_recombination_file(rec_rates)?;
 
+    tracing::info!("Starting the MRCA scan..");
+
     let ages = find_ages(&vcf, &args, rates, step_size, centromere_cut_off)?;
+
+    tracing::info!("Finished the MRCA scan.");
 
     if !no_csv {
         write_ages_to_csv(&args, &ages, args.output.clone(), &vcf)?;
