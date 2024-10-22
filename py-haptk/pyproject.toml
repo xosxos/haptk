@@ -1,6 +1,6 @@
 [project]
 name = "haptk"
-version = "0.0.6"
+version = "0.0.7"
 authors = [
   { name="Osma S. Rautila", email="author@example.com" },
 ]
