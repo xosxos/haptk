@@ -4,14 +4,13 @@ use std::path::PathBuf;
 use color_eyre::{eyre::eyre, Result};
 use rayon::prelude::*;
 
+use super::bhst::Node;
+use super::mrca::mrca_independent;
 use crate::args::{Selection, StandardArgs};
 use crate::io::{open_csv_writer, push_to_output, read_recombination_file};
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::{Coord, PhasedMatrix};
-use crate::subcommands::mrca::mrca_gamma_method;
 use crate::utils::{centromeres_hg38, parse_coords};
-
-use super::bhst::Node;
 
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)]
@@ -60,12 +59,11 @@ fn find_ages(
             .enumerate()
             .filter(|(n, _)| *n % step_size == 0)
             .map(|(_, coord)| {
-                let only_longest_lengths = vcf.only_longest_lengths_no_shard(coord).unwrap();
+                let only_longest_lengths = vcf.only_longest_lengths_no_shard(coord)?;
 
                 let check = check_for_centromeres(vcf, &only_longest_lengths, centromere_cut_off);
 
-                let ((i_tau_hat, _, _), _) =
-                    mrca_gamma_method(only_longest_lengths, coord.pos, &rates)?;
+                let (i_tau_hat, _, _) = mrca_independent(only_longest_lengths, coord.pos, &rates);
                 Ok((coord.clone(), i_tau_hat, check))
             })
             .collect(),
@@ -74,9 +72,9 @@ fn find_ages(
             .enumerate()
             .filter(|(n, _)| *n % step_size == 0)
             .map(|(_, coord)| {
-                let shared_lengths = vcf.get_lengths_from_uhst_no_mut(coord).unwrap();
+                let shared_lengths = vcf.get_lengths_from_uhst_no_mut(coord)?;
                 let check = check_for_centromeres(vcf, &shared_lengths, centromere_cut_off);
-                let ((i_tau_hat, _, _), _) = mrca_gamma_method(shared_lengths, coord.pos, &rates)?;
+                let (i_tau_hat, _, _) = mrca_independent(shared_lengths, coord.pos, &rates);
                 Ok((coord.clone(), i_tau_hat, check))
             })
             .collect(),

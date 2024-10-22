@@ -57,6 +57,8 @@ pub fn run(
         let (contig, start, stop) = parse_coords(&args.coords)?;
         let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
 
+        tracing::info!("Starting the HST scan..");
+
         // Collect Vec::from_iter because BTreeSet requires `par_bridge` from Rayon which does not conserve order
         let results: Vec<(&Coord, f32, bool)> = Vec::from_iter(vcf.coords())
             .par_iter()
@@ -126,6 +128,8 @@ pub fn run(
 
         let vcf_samples = &hsts.metadata.samples;
         let ploidy = *hsts.metadata.ploidy;
+
+        tracing::info!("Starting the HST scan..");
 
         let results: Vec<(&Coord, f32, bool)> = hsts
             .hsts

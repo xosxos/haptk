@@ -95,13 +95,7 @@ pub fn get_sums(
         })
 }
 
-pub fn independent(
-    n: f64,
-    l_lengths: &[f64],
-    r_lengths: &[f64],
-    cc: f64,
-    cs_corr: f64,
-) -> Result<Age> {
+pub fn independent(n: f64, l_lengths: &[f64], r_lengths: &[f64], cc: f64, cs_corr: f64) -> Age {
     let l_sum: f64 = l_lengths.iter().sum();
     let r_sum: f64 = r_lengths.iter().sum();
 
@@ -126,7 +120,7 @@ pub fn independent(
             let i_tau_hat_l = i_tau_hat * g_l;
             let i_tau_hat_u = i_tau_hat * g_u;
 
-            Ok((i_tau_hat, i_tau_hat_l, i_tau_hat_u))
+            (i_tau_hat, i_tau_hat_l, i_tau_hat_u)
         }
         Err(e) => {
             tracing::error!(
@@ -134,18 +128,13 @@ pub fn independent(
                 l_lengths.len()
             );
             tracing::error!("Returning all zeros for the MRCA estimate");
-            Ok((0.0, 0.0, 0.0))
+            (0.0, 0.0, 0.0)
         }
     }
 }
 
 // Correlated genealogy
-pub fn correlated(
-    mut l_lengths: Vec<f64>,
-    mut r_lengths: Vec<f64>,
-    cc: f64,
-    cs_corr: f64,
-) -> Result<Age> {
+pub fn correlated(mut l_lengths: Vec<f64>, mut r_lengths: Vec<f64>, cc: f64, cs_corr: f64) -> Age {
     let l_sum: f64 = l_lengths.iter().sum::<f64>();
     let r_sum: f64 = r_lengths.iter().sum::<f64>();
     tracing::debug!("Sums: left {l_sum:.3}, right {r_sum:.3})",);
@@ -198,7 +187,7 @@ pub fn correlated(
             let c_tau_hat_l = c_tau_hat * c_l;
             let c_tau_hat_u = c_tau_hat * c_u;
 
-            Ok((c_tau_hat, c_tau_hat_l, c_tau_hat_u))
+            (c_tau_hat, c_tau_hat_l, c_tau_hat_u)
         }
         Err(e) => {
             tracing::error!(
@@ -206,7 +195,7 @@ pub fn correlated(
                 l_lengths.len()
             );
             tracing::error!("Returning all zeros for the MRCA estimate");
-            Ok((0.0, 0.0, 0.0))
+            (0.0, 0.0, 0.0)
         }
     }
 }
@@ -226,17 +215,16 @@ pub fn mrca_gamma_method(
 
     let (l_lengths, r_lengths) = get_sums(shared_lengths, variant_pos, rec_rates);
 
-    let (print_left_tau_hat, _, _) = independent(n, &l_lengths, &[0.1], cc, cs_corr)?;
-    let (print_right_tau_hat, _, _) = independent(n, &[0.1], &r_lengths, cc, cs_corr)?;
+    let (print_left_tau_hat, _, _) = independent(n, &l_lengths, &[0.1], cc, cs_corr);
+    let (print_right_tau_hat, _, _) = independent(n, &[0.1], &r_lengths, cc, cs_corr);
 
     tracing::debug!(
         "Independent. Left age: {print_left_tau_hat:.3}, right age: {print_right_tau_hat:.3})",
     );
 
-    let (i_tau_hat, i_tau_hat_l, i_tau_hat_u) =
-        independent(n, &l_lengths, &r_lengths, cc, cs_corr)?;
+    let (i_tau_hat, i_tau_hat_l, i_tau_hat_u) = independent(n, &l_lengths, &r_lengths, cc, cs_corr);
 
-    let (c_tau_hat, c_tau_hat_l, c_tau_hat_u) = correlated(l_lengths, r_lengths, cc, cs_corr)?;
+    let (c_tau_hat, c_tau_hat_l, c_tau_hat_u) = correlated(l_lengths, r_lengths, cc, cs_corr);
 
     tracing::debug!(
         "Independent genealogy:\nage: {i_tau_hat:.3} CI ({i_tau_hat_l:.3}, {i_tau_hat_u:.3})",
@@ -250,4 +238,22 @@ pub fn mrca_gamma_method(
     let correlated = (c_tau_hat, c_tau_hat_l, c_tau_hat_u);
 
     Ok((independent, correlated))
+}
+
+///
+/// The original R algorithm by Gandolfo et al translated to Rust.
+/// <https://github.com/bahlolab/DatingRareMutations>
+///
+pub fn mrca_independent(
+    shared_lengths: Vec<(Node, Node)>,
+    variant_pos: u64,
+    rec_rates: &BTreeMap<u64, f32>,
+) -> Age {
+    let cc = 0.95;
+    let cs_corr = 0.0;
+    let n = shared_lengths.len() as f64;
+
+    let (l_lengths, r_lengths) = get_sums(shared_lengths, variant_pos, rec_rates);
+
+    independent(n, &l_lengths, &r_lengths, cc, cs_corr)
 }
