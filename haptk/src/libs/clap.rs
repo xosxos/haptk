@@ -7,7 +7,7 @@ use color_eyre::{
     Result,
 };
 
-use crate::args::{GraphArgs, SortOption, StandardArgs};
+use crate::args::{GraphArgs, Selection, SortOption, StandardArgs};
 use crate::subcommands::{
     bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst,
     fasta_to_haplotype, haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
@@ -491,6 +491,26 @@ pub enum SubCommand {
         /// List of samples for HST construction (one ID per row)
         #[arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. )]
         samples: Option<Vec<PathBuf>>,
+
+        /// Construct the HSTs and sum the leaf nodes simultaneously
+        #[arg(long)]
+        construct_hsts: bool,
+
+        /// The starting coordinate, i.e. chr9:27573534
+        #[arg(short = 'c', long)]
+        coords: Option<String>,
+
+        #[arg(short = 'a', long = "alleles", value_enum, default_value_t = Selection::All)]
+        selection: Selection,
+
+        /// If constructing HSTs at the same time, scan every n markers
+        #[arg(long, default_value_t = 1)]
+        step_size: usize,
+
+        /// If constructing HSTs at the same time, branch sample size to end recursion
+        #[arg(long, default_value_t = 1)]
+        min_sample_size: usize,
+
     },
 
 }
@@ -682,8 +702,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
             )?,
 
         #[cfg(feature = "experimental")]
-        SubCommand::ScanSumHst { args, recombination_rates, samples, centromere_cut_off, .. }
-        => scan_sum_hsts::run(args, recombination_rates, samples, centromere_cut_off)?,
+        SubCommand::ScanSumHst { args, recombination_rates, samples, centromere_cut_off, construct_hsts, coords, selection, step_size, min_sample_size, .. }
+        => scan_sum_hsts::run(args, recombination_rates, samples, centromere_cut_off, construct_hsts, coords, selection, step_size, min_sample_size)?,
 
         #[cfg(feature = "experimental")]
         SubCommand::ScanSegregate {

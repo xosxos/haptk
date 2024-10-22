@@ -40,11 +40,11 @@ pub fn run(args: StandardArgs, step_size: usize, min_sample_size: usize) -> Resu
     let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
 
     let hsts = if args.selection == Selection::OnlyLongest {
-        Vec::from_iter(vcf.coords().clone())
+        Vec::from_iter(vcf.coords())
             .par_iter()
             .enumerate()
             .filter(|(n, _)| *n % step_size == 0)
-            .map(|(_, coord)| {
+            .map(|(_, &coord)| {
                 let start_idxs = vcf.only_longest_indexes_no_shard(coord).unwrap();
                 (
                     coord.clone(),
@@ -53,11 +53,11 @@ pub fn run(args: StandardArgs, step_size: usize, min_sample_size: usize) -> Resu
             })
             .collect()
     } else {
-        Vec::from_iter(vcf.coords().clone())
+        Vec::from_iter(vcf.coords())
             .par_iter()
             .enumerate()
             .filter(|(n, _)| *n % step_size == 0)
-            .map(|(_, coord)| {
+            .map(|(_, &coord)| {
                 (
                     coord.clone(),
                     construct_bhst_no_mut(&vcf, coord, min_sample_size, None).unwrap(),
