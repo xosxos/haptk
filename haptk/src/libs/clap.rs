@@ -511,6 +511,10 @@ pub enum SubCommand {
         #[arg(long, default_value_t = 1)]
         min_sample_size: usize,
 
+        /// Do not include no ALTs
+        #[arg(long)]
+        no_alt: bool,
+
     },
 
 }
@@ -702,8 +706,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
             )?,
 
         #[cfg(feature = "experimental")]
-        SubCommand::ScanSumHst { args, recombination_rates, samples, centromere_cut_off, construct_hsts, coords, selection, step_size, min_sample_size, .. }
-        => scan_sum_hsts::run(args, recombination_rates, samples, centromere_cut_off, construct_hsts, coords, selection, step_size, min_sample_size)?,
+        SubCommand::ScanSumHst { args, recombination_rates, samples, centromere_cut_off, construct_hsts, coords, selection, step_size, min_sample_size, no_alt, .. }
+        => scan_sum_hsts::run(args, recombination_rates, samples, centromere_cut_off, construct_hsts, coords, selection, step_size, min_sample_size, no_alt)?,
 
         #[cfg(feature = "experimental")]
         SubCommand::ScanSegregate {

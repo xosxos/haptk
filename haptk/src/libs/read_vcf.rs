@@ -330,7 +330,11 @@ fn read_vcf_batch_to_matrix(
 
         if remove_no_alt {
             let slice = &markers[(markers.len() - diff)..markers.len()];
-            if slice.iter().all(|gt| gt == &0u8) {
+
+            let mut iter = slice.iter();
+            let first = iter.next().unwrap();
+
+            if iter.all(|gt| gt == first) {
                 let _ = markers.drain((markers.len() - diff)..);
                 continue;
             }

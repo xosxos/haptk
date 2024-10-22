@@ -31,6 +31,7 @@ pub fn run(
     selection: Selection,
     step_size: usize,
     min_sample_size: usize,
+    no_alt: bool,
 ) -> Result<()> {
     let rec_rates = read_recombination_file(rec_rates)?;
 
@@ -46,7 +47,7 @@ pub fn run(
             selection,
             prefix: args.prefix,
             samples: samples.clone(),
-            no_alt: false,
+            no_alt,
         };
 
         let mut output = args.output.clone();
