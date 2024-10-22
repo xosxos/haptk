@@ -8,11 +8,11 @@ members  = [
 
 [profile.dev]
 codegen-units   = 16
-debug           = true
+debug           = false
 overflow-checks = true
 lto             = "thin"
 opt-level       = 3
-strip           = false
+strip           = true
 incremental     = false
 
 [profile.release]
@@ -31,8 +31,6 @@ strip    = false
 [profile.test]
 inherits        = "dev"
 codegen-units   = 256
-debug           = true
 overflow-checks = true
 lto             = false
 opt-level       = 0
-strip           = "none"
