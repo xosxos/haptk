@@ -49,7 +49,7 @@ def draw_circle_tree(hst, t, samples_to_tag, colors, branch_point_size, branch_l
                 n.img_style["bgcolor"] = "#FFF"
 
             for (color_i, sample_list) in enumerate(samples_to_tag):
-                results = [i for i in indexes if hst.samples[i] in sample_list]
+                results = [i for i in indexes if hst.get_sample_name(i) in sample_list]
                 if results:
                     n.set_style(utils.return_node_style(colors[color_i], 0))
                     n.img_style["bgcolor"] = colors[color_i]

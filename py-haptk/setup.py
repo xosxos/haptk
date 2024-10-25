@@ -5,7 +5,7 @@ setup(
     name='haptk',
     # packages=find_packages(include=['haptk']),
     packages=find_packages(),
-    version='0.0.7',
+    version='0.0.8',
     description='HAPTK Python library',
     author="xosxos",
     install_requires=['json', 'gzip', 'ete3', 'rustworkx', 'argparse', 'six', 'pyqt5', 'scipy', 'matplotlib', 'numpy'],

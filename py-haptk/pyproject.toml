@@ -1,6 +1,6 @@
 [project]
 name = "haptk"
-version = "0.0.7"
+version = "0.0.8"
 authors = [
   { name="Osma S. Rautila", email="author@example.com" },
 ]
@@ -19,7 +19,7 @@ dependencies = [
   'PyQt5-Qt5==5.15.14',
   'PyQt5-sip==12.13.0',
   'six == 1.16.0',
-  'scipy == 1.14.0',
+  'scipy == 1.14.1',
   'matplotlib == 3.9.0',
   'numpy == 1.26.4',
 ]
