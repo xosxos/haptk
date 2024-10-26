@@ -5,14 +5,14 @@ use fishers_exact::fishers_exact;
 use petgraph::graph::NodeIndex;
 
 use crate::args::{ConciseArgs, StandardArgs};
-use crate::io::{open_csv_writer, push_to_output, read_sample_ids};
+use crate::io::{open_csv_writer, push_to_output, read_coords_file, read_sample_ids};
 use crate::structs::Coord;
 use crate::subcommands::scan::{
     read_tree_file, return_assoc, write_assoc, AssocRow, Hst, HstScan, Limits,
 };
 use crate::utils::parse_coords;
 
-use super::hst_scan::{case_ctrl_zygosity_from_node, top_node_from_hsts};
+use super::hst_scan::{case_ctrl_zygosity_from_node, read_coord_list_to_hsts, top_node_from_hsts};
 
 const HEADER: &[&str] = &[
     "contig",
@@ -30,10 +30,25 @@ const HEADER: &[&str] = &[
 ];
 
 #[doc(hidden)]
-pub fn run(args: ConciseArgs, limits: Limits, samples: PathBuf) -> Result<()> {
-    let seg_samples = read_sample_ids(&Some(samples))?.unwrap();
+pub fn run(
+    args: ConciseArgs,
+    limits: Limits,
+    seg_samples: PathBuf,
+    coord_list_path: Option<PathBuf>,
+) -> Result<()> {
+    let coord_list: Option<Vec<Coord>> = coord_list_path.map(|v| {
+        read_coords_file(&v).unwrap_or_else(|_| panic!("Could not read coords file {v:?}"))
+    });
 
-    let hsts = read_tree_file(args.file)?;
+    let min_sample_size = limits.0;
+
+    let hsts = match coord_list {
+        Some(coord_list) => read_coord_list_to_hsts(&args, min_sample_size, coord_list)?,
+        None => read_tree_file(args.file)?,
+    };
+
+    let seg_samples = read_sample_ids(&Some(seg_samples))?.unwrap();
+
     let hsts = Arc::new(hsts);
 
     // Filter out samples not present in the HST SCAN

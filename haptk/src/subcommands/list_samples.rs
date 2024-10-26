@@ -7,22 +7,18 @@ use color_eyre::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::io::read_lines;
+use crate::io::{read_lines, return_double_extension_filetype};
 use crate::subcommands::bhst::Metadata;
 
 use super::list_markers::HstMetadata;
 
 #[doc(hidden)]
-fn return_double_extension_filetype(path: &Path, e1: &str) -> Result<String> {
-    let stem = path
-        .file_stem()
-        .and_then(OsStr::to_str)
-        .ok_or_else(|| eyre!("file has no stem"))?;
-    let e2 = Path::new(&stem)
-        .extension()
-        .and_then(OsStr::to_str)
-        .ok_or_else(|| eyre!("file has no other filetype"))?;
-    Ok(format!("{e2}.{e1}"))
+pub fn run(path: PathBuf) -> Result<()> {
+    let ids = get_sample_names(path)?;
+    for id in ids {
+        println!("{id}");
+    }
+    Ok(())
 }
 
 pub fn get_sample_names(path: PathBuf) -> Result<Vec<String>> {
@@ -87,15 +83,6 @@ pub fn read_hst_samples(path: PathBuf) -> Result<Vec<String>> {
     let hst: HstMetadata = serde_json::from_reader(reader)?;
 
     Ok(hst.metadata.samples)
-}
-
-#[doc(hidden)]
-pub fn run(path: PathBuf) -> Result<()> {
-    let ids = get_sample_names(path)?;
-    for id in ids {
-        println!("{id}");
-    }
-    Ok(())
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeSet, HashMap};
 use std::hash::Hasher;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
@@ -7,7 +8,7 @@ use petgraph::Graph;
 use rayon::prelude::*;
 use serde_with::serde_as;
 
-use crate::args::{Selection, StandardArgs};
+use crate::args::{ConciseArgs, Selection, StandardArgs};
 use crate::io::push_to_output;
 use crate::structs::Coord;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
@@ -77,6 +78,87 @@ pub fn run(args: StandardArgs, step_size: usize, min_sample_size: usize) -> Resu
     Ok(())
 }
 
+pub fn read_coord_list_to_hsts(
+    args: &ConciseArgs,
+    min_sample_size: usize,
+    coord_list: Vec<Coord>,
+) -> Result<HstScan> {
+    let mut map = HashMap::new();
+
+    for coord in coord_list {
+        map.entry(coord.contig.clone())
+            .or_insert(Vec::new())
+            .push(coord);
+    }
+
+    let mut all_hsts = vec![];
+
+    let mut samples = vec![];
+    let mut first_run = true;
+    for (contig, coords) in map {
+        let args = StandardArgs {
+            file: args.file.clone(),
+            output: args.output.clone(),
+            info_limit: None,
+            coords: format!("{}", coords[0]),
+            selection: args.selection.clone(),
+            prefix: args.prefix.clone(),
+            samples: args.samples.clone(),
+            no_alt: true,
+        };
+
+        let vcf = read_vcf_to_matrix(&args, &contig, 0, None, None, None, true)?;
+
+        if first_run {
+            samples = vcf.samples().clone();
+
+            first_run = false;
+        }
+
+        let hsts: Vec<(Coord, Graph<Node, ()>)> = if args.selection == Selection::OnlyLongest {
+            coords
+                .par_iter()
+                .map(|coord| {
+                    let start_idxs = vcf.only_longest_indexes_no_shard(coord).unwrap();
+                    (
+                        coord.clone(),
+                        construct_bhst_no_mut(&vcf, coord, min_sample_size, Some(start_idxs))
+                            .unwrap(),
+                    )
+                })
+                .collect()
+        } else {
+            coords
+                .par_iter()
+                .map(|coord| {
+                    (
+                        coord.clone(),
+                        construct_bhst_no_mut(&vcf, coord, min_sample_size, None).unwrap(),
+                    )
+                })
+                .collect()
+        };
+
+        all_hsts.push(hsts);
+    }
+
+    let mt = Metadata {
+        start_coord: Coord::default(),
+        hst_type: HstType::Bhst,
+        coords: BTreeSet::new(),
+        contig: "many".to_string(),
+        samples,
+        selection: args.selection.clone(),
+        ploidy: args.selection.clone().into(),
+        vcf_name: args.file.clone(),
+    };
+
+    let hsts = all_hsts.into_iter().flatten().collect();
+    let trees = HstScan { hsts, metadata: mt };
+
+    Ok(trees)
+}
+
 pub type Limits = (usize, usize, usize, usize);
 pub type Hst = Graph<Node, ()>;
 pub type HstMap = BTreeMap<Coord, Hst>;
@@ -92,18 +174,6 @@ pub struct HstScan {
 impl HstScan {
     pub fn nhaplotypes(&self) -> usize {
         self.metadata.samples.len() * *self.metadata.ploidy
-    }
-
-    pub fn get_pos(&self, idx: usize) -> u64 {
-        self.metadata.coords.iter().nth(idx).unwrap().pos
-    }
-
-    pub fn get_coord_idx(&self, coord: &Coord) -> usize {
-        self.metadata
-            .coords
-            .iter()
-            .position(|c| c == coord)
-            .unwrap()
     }
 
     pub fn get_sample_name(&self, index: usize) -> String {
@@ -251,9 +321,8 @@ impl AssocRow {
             contig: coord.contig.clone(),
             pos: coord.pos,
             marker_id: get_marker_id(top_node),
-            bp_len: (top_node.stop.pos - top_node.start.pos) as f32,
-            marker_len: hsts.get_coord_idx(&top_node.stop) - hsts.get_coord_idx(&top_node.start)
-                + 1,
+            bp_len: (top_node.stop.pos.saturating_sub(top_node.start.pos)) as f32,
+            marker_len: top_node.haplotype.len(),
             start: top_node.start.pos,
             stop: top_node.stop.pos,
             start_coord: top_node.start.clone(),

@@ -463,8 +463,12 @@ pub enum SubCommand {
         threads: usize,
 
         /// Wanted segregating samples
-        #[arg(short = 'S', long)]
-        samples: PathBuf,
+        #[arg(long)]
+        case_samples: PathBuf,
+
+        /// Coords to generate HSTs for
+        #[arg(long)]
+        coords: Option<PathBuf>,      
     },
 
     #[cfg(feature = "experimental")]
@@ -717,9 +721,9 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
         #[cfg(feature = "experimental")]
         SubCommand::ScanSegregate {
-            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, samples, ..
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, case_samples, coords, ..
         } => scan_segregate::run(
-                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), samples,
+                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), case_samples, coords,
             )?,
 
     };

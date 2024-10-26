@@ -548,14 +548,15 @@ impl Hst {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub enum HstType {
     UhstLeft,
     UhstRight,
+    #[default]
     Bhst,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct Metadata {
     pub start_coord: Coord,
     pub hst_type: HstType,

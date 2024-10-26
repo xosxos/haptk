@@ -46,6 +46,13 @@ pub struct ConciseArgs {
     /// Output filename prefix
     #[arg(short = 'p', long)]
     pub prefix: Option<String>,
+
+    /// List of samples for HST construction (one ID per row)
+    #[arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. )]
+    pub samples: Option<Vec<PathBuf>>,
+
+    #[arg(short = 'a', long = "alleles", value_enum, default_value_t = Selection::All)]
+    pub selection: Selection,
 }
 
 #[derive(Debug, Clone, PartialEq)]

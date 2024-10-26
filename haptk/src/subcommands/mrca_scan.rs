@@ -120,11 +120,13 @@ fn write_ages_to_csv(
     push_to_output(args, &mut output, "mrca_scan", "csv");
 
     let mut writer = open_csv_writer(output)?;
-    writer.write_record(vec!["contig", "pos", "mrca", "centromere"])?;
+    writer.write_record(vec!["contig", "pos", "ref", "alt", "mrca", "centromere"])?;
     for (coord, age, check) in ages {
         writer.write_record(vec![
             vcf.get_contig().to_string(),
             format!("{}", coord.pos),
+            format!("{}", coord.reference),
+            format!("{}", coord.alt),
             format!("{age:.5}"),
             format!("{check}"),
         ])?;

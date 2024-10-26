@@ -14,8 +14,74 @@ use csv::{QuoteStyle, Reader, ReaderBuilder, Writer, WriterBuilder};
 use rust_htslib::bcf::{header::HeaderRecord, IndexedReader, Read};
 
 use crate::args::{Selection, StandardArgs};
+use crate::structs::Coord;
 use crate::structs::HapVariant;
 use crate::utils::strip_prefix;
+
+#[allow(clippy::upper_case_acronyms)]
+enum FileType {
+    BED,
+    VCF,
+    CSV,
+    TSV,
+    HST,
+}
+
+impl FileType {
+    fn from_path(path: &PathBuf) -> Result<Self> {
+        let extension: &str = Path::new(&path)
+            .extension()
+            .and_then(OsStr::to_str)
+            .ok_or_else(|| eyre!("No filetype in path"))?;
+
+        let extension = match extension {
+            "gz" | "bgz" => return_double_extension_filetype(path, extension)?,
+            _ => extension.to_string(),
+        };
+
+        Ok(match extension.as_str() {
+            "vcf.gz" | "vcf" | "bcf" => Self::VCF,
+            "hst.gz" | "hst" => Self::HST,
+            "bed.gz" | "bed" => Self::BED,
+            "csv" | "ids" => Self::CSV,
+            "tsv" => Self::TSV,
+            _ => return Err(eyre!("File extension: {extension} is not supported")),
+        })
+    }
+}
+
+pub fn return_double_extension_filetype(path: &Path, e1: &str) -> Result<String> {
+    let stem = path
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| eyre!("file has no stem"))?;
+    let e2 = Path::new(&stem)
+        .extension()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| eyre!("file has no other filetype"))?;
+    Ok(format!("{e2}.{e1}"))
+}
+
+pub fn read_coords_file(path: &PathBuf) -> Result<Vec<Coord>> {
+    let input = get_input(Some(path.clone()))?;
+
+    let mut rdr = match FileType::from_path(path)? {
+        FileType::CSV => get_csv_reader(input),
+        FileType::TSV => get_tsv_reader(input, false),
+        FileType::BED => get_tsv_reader(input, false),
+        _ => return Err(eyre!("Filetype from {path:?} is not supported")),
+    };
+
+    let mut variants: Vec<Coord> = vec![];
+
+    for line in rdr.records() {
+        let record = line?;
+        let variant: Coord = record.deserialize(None)?;
+        variants.push(variant);
+    }
+
+    Ok(variants)
+}
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct RecombinationRow<'a> {
