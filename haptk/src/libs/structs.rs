@@ -310,7 +310,11 @@ impl PhasedMatrix {
     }
 
     pub fn matrix_column(&self, coord: &Coord) -> ArrayView1<u8> {
-        let (matrix, index) = self.indexer.get(coord).unwrap();
+        let (matrix, index) = self
+            .indexer
+            .get(coord)
+            .unwrap_or_else(|| panic!("Could not find coord {coord} from the indexer"));
+
         let matrix = self.matrix.get(matrix).unwrap();
 
         matrix.index_axis(Axis(1), *index)
@@ -337,7 +341,7 @@ impl PhasedMatrix {
                 *matrix = matrix.select(Axis(0), to_keep)
             }
         } else {
-            panic!("matrix select on columns not implemented")
+            unreachable!("matrix select on columns is not yet implemented")
         }
     }
 
@@ -701,7 +705,9 @@ impl PhasedMatrix {
     ) -> Vec<u8> {
         let (col_first_idx, col_last_idx) = match (col_range.start_bound(), col_range.end_bound()) {
             (Bound::Included(first), Bound::Included(last)) => (first, last),
-            _ => panic!("Range problem"),
+            _ => unreachable!(
+                "Range for find_u8_haplotype_for_sample should always be inclusive x..=y"
+            ),
         };
         let (matrix_key_first, index_first) = &self.indexer[col_first_idx];
         let (matrix_key_last, index_last) = &self.indexer[col_last_idx];
@@ -750,7 +756,9 @@ impl PhasedMatrix {
         let (col_first_idx, col_last_idx) = match (col_range.start_bound(), col_range.end_bound()) {
             (Bound::Included(first), Bound::Excluded(last)) => (*first, last.saturating_sub(1)),
             (Bound::Included(first), Bound::Included(last)) => (*first, *last),
-            _ => panic!("Range problem"),
+            _ => unreachable!(
+                "Range for find_u8_haplotype_for_sample should always be x..=y or x..y"
+            ),
         };
 
         let (_, matrix) = self.matrix.iter().nth(0).unwrap();

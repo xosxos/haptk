@@ -24,15 +24,14 @@ const HEADER: &[&str] = &["contig", "pos", "ref", "alt", "avg", "centromere"];
 pub fn run(
     args: ConciseArgs,
     rec_rates: PathBuf,
-    samples: Option<Vec<PathBuf>>,
     centromere_cut_off: f32,
     construct_hsts_ad_hoc: bool,
     coords: Option<String>,
-    selection: Selection,
     step_size: usize,
     min_sample_size: usize,
     no_alt: bool,
     length_in_bp: bool,
+    seg_samples: Option<Vec<PathBuf>>,
 ) -> Result<()> {
     let rec_rates = match length_in_bp {
         true => None,
@@ -49,9 +48,9 @@ pub fn run(
             output: args.output,
             info_limit: None,
             coords: coords.unwrap(),
-            selection,
+            selection: args.selection.clone(),
             prefix: args.prefix,
-            samples: samples.clone(),
+            samples: args.samples.clone(),
             no_alt,
         };
 
@@ -61,6 +60,9 @@ pub fn run(
 
         let (contig, start, stop) = parse_coords(&args.coords)?;
         let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
+
+        let seg_samples = read_multiple_sample_ids(&seg_samples)?;
+        let seg_samples = seg_samples.unwrap_or(vcf.samples().clone());
 
         tracing::info!("Starting the HST scan..");
 
@@ -93,7 +95,7 @@ pub fn run(
                     &hst,
                     coord,
                     &rec_rates,
-                    &Some(vcf.samples()),
+                    &Some(&seg_samples),
                     centromere_cut_off,
                     length_in_bp,
                 )
@@ -114,7 +116,7 @@ pub fn run(
             ])?;
         }
     } else {
-        let samples = read_multiple_sample_ids(&samples)?;
+        let samples = read_multiple_sample_ids(&args.samples)?;
         let hsts = read_tree_file(args.file)?;
 
         let args = StandardArgs {

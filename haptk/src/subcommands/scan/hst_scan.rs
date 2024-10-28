@@ -104,7 +104,7 @@ pub fn read_coord_list_to_hsts(
             selection: args.selection.clone(),
             prefix: args.prefix.clone(),
             samples: args.samples.clone(),
-            no_alt: true,
+            no_alt: false,
         };
 
         let vcf = read_vcf_to_matrix(&args, &contig, 0, None, None, None, true)?;

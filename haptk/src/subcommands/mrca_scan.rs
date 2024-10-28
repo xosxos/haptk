@@ -1,24 +1,28 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use color_eyre::eyre::ensure;
 use color_eyre::{eyre::eyre, Result};
 use rayon::prelude::*;
 
 use super::bhst::Node;
 use super::mrca::mrca_independent;
 use crate::args::{Selection, StandardArgs};
-use crate::io::{open_csv_writer, push_to_output, read_recombination_file};
+use crate::io::{
+    check_recombination_file_matches_contig, open_csv_writer, push_to_output,
+    read_recombination_file,
+};
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::{Coord, PhasedMatrix};
-use crate::utils::{centromeres_hg38, parse_coords};
+use crate::utils::{self, centromeres_hg38, parse_coords};
 
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)]
 pub fn run(
-    args: StandardArgs,
-    rec_rates: PathBuf,
+    mut args: StandardArgs,
+    all_rec_rates: Vec<PathBuf>,
     step_size: usize,
-    no_csv: bool,
+    contigs: Option<Vec<String>>,
     centromere_cut_off: f32,
 ) -> Result<()> {
     match args.selection {
@@ -31,20 +35,62 @@ pub fn run(
         _ => (),
     };
 
-    let (contig, start, stop) = parse_coords(&args.coords)?;
+    tracing::info!("Changed --no-alt to true");
+    args.no_alt = true;
 
-    let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
+    let contigs_vec = match &contigs {
+        Some(vec) => vec
+            .iter()
+            .map(|s| s.as_str())
+            .map(utils::parse_coords)
+            .collect::<Result<Vec<(&str, Option<u64>, Option<u64>)>>>()?,
+        None => {
+            vec![parse_coords(&args.coords)?]
+        }
+    };
 
-    let rates = read_recombination_file(rec_rates)?;
+    let mut ages = vec![];
+    for ((contig, start, stop), rec_rates) in contigs_vec.into_iter().zip(all_rec_rates.into_iter())
+    {
+        let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
 
-    tracing::info!("Starting the MRCA scan..");
+        ensure!(
+            check_recombination_file_matches_contig(rec_rates.clone(), contig)?,
+            "The recombination rate files and the contigs are not in the same order.
+            {contig} does not match the file {rec_rates:?}"
+        );
 
-    let ages = find_ages(&vcf, &args, rates, step_size, centromere_cut_off)?;
+        let rates = read_recombination_file(rec_rates)?;
 
-    tracing::info!("Finished the MRCA scan.");
+        tracing::info!("Starting the MRCA scan..");
 
-    if !no_csv {
-        write_ages_to_csv(&args, &ages, args.output.clone(), &vcf)?;
+        ages.push(find_ages(
+            &vcf,
+            &args,
+            rates,
+            step_size,
+            centromere_cut_off,
+        )?);
+
+        tracing::info!("Finished the MRCA scan for contig {contig}.");
+    }
+
+    let mut output = args.output.clone();
+    push_to_output(&args, &mut output, "mrca_scan", "csv");
+    let mut writer = open_csv_writer(output)?;
+    writer.write_record(vec!["contig", "pos", "ref", "alt", "mrca", "centromere"])?;
+
+    for contig_ages in ages {
+        for (coord, age, check) in contig_ages {
+            writer.write_record(vec![
+                format!("{}", coord.contig),
+                format!("{}", coord.pos),
+                format!("{}", coord.reference),
+                format!("{}", coord.alt),
+                format!("{age:.5}"),
+                format!("{check}"),
+            ])?;
+        }
     }
 
     Ok(())
@@ -111,25 +157,9 @@ fn check_for_centromeres(
     overlapping_centromere as f32 / lengths.len() as f32 > centromere_cut_off
 }
 
-fn write_ages_to_csv(
-    args: &StandardArgs,
-    ages: &Vec<(Coord, f64, bool)>,
-    mut output: PathBuf,
-    vcf: &PhasedMatrix,
-) -> Result<()> {
-    push_to_output(args, &mut output, "mrca_scan", "csv");
-
-    let mut writer = open_csv_writer(output)?;
-    writer.write_record(vec!["contig", "pos", "ref", "alt", "mrca", "centromere"])?;
-    for (coord, age, check) in ages {
-        writer.write_record(vec![
-            vcf.get_contig().to_string(),
-            format!("{}", coord.pos),
-            format!("{}", coord.reference),
-            format!("{}", coord.alt),
-            format!("{age:.5}"),
-            format!("{check}"),
-        ])?;
-    }
-    Ok(())
-}
+// fn write_ages_to_csv(
+// mut writer: csv::Writer<Box<dyn std::io::Write>>,
+// ages: &Vec<(Coord, f64, bool)>,
+// ) -> Result<()> {
+// Ok(())
+// }

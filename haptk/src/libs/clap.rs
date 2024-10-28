@@ -128,9 +128,9 @@ pub enum SubCommand {
         #[command(flatten)]
         log_and_verbosity: LogAndVerbosity,
 
-        /// Recombination rate file
-        #[arg(short = 'r', long)]
-        recombination_rates: PathBuf,
+        /// Recombination rate file/files
+        #[arg(short = 'r', long, value_delimiter = ' ', num_args = 1.. )]
+        recombination_rates: Vec<PathBuf>,
 
         /// Run the MRCA analysis every n markers
         #[arg(long)]
@@ -139,6 +139,10 @@ pub enum SubCommand {
         /// Dont output to csv
         #[arg(long)]
         no_csv: bool,
+
+        /// List of samples for HST construction (one ID per row)
+        #[arg(long, value_delimiter = ',', num_args = 1.. )]
+        contigs: Option<Vec<String>>,
 
         /// Number of threads
         #[arg(short = 't', long, default_value_t = 8)]
@@ -492,10 +496,6 @@ pub enum SubCommand {
         #[arg(short = 'r', long)]
         recombination_rates: PathBuf,
 
-        /// List of samples for HST construction (one ID per row)
-        #[arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. )]
-        samples: Option<Vec<PathBuf>>,
-
         /// Construct the HSTs and sum the leaf nodes simultaneously
         #[arg(long)]
         construct_hsts: bool,
@@ -503,9 +503,6 @@ pub enum SubCommand {
         /// The starting coordinate, i.e. chr9:27573534
         #[arg(short = 'c', long)]
         coords: Option<String>,
-
-        #[arg(short = 'a', long = "alleles", value_enum, default_value_t = Selection::All)]
-        selection: Selection,
 
         /// If constructing HSTs at the same time, scan every n markers
         #[arg(long, default_value_t = 1)]
@@ -522,6 +519,10 @@ pub enum SubCommand {
         /// Length in basepairs instead of centimorgans
         #[arg(long)]
         length_in_bp: bool,
+
+        /// List of samples for HST construction (one ID per row)
+        #[arg(long, value_delimiter = ' ', num_args = 1.. )]
+        seg_samples: Option<Vec<PathBuf>>,
 
     },
 
@@ -688,8 +689,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
         // Genome-wide methods
         #[cfg(feature = "experimental")]
-        SubCommand::MrcaScan { args, recombination_rates, step_size, no_csv, centromere_cut_off, .. }
-        => mrca_scan::run(args, recombination_rates, step_size, no_csv,centromere_cut_off)?,
+        SubCommand::MrcaScan { args, recombination_rates, step_size, contigs, centromere_cut_off, .. }
+        => mrca_scan::run(args, recombination_rates, step_size, contigs, centromere_cut_off)?,
 
 
         #[cfg(feature = "experimental")]
@@ -714,9 +715,9 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
             )?,
 
         #[cfg(feature = "experimental")]
-        SubCommand::ScanSumHst { args, recombination_rates, samples, centromere_cut_off, construct_hsts, coords, selection, step_size, min_sample_size, no_alt, length_in_bp, .. }
+        SubCommand::ScanSumHst { args, recombination_rates, centromere_cut_off, construct_hsts, coords,  step_size, min_sample_size, no_alt, length_in_bp, seg_samples, .. }
         => scan_sum_hsts::run(
-            args, recombination_rates, samples, centromere_cut_off, construct_hsts, coords, selection, step_size, min_sample_size, no_alt, length_in_bp
+            args, recombination_rates, centromere_cut_off, construct_hsts, coords, step_size, min_sample_size, no_alt, length_in_bp, seg_samples,
         )?,
 
         #[cfg(feature = "experimental")]

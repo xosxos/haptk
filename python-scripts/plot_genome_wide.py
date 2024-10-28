@@ -11,7 +11,7 @@ def draw_lines(df, angle, cum_angle, color):
     lowerLimit = 0
 
     # Compute max and min in the dataset
-    max = df['savgol'].min()
+    max = df['savgol'].max()
 
     # Let's compute heights: they are a conversion of each item value in those new coordinates
     # In our example, 0 in the dataset will be converted to the lowerLimit (10)
@@ -34,6 +34,7 @@ def draw_lines(df, angle, cum_angle, color):
         color=color
     )
 
+    print(max, lowerLimit)
     slope = (max - lowerLimit) / max
     heights = slope * df[column] + lowerLimit
 
@@ -117,6 +118,9 @@ for filename in args.dfs:
     # Drop markers from centromeres to remove centromeric effects
     df = df[~df["pos"].between(centromeres_hg38(chr)[0]-500_000, centromeres_hg38(chr)[1]+500_000)]
     print(len(df))
+
+    if chr == "chr13":
+        print(df)
 
     if column == 'mrca':
         df[column] = np.log10(df[column])

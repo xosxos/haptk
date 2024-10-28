@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
@@ -85,10 +86,24 @@ pub fn read_coords_file(path: &PathBuf) -> Result<Vec<Coord>> {
 
 #[derive(Debug, Clone, serde::Deserialize)]
 struct RecombinationRow<'a> {
-    _chr: &'a str,
+    chr: &'a str,
     pos: u64,
     _rate: f32,
     cm: f32,
+}
+
+pub fn check_recombination_file_matches_contig(path: PathBuf, contig: &str) -> Result<bool> {
+    let mut rdr = get_tsv_reader(get_input(Some(path))?, false);
+    let mut lines = rdr.records();
+
+    let line = lines
+        .next()
+        .ok_or_eyre("Recombination rates file {path} contains 0 rows.")?;
+
+    let record = line?;
+    let row: RecombinationRow = record.deserialize(None).
+            wrap_err(eyre!("Make sure no headers are present and that the recombination file is in order chr,pos,rate,cm. If the issue is not fixed, you have an invalid field in the file."))?;
+    Ok(row.chr == contig)
 }
 
 pub fn read_recombination_file(path: PathBuf) -> Result<BTreeMap<u64, f32>> {
