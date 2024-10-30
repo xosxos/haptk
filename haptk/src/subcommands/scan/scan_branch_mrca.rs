@@ -136,18 +136,33 @@ fn optimizer_inner(
             let mut nodes_iter = nodes.iter().map(|(_, idx)| idx).rev();
             let mut prev_idx = nodes_iter.next().unwrap();
 
-            let (mut breakpoints, mut used_indexes) = (vec![], vec![]);
+            let mut used_indexes = vec![];
+            let mut cm_sum = 0.;
+            let mut n = 0;
+
             for idx in nodes_iter {
                 let node = hst.node_weight(*idx).unwrap();
                 let prev_node = hst.node_weight(*prev_idx).unwrap();
 
                 for idx in &node.indexes {
                     if !used_indexes.contains(&idx) {
-                        let tuple = Breakpoint {
-                            start: prev_node.start.pos,
-                            stop: prev_node.stop.pos,
-                        };
-                        breakpoints.push(tuple);
+                        let (start, stop) = (prev_node.start.pos, prev_node.stop.pos);
+
+                        let (_, start_cm) = rec_rates
+                            .range(..=start)
+                            .next_back()
+                            .unwrap_or_else(|| rec_rates.range(start..).nth(1).unwrap());
+
+                        let (_, stop_cm) = rec_rates
+                            .range(stop..)
+                            .next()
+                            .unwrap_or_else(|| rec_rates.range(..stop).next_back().unwrap());
+
+                        let distance = ((stop_cm - start_cm) / 100.).max(0.);
+
+                        cm_sum += distance;
+                        n += 1;
+
                         used_indexes.push(idx);
                     }
                 }
@@ -155,7 +170,12 @@ fn optimizer_inner(
             }
 
             // Calculate MRCA estimate
-            let value = bhst_mrca_independent(breakpoints, rec_rates).unwrap() as f64;
+            let n = n as f32;
+            let b_c = (2.0 * n - 1.0) / (2.0 * n);
+            let i_tau_hat = (b_c * 2.0 * n) / cm_sum;
+            let value = i_tau_hat as f64;
+
+            // Define the clause
             let clause = value < optimized_value;
 
             // OPTIMIZER CODE END
@@ -177,41 +197,4 @@ fn optimizer_inner(
     }
 
     Some((coord.clone(), top_node_idx, optimized_value))
-}
-
-pub struct Breakpoint {
-    pub start: u64,
-    pub stop: u64,
-}
-
-///
-/// The original R algorithm by Gandolfo et al translated to Rust without confidence intervals
-/// <https://github.com/bahlolab/DatingRareMutations>
-///
-pub fn bhst_mrca_independent(
-    breakpoints: Vec<Breakpoint>,
-    rec_rates: &BTreeMap<u64, f32>,
-) -> Result<f32> {
-    let lr_sum = breakpoints
-        .iter()
-        .map(|point| {
-            let stop_cm = match rec_rates.range(point.stop..).next() {
-                Some(cm) => cm,
-                None => rec_rates.range(..point.stop).next_back().unwrap(),
-            };
-
-            let start_cm = match rec_rates.range(..point.start).next_back() {
-                Some(cm) => cm,
-                None => rec_rates.range(point.start..).next().unwrap(),
-            };
-
-            (stop_cm.1 - start_cm.1) / 100.
-        })
-        .sum::<f32>();
-
-    let n = breakpoints.len() as f32;
-    let b_c = (2.0 * n - 1.0) / (2.0 * n);
-    let i_tau_hat = (b_c * 2.0 * n) / lr_sum;
-
-    Ok(i_tau_hat)
 }

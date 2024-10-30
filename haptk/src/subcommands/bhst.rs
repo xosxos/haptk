@@ -116,7 +116,6 @@ pub fn construct_bhst(
     let mut blacklist_nodes: Vec<NodeIndex> = vec![];
 
     loop {
-        tracing::debug!("List size before insertion: {}", blacklist_nodes.len());
         // Find contradictory genotypes for samples in leaf nodes
         // Insert new nodes into a the HST using a parallel iterator and  channels
         // Return a blacklist of nodes to not exclude from iteration each round

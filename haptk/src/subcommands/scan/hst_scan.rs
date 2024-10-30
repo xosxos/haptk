@@ -25,13 +25,15 @@ use crate::read_vcf::read_vcf_to_matrix;
 use crate::subcommands::bhst::{HstType, Metadata, Node};
 
 #[doc(hidden)]
-pub fn run(args: StandardArgs, step_size: usize, min_sample_size: usize) -> Result<()> {
+pub fn run(mut args: StandardArgs, step_size: usize, min_sample_size: usize) -> Result<()> {
     ensure!(
         args.selection == Selection::All
             || args.selection == Selection::Haploid
             || args.selection == Selection::OnlyLongest,
         "Running only with phased data and all chromsomes is supported."
     );
+    tracing::info!("Changed --no-alt to true");
+    args.no_alt = true;
 
     let mut output = args.output.clone();
     push_to_output(&args, &mut output, "trees", "json.gz");
