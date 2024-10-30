@@ -113,9 +113,10 @@ pub fn construct_bhst(
     // Initate the HST by inserting the root node, and two child nodes if there is a contradictory genotype right at the starting variant
     let mut hst = initiate_hst(vcf, start_coord, None);
 
-    let mut blacklist_nodes = vec![];
+    let mut blacklist_nodes: Vec<NodeIndex> = vec![];
 
     loop {
+        tracing::debug!("List size before insertion: {}", blacklist_nodes.len());
         // Find contradictory genotypes for samples in leaf nodes
         // Insert new nodes into a the HST using a parallel iterator and  channels
         // Return a blacklist of nodes to not exclude from iteration each round
@@ -236,7 +237,7 @@ pub fn insert_nodes_to_bhst(
                         .collect();
                     Ok(black_list_nodes)
                 }
-                _ => Ok(vec![]),
+                _ => Ok(vec![parent_idx]),
             },
         )
         .collect::<std::result::Result<Vec<Vec<NodeIndex>>, HaptkError>>();

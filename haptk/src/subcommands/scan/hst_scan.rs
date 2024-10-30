@@ -83,6 +83,8 @@ pub fn read_coord_list_to_hsts(
     min_sample_size: usize,
     coord_list: Vec<Coord>,
 ) -> Result<HstScan> {
+    tracing::info!("Reading {} coords to HSTs.", coord_list.len());
+
     let mut map = HashMap::new();
 
     for coord in coord_list {
@@ -141,6 +143,8 @@ pub fn read_coord_list_to_hsts(
 
         all_hsts.push(hsts);
     }
+
+    tracing::info!("Finished reading coords to HSTs.");
 
     let mt = Metadata {
         start_coord: Coord::default(),
