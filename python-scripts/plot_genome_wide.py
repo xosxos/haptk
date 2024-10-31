@@ -11,7 +11,10 @@ def draw_lines(df, angle, cum_angle, color):
     lowerLimit = 0
 
     # Compute max and min in the dataset
-    max = df['savgol'].max()
+    max = df['savgol'].min()
+
+    if max == 0:
+        max = df['savgol'].min()
 
     # Let's compute heights: they are a conversion of each item value in those new coordinates
     # In our example, 0 in the dataset will be converted to the lowerLimit (10)

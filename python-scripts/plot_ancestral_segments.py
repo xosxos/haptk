@@ -22,7 +22,9 @@ def visualize(df, rec_rates, snps, min, max, gargs, args):
         xlabel=gargs["xlabel"],
     )
     lines_color = '#e76f9b'
+    lines_color = '#df6a95'
     # lines_color = '#8282e9'
+    # lines_color = '#000'
     snp_color = '#FFF'
     text_color = '#000'
     rec_color = '#000'
@@ -30,9 +32,10 @@ def visualize(df, rec_rates, snps, min, max, gargs, args):
     plt.setp(ax.get_xticklabels(), rotation=0, fontsize='small')
     ids = df.id.values.tolist()
     for idx in range(0, len(samples)):
-        ax.plot(y[idx], [ids[idx], ids[idx]], c=lines_color, linewidth='2.5')
+        ax.plot(y[idx], [ids[idx], ids[idx]], c=lines_color, linewidth='4')
 
-    ax.plot(rec_rates['pos'], rec_rates['rate'], c=rec_color, linewidth='1')
+    if rec_rates:
+        ax.plot(rec_rates['pos'], rec_rates['rate'], c=rec_color, linewidth='1')
 
     plt.yticks(fontsize=3)
     plt.xlim(xmin=min, xmax=max)
@@ -53,8 +56,8 @@ def visualize(df, rec_rates, snps, min, max, gargs, args):
     ax.spines['bottom'].set_visible(False)
     ax.spines['left'].set_visible(False)
 
-    ax.tick_params(axis='both', which='minor', labelsize=20)
-    ax.tick_params(axis='both', which='major', labelsize=20)
+    ax.tick_params(axis='both', which='minor', labelsize=10)
+    ax.tick_params(axis='both', which='major', labelsize=10)
 
     plt.tight_layout()
 
@@ -105,11 +108,11 @@ pd.set_option('display.max_rows', 1000)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('data', type=str)
-parser.add_argument('-r', '--rec-rates', type=str, required=True)
+parser.add_argument('-r', '--rec-rates', type=str)
 parser.add_argument('-c', '--coords', type=str, required=True)
-parser.add_argument('--gene', type=str, required=True)
-parser.add_argument('--width', type=float, default=14.40)
-parser.add_argument('--height', type=float, default=25.60)
+parser.add_argument('--gene', type=str)
+parser.add_argument('-x', '--width', type=float, default=14.40)
+parser.add_argument('-y', '--height', type=float, default=25.60)
 parser.add_argument('-o', '--output', type=str, required=False)
 args = parser.parse_args()
 
@@ -120,12 +123,18 @@ chr = coords.split(":")[0]
 pos = coords.split(":")[1]
 gene = args.gene
 
-snps = [(gene, int(pos))]
+if gene:
+    snps = [(gene, int(pos))]
+else:
+    snps = [("", int(pos))]
 
 min = df['start'].min() - 8000
 max = df['stop'].max() + 10000
 
-rec_rates = load_rec_rates(df, args.rec_rates, min, max)
+if args.rec_rates:
+    rec_rates = load_rec_rates(df, args.rec_rates, min, max)
+else:
+    rec_rates = None
 
 graph_args = {
         "xlabel": chr,
