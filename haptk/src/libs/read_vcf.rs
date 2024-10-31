@@ -289,8 +289,6 @@ fn read_vcf_batch_to_matrix(
             }
         }
 
-        tracing::trace!("Reading record at position {pos}");
-
         ensure!(record.alleles().len() == 2, NormalizeError(pos));
 
         let gts = record.genotypes_shared_buffer(&mut gt_buffer)?;

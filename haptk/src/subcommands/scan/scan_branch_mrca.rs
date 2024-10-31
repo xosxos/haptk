@@ -1,108 +1,155 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::sync::mpsc::{sync_channel, SyncSender};
+use std::thread;
+use std::{collections::BTreeMap, path::PathBuf};
 
+use color_eyre::eyre::ensure;
 use color_eyre::Result;
 use petgraph::graph::NodeIndex;
+use rayon::prelude::*;
 
-use crate::args::{ConciseArgs, StandardArgs};
+use crate::args::{ConciseArgs, Selection, StandardArgs};
 use crate::io::{open_csv_writer, push_to_output, read_recombination_file};
+use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::Coord;
 use crate::subcommands::bhst::find_majority_nodes;
-use crate::subcommands::scan::{
-    read_tree_file, return_assoc, top_node_from_hsts, write_assoc, zygosity_from_node, AssocRow,
-    HstScan, Limits,
-};
+use crate::subcommands::immutable_hst::construct_bhst_no_mut;
+use crate::subcommands::scan::{read_tree_file, Limits};
 use crate::utils::parse_coords;
 
 use super::Hst;
 
-const HEADER: &[&str] = &[
+type Row = [String; 13];
+
+const HEADER: [&str; 13] = [
     "contig",
     "pos",
+    "ref",
+    "alt",
     "marker_id",
     "bp_len",
     "marker_len",
     "start",
     "stop",
     "mrca",
-    "n_het",
     "n_hom",
+    "n_het",
+    "centromere",
 ];
 
 #[doc(hidden)]
-pub fn run(args: ConciseArgs, limits: Limits, rec_rates: PathBuf) -> Result<()> {
+
+pub fn run(
+    args: ConciseArgs,
+    limits: Limits,
+    rec_rates: PathBuf,
+    ad_hoc: bool,
+    coords: Option<String>,
+    step_size: usize,
+) -> Result<()> {
     let rec_rates = read_recombination_file(rec_rates)?;
-    let hsts = read_tree_file(args.file)?;
-    let hsts = Arc::new(hsts);
 
     let args = StandardArgs {
-        file: PathBuf::new(),
+        file: args.file.clone(),
         output: args.output,
         info_limit: None,
-        coords: hsts.metadata.contig.clone(),
-        selection: hsts.metadata.selection.clone(),
+        coords: coords.clone().unwrap_or(String::from("")),
+        selection: args.selection.clone(),
         prefix: args.prefix,
-        samples: None,
-        no_alt: false,
+        samples: args.samples.clone(),
+        no_alt: true,
     };
 
-    let mut output = args.output.clone();
-    push_to_output(&args, &mut output, "branch_mrca_scan", "csv");
-    let writer = open_csv_writer(output)?;
+    let (tx, rx): (SyncSender<Row>, _) = sync_channel(2024);
 
-    let (_contig, _start, _stop) = parse_coords(&args.coords)?;
+    let cargs = args.clone();
+    let writer_handle = thread::spawn(move || -> Result<()> {
+        let mut output = cargs.output.clone();
+        push_to_output(&cargs, &mut output, "branch_mrca_scan", "csv");
+        let mut writer = open_csv_writer(output)?;
+        writer.write_record(HEADER)?;
 
-    // // Define the minimizer/maximiser function for the HST
-    // let optimizer = |hsts: Arc<HstScan>,
-    //                  hst_coord: &Coord,
-    //                  limits: Limits|
-    //  -> Option<(usize, NodeIndex, f64)> {
-    //     optimizer_inner(hsts, hst_coord, limits, &rec_rates)
-    // };
+        while let Ok(row) = rx.recv() {
+            writer.write_record(row)?;
+        }
+        Ok(())
+    });
 
-    // Define the minimizer/maximiser function for the HST
-    let optimizer = |hsts: Arc<HstScan>,
-                     hst: &Hst,
-                     coord: &Coord,
-                     limits: Limits|
-     -> Option<(Coord, NodeIndex, f64)> {
-        optimizer_inner(hsts, hst, coord, limits, &rec_rates)
+    match ad_hoc {
+        true => {
+            ensure!( coords.is_some(), "If run ad hoc, please give the contig (with --coords) and the wanted selection (--alleles all/longest-haplotype)");
+
+            let (contig, start, stop) = parse_coords(&args.coords)?;
+            let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
+
+            tracing::info!("Starting the branch MRCA scan..");
+
+            vcf.coords()
+                .iter()
+                .enumerate()
+                .par_bridge()
+                .filter(|(n, _)| *n % step_size == 0)
+                .map(|(_, coord)| {
+                    let start_idxs = match args.selection {
+                        Selection::OnlyLongest => {
+                            let res = vcf.only_longest_indexes_no_shard(coord);
+                            if res.is_err() {
+                                panic!("failed to find the longest-haplotype for coord {coord:?}");
+                            }
+                            res.ok()
+                        }
+                        _ => None,
+                    };
+
+                    (
+                        coord,
+                        construct_bhst_no_mut(&vcf, coord, limits.0, start_idxs).unwrap(),
+                    )
+                })
+                .filter_map(|(coord, hst)| {
+                    find_optimized_value_and_create_csv_row(
+                        hst,
+                        coord.clone(),
+                        limits,
+                        &rec_rates,
+                        vcf.samples(),
+                        *vcf.ploidy,
+                    )
+                })
+                .try_for_each(|row| tx.send(row))?;
+        }
+        false => {
+            let hsts = read_tree_file(args.file)?;
+
+            let samples = hsts.metadata.samples.clone();
+            let ploidy = *hsts.metadata.ploidy;
+
+            tracing::info!("Starting the branch MRCA scan..");
+            hsts.hsts
+                .into_par_iter()
+                .filter_map(|(coord, hst)| {
+                    find_optimized_value_and_create_csv_row(
+                        hst, coord, limits, &rec_rates, &samples, ploidy,
+                    )
+                })
+                .try_for_each(|row| tx.send(row))?;
+        }
     };
 
-    // Define what information is wanted for each CSV row
-    let rower = |hsts: Arc<HstScan>, coord: &Coord, top_node_idx, optimized_value| -> AssocRow {
-        rower_inner(hsts, coord, top_node_idx, optimized_value)
-    };
+    tracing::info!("Finished the HST scan.");
 
-    let write_bam = false;
-    let assoc = return_assoc(&hsts, &args, limits, write_bam, optimizer, rower);
+    let _ = writer_handle.join();
 
-    write_assoc(HEADER, assoc, writer)?;
     Ok(())
 }
 
-fn rower_inner(
-    hsts: Arc<HstScan>,
-    coord: &Coord,
-    top_node_idx: NodeIndex,
-    optimized_value: f64,
-) -> AssocRow {
-    let node = top_node_from_hsts(&hsts.hsts, coord, top_node_idx);
-    let (nhet, nhom) = zygosity_from_node(node);
-
-    let mut hm = BTreeMap::new();
-    hm.insert("n_hom".to_string(), nhom.to_string());
-    hm.insert("n_het".to_string(), nhet.to_string());
-
-    AssocRow::new(hsts.clone(), coord, top_node_idx, optimized_value, hm)
-}
-
-fn optimizer_inner(
-    _hsts: Arc<HstScan>,
-    hst: &Hst,
-    coord: &Coord,
+fn find_optimized_value_and_create_csv_row(
+    hst: Hst,
+    coord: Coord,
     limits: Limits,
     rec_rates: &BTreeMap<u64, f32>,
-) -> Option<(Coord, NodeIndex, f64)> {
+    samples: &[String],
+    ploidy: usize,
+) -> Option<Row> {
     let (nmin_samples, nmax_samples, nmin_variants, nmax_variants) = limits;
     let mut top_node_idx = NodeIndex::new(0);
 
@@ -128,7 +175,7 @@ fn optimizer_inner(
 
             // Lowest MRCA
             let start_node = idx;
-            let nodes = find_majority_nodes(hst, start_node);
+            let nodes = find_majority_nodes(&hst, start_node);
 
             // Iterate nodes from the leaf towards the root
             // NOTE: Sometimes genotyping data runs out and leaf nodes have more than 1 sample
@@ -196,5 +243,24 @@ fn optimizer_inner(
         return None;
     }
 
-    Some((coord.clone(), top_node_idx, optimized_value))
+    // Create CSV row
+    let top_node = hst.node_weight(top_node_idx).unwrap();
+    let (nhet, nhom) = top_node.zygosity(samples, ploidy);
+    let is_centromere = top_node.check_for_centromere_hg38();
+
+    Some([
+        coord.contig,
+        coord.pos.to_string(),
+        coord.reference,
+        coord.alt,
+        top_node.identifier(),
+        (top_node.stop.pos.saturating_sub(top_node.start.pos)).to_string(),
+        top_node.haplotype.len().to_string(),
+        top_node.start.pos.to_string(),
+        top_node.stop.pos.to_string(),
+        optimized_value.to_string(),
+        nhom.to_string(),
+        nhet.to_string(),
+        is_centromere.to_string(),
+    ])
 }

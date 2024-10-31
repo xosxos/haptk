@@ -1,4 +1,9 @@
-use std::{collections::BTreeSet, path::PathBuf, sync::mpsc::sync_channel};
+use std::{
+    collections::{BTreeSet, HashSet},
+    hash::{DefaultHasher, Hasher},
+    path::PathBuf,
+    sync::mpsc::sync_channel,
+};
 
 use color_eyre::{
     eyre::{ensure, eyre, Context},
@@ -18,7 +23,7 @@ use crate::{
         structs::{CoordDataSlot, PhasedMatrix},
     },
     structs::{Coord, HapVariant, Ploidy},
-    utils::parse_snp_coord,
+    utils::{centromeres_hg38, parse_snp_coord},
 };
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq, PartialOrd, Hash, Eq)]
@@ -27,6 +32,51 @@ pub struct Node {
     pub start: Coord,
     pub stop: Coord,
     pub haplotype: Vec<u8>,
+}
+
+impl Node {
+    pub fn identifier(&self) -> String {
+        let ht = self.haplotype.iter().fold(
+            format!(
+                "{}_{}_{}_",
+                self.start.contig, self.start.pos, self.stop.pos
+            ),
+            |acc, e| format!("{acc}{e}"),
+        );
+
+        let mut hasher = DefaultHasher::new();
+        hasher.write(ht.as_bytes());
+
+        format!("{:02x}", hasher.finish())
+    }
+
+    pub fn zygosity(&self, samples: &[String], ploidy: usize) -> (usize, usize) {
+        let prior = self.indexes.len();
+        let post: HashSet<_> = self.indexes.iter().map(|i| &samples[i / ploidy]).collect();
+
+        let nhomozygotes = prior - post.len();
+        let nheterozygotes = (2 * post.len()) - prior;
+
+        (nheterozygotes, nhomozygotes)
+    }
+
+    pub fn check_for_centromere_hg38(&self) -> bool {
+        let start = self.start.pos;
+        let stop = self.stop.pos;
+
+        let (cen_start, cen_stop) = centromeres_hg38(&self.start.contig);
+
+        // Start pos is inside centromere
+        let c1 = start > cen_start && start < cen_stop;
+
+        // Stop pos is inside centromere
+        let c2 = stop > cen_start && stop < cen_stop;
+
+        // Starts before centromere and ends after centromere
+        let c3 = start < cen_start && stop > cen_stop;
+
+        c1 || c2 || c3
+    }
 }
 
 impl std::fmt::Display for Node {

@@ -16,6 +16,8 @@ use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::{Coord, PhasedMatrix};
 use crate::utils::{self, centromeres_hg38, parse_coords};
 
+const HEADER: [&str; 6] = ["contig", "pos", "ref", "alt", "mrca", "centromere"];
+
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)]
 pub fn run(
@@ -78,7 +80,7 @@ pub fn run(
     let mut output = args.output.clone();
     push_to_output(&args, &mut output, "mrca_scan", "csv");
     let mut writer = open_csv_writer(output)?;
-    writer.write_record(vec!["contig", "pos", "ref", "alt", "mrca", "centromere"])?;
+    writer.write_record(HEADER)?;
 
     for contig_ages in ages {
         for (coord, age, check) in contig_ages {
@@ -104,11 +106,11 @@ fn find_ages(
     centromere_cut_off: f32,
 ) -> Result<Vec<(Coord, f64, bool)>> {
     match args.selection == Selection::OnlyLongest {
-        true => Vec::from_iter(vcf.coords().clone())
+        true => Vec::from_iter(vcf.coords())
             .par_iter()
             .enumerate()
             .filter(|(n, _)| *n % step_size == 0)
-            .map(|(_, coord)| {
+            .map(|(_, &coord)| {
                 let only_longest_lengths = vcf.only_longest_lengths_no_shard(coord)?;
 
                 let check = check_for_centromeres(vcf, &only_longest_lengths, centromere_cut_off);
@@ -117,13 +119,15 @@ fn find_ages(
                 Ok((coord.clone(), i_tau_hat, check))
             })
             .collect(),
-        false => Vec::from_iter(vcf.coords().clone())
+        false => Vec::from_iter(vcf.coords())
             .par_iter()
             .enumerate()
             .filter(|(n, _)| *n % step_size == 0)
-            .map(|(_, coord)| {
+            .map(|(_, &coord)| {
                 let shared_lengths = vcf.get_lengths_from_uhst_no_mut(coord)?;
+
                 let check = check_for_centromeres(vcf, &shared_lengths, centromere_cut_off);
+
                 let (i_tau_hat, _, _) = mrca_independent(shared_lengths, coord.pos, &rates);
                 Ok((coord.clone(), i_tau_hat, check))
             })

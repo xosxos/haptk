@@ -1,14 +1,10 @@
-use std::collections::hash_map::DefaultHasher;
-use std::collections::{BTreeSet, HashMap};
-use std::hash::Hasher;
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, path::PathBuf};
 
-use petgraph::graph::NodeIndex;
 use petgraph::Graph;
 use rayon::prelude::*;
 use serde_with::serde_as;
 
-use crate::args::{ConciseArgs, Selection, StandardArgs};
+use crate::args::{Selection, StandardArgs};
 use crate::io::push_to_output;
 use crate::structs::Coord;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
@@ -44,32 +40,28 @@ pub fn run(mut args: StandardArgs, step_size: usize, min_sample_size: usize) -> 
 
     tracing::info!("Starting the HST scan..");
 
-    let hsts = if args.selection == Selection::OnlyLongest {
-        Vec::from_iter(vcf.coords())
-            .par_iter()
-            .enumerate()
-            .filter(|(n, _)| *n % step_size == 0)
-            .map(|(_, &coord)| {
-                let start_idxs = vcf.only_longest_indexes_no_shard(coord).unwrap();
-                (
-                    coord.clone(),
-                    construct_bhst_no_mut(&vcf, coord, min_sample_size, Some(start_idxs)).unwrap(),
-                )
-            })
-            .collect()
-    } else {
-        Vec::from_iter(vcf.coords())
-            .par_iter()
-            .enumerate()
-            .filter(|(n, _)| *n % step_size == 0)
-            .map(|(_, &coord)| {
-                (
-                    coord.clone(),
-                    construct_bhst_no_mut(&vcf, coord, min_sample_size, None).unwrap(),
-                )
-            })
-            .collect()
-    };
+    let hsts = Vec::from_iter(vcf.coords())
+        .par_iter()
+        .enumerate()
+        .filter(|(n, _)| *n % step_size == 0)
+        .map(|(_, &coord)| {
+            let start_idxs = match args.selection {
+                Selection::OnlyLongest => {
+                    let res = vcf.only_longest_indexes_no_shard(coord);
+                    if res.is_err() {
+                        panic!("failed to find the longest-haplotype for coord {coord:?}");
+                    }
+                    res.ok()
+                }
+                _ => None,
+            };
+
+            (
+                coord.clone(),
+                construct_bhst_no_mut(&vcf, coord, min_sample_size, start_idxs).unwrap(),
+            )
+        })
+        .collect();
 
     let metadata = Metadata::new(&vcf, &args, vcf.samples().clone(), HstType::Bhst);
 
@@ -78,91 +70,6 @@ pub fn run(mut args: StandardArgs, step_size: usize, min_sample_size: usize) -> 
     write_hsts(trees, output)?;
 
     Ok(())
-}
-
-pub fn read_coord_list_to_hsts(
-    args: &ConciseArgs,
-    min_sample_size: usize,
-    coord_list: Vec<Coord>,
-) -> Result<HstScan> {
-    tracing::info!("Reading {} coords to HSTs.", coord_list.len());
-
-    let mut map = HashMap::new();
-
-    for coord in coord_list {
-        map.entry(coord.contig.clone())
-            .or_insert(Vec::new())
-            .push(coord);
-    }
-
-    let mut all_hsts = vec![];
-
-    let mut samples = vec![];
-    let mut first_run = true;
-    for (contig, coords) in map {
-        let args = StandardArgs {
-            file: args.file.clone(),
-            output: args.output.clone(),
-            info_limit: None,
-            coords: format!("{}", coords[0]),
-            selection: args.selection.clone(),
-            prefix: args.prefix.clone(),
-            samples: args.samples.clone(),
-            no_alt: false,
-        };
-
-        let vcf = read_vcf_to_matrix(&args, &contig, 0, None, None, None, true)?;
-
-        if first_run {
-            samples = vcf.samples().clone();
-
-            first_run = false;
-        }
-
-        let hsts: Vec<(Coord, Graph<Node, ()>)> = if args.selection == Selection::OnlyLongest {
-            coords
-                .par_iter()
-                .map(|coord| {
-                    let start_idxs = vcf.only_longest_indexes_no_shard(coord).unwrap();
-                    (
-                        coord.clone(),
-                        construct_bhst_no_mut(&vcf, coord, min_sample_size, Some(start_idxs))
-                            .unwrap(),
-                    )
-                })
-                .collect()
-        } else {
-            coords
-                .par_iter()
-                .map(|coord| {
-                    (
-                        coord.clone(),
-                        construct_bhst_no_mut(&vcf, coord, min_sample_size, None).unwrap(),
-                    )
-                })
-                .collect()
-        };
-
-        all_hsts.push(hsts);
-    }
-
-    tracing::info!("Finished reading coords to HSTs.");
-
-    let mt = Metadata {
-        start_coord: Coord::default(),
-        hst_type: HstType::Bhst,
-        coords: BTreeSet::new(),
-        contig: "many".to_string(),
-        samples,
-        selection: args.selection.clone(),
-        ploidy: args.selection.clone().into(),
-        vcf_name: args.file.clone(),
-    };
-
-    let hsts = all_hsts.into_iter().flatten().collect();
-    let trees = HstScan { hsts, metadata: mt };
-
-    Ok(trees)
 }
 
 pub type Limits = (usize, usize, usize, usize);
@@ -254,217 +161,4 @@ pub fn read_tree_file(path: PathBuf) -> Result<HstScan> {
     );
 
     Ok(hst_scan)
-}
-
-pub fn return_assoc<F, U>(
-    hsts: &Arc<HstScan>,
-    _args: &StandardArgs,
-    limits: Limits,
-    _write_bam: bool,
-    optimizer: F,
-    rower: U,
-) -> Vec<AssocRow>
-where
-    F: Fn(Arc<HstScan>, &Hst, &Coord, Limits) -> Option<(Coord, NodeIndex, f64)>
-        + Sync
-        + Send
-        + Clone,
-    U: Fn(Arc<HstScan>, &Coord, NodeIndex, f64) -> AssocRow + Sync + Send,
-{
-    hsts.hsts
-        .par_iter()
-        .filter_map(|(coord, hst)| optimizer(hsts.clone(), hst, coord, limits))
-        .map(|(coord, top_node_idx, optimized_value)| {
-            rower(hsts.clone(), &coord, top_node_idx, optimized_value)
-        })
-        .collect()
-}
-
-pub fn write_assoc(
-    header: &[&str],
-    rows: Vec<AssocRow>,
-    mut writer: csv::Writer<Box<dyn std::io::Write>>,
-) -> Result<()> {
-    writer.write_record(header)?;
-
-    rows.into_iter().try_for_each(|row| -> Result<()> {
-        let record = row.to_csv_row();
-        writer.write_record(record)?;
-        Ok(())
-    })
-}
-
-#[derive(Clone, Debug)]
-pub struct AssocRow {
-    pub contig: String,
-    pub pos: u64,
-    pub marker_id: String,
-    pub bp_len: f32,
-    pub marker_len: usize,
-    pub start: u64,
-    pub stop: u64,
-    pub start_coord: Coord,
-    pub stop_coord: Coord,
-    pub opt_value: f64,
-    pub node_idx: NodeIndex,
-    pub first_sample_idx: usize,
-    pub hashmap: BTreeMap<String, String>,
-}
-
-#[allow(dead_code)]
-impl AssocRow {
-    pub fn new(
-        hsts: Arc<HstScan>,
-        coord: &Coord,
-        top_node_idx: NodeIndex,
-        opt_value: f64,
-        hashmap: BTreeMap<String, String>,
-    ) -> AssocRow {
-        let hst = hsts.hsts.get(coord).unwrap();
-        let top_node = hst.node_weight(top_node_idx).unwrap();
-
-        AssocRow {
-            contig: coord.contig.clone(),
-            pos: coord.pos,
-            marker_id: get_marker_id(top_node),
-            bp_len: (top_node.stop.pos.saturating_sub(top_node.start.pos)) as f32,
-            marker_len: top_node.haplotype.len(),
-            start: top_node.start.pos,
-            stop: top_node.stop.pos,
-            start_coord: top_node.start.clone(),
-            stop_coord: top_node.stop.clone(),
-            opt_value,
-            hashmap,
-            node_idx: top_node_idx,
-            first_sample_idx: top_node.indexes[0],
-        }
-    }
-
-    fn pos(&self) -> u64 {
-        self.pos
-    }
-    fn bp_len(&self) -> f32 {
-        self.bp_len
-    }
-    fn marker_len(&self) -> usize {
-        self.marker_len
-    }
-    fn node_idx(&self) -> NodeIndex {
-        self.node_idx
-    }
-    fn start_coord(&self) -> &Coord {
-        &self.start_coord
-    }
-    fn stop_coord(&self) -> &Coord {
-        &self.stop_coord
-    }
-    fn first_sample_idx(&self) -> usize {
-        self.first_sample_idx
-    }
-    fn opt_value(&self) -> f64 {
-        self.opt_value
-    }
-    fn hashmap(&self) -> &BTreeMap<String, String> {
-        &self.hashmap
-    }
-    fn show(&self) -> String {
-        self.to_string()
-    }
-    fn to_csv_row(&self) -> Vec<String> {
-        self.into()
-    }
-}
-
-impl From<&AssocRow> for Vec<String> {
-    fn from(row: &AssocRow) -> Vec<String> {
-        let mut csv_row = vec![
-            row.contig.to_string(),
-            row.pos.to_string(),
-            row.marker_id.to_string(),
-            row.bp_len.to_string(),
-            row.marker_len.to_string(),
-            row.start.to_string(),
-            row.stop.to_string(),
-            row.opt_value.to_string(),
-        ];
-
-        for v in row.hashmap.values() {
-            csv_row.push(v.to_string());
-        }
-
-        csv_row
-    }
-}
-
-impl std::fmt::Display for AssocRow {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let vector: Vec<String> = self.into();
-        let line = format!("{:?}", vector);
-        write!(f, "{line}")
-    }
-}
-
-pub fn get_marker_id(top_node: &Node) -> String {
-    let start = top_node.start.pos;
-    let stop = top_node.stop.pos;
-
-    let ht = top_node.haplotype.iter().fold(
-        format!("{}_{}_{}_", top_node.start.contig, start, stop),
-        |acc, e| format!("{acc}{e}"),
-    );
-
-    let mut hasher = DefaultHasher::new();
-    hasher.write(ht.as_bytes());
-
-    format!("{:02x}", hasher.finish())
-}
-
-pub fn top_node_from_hsts<'a>(
-    hsts: &'a BTreeMap<Coord, Hst>,
-    coord: &Coord,
-    top_node_idx: NodeIndex,
-) -> &'a Node {
-    let hst = hsts.get(coord).unwrap();
-    hst.node_weight(top_node_idx).unwrap()
-}
-
-pub fn zygosity_from_node(node: &Node) -> (usize, usize) {
-    let (nhet_cases, nhom_cases) = calculate_zygote_n(node.indexes.clone());
-    (nhet_cases, nhom_cases)
-}
-
-pub fn case_ctrl_zygosity_from_node(
-    node: &Node,
-    case_list: &[usize],
-) -> (usize, usize, usize, usize) {
-    let controls = node
-        .indexes
-        .iter()
-        .filter(|i| !case_list.contains(i))
-        .copied()
-        .collect::<Vec<usize>>();
-
-    let cases = node
-        .indexes
-        .iter()
-        .filter(|i| case_list.contains(i))
-        .copied()
-        .collect::<Vec<usize>>();
-
-    let (nhet_ctrls, nhom_ctrls) = calculate_zygote_n(controls);
-    let (nhet_cases, nhom_cases) = calculate_zygote_n(cases);
-
-    (nhet_cases, nhom_cases, nhet_ctrls, nhom_ctrls)
-}
-
-fn calculate_zygote_n(mut indexes: Vec<usize>) -> (usize, usize) {
-    let prior_len = indexes.len();
-    indexes.sort();
-    indexes.dedup();
-    let post_len = indexes.len();
-
-    let nhomozygotes = prior_len - post_len;
-    let nheterozygotes = post_len - nhomozygotes;
-
-    (nheterozygotes, nhomozygotes)
 }

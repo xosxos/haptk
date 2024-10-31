@@ -1,7 +1,8 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     path::PathBuf,
-    sync::Arc,
+    sync::mpsc::{sync_channel, SyncSender},
+    thread,
 };
 
 use color_eyre::{
@@ -10,14 +11,20 @@ use color_eyre::{
 };
 use petgraph::graph::NodeIndex;
 use polars::prelude::*;
+use rayon::prelude::*;
 
-use crate::args::{ConciseArgs, Selection, StandardArgs};
-use crate::io::{open_csv_writer, push_to_output};
-use crate::structs::Coord;
-use crate::subcommands::scan::{read_tree_file, return_assoc, write_assoc, AssocRow, Hst, HstScan};
-use crate::utils::parse_coords;
+use crate::subcommands::scan::{read_tree_file, Hst};
+use crate::{
+    args::{ConciseArgs, Selection, StandardArgs},
+    subcommands::immutable_hst::construct_bhst_no_mut,
+};
+use crate::{io::read_coords_file, structs::Coord};
+use crate::{
+    io::{open_csv_writer, push_to_output},
+    read_vcf::read_vcf_to_matrix,
+};
 
-use super::hst_scan::{top_node_from_hsts, zygosity_from_node, Limits};
+use super::hst_scan::Limits;
 
 pub fn read_variable_data_file(path: PathBuf) -> Result<DataFrame> {
     let df = CsvReader::from_path(path)?
@@ -29,13 +36,12 @@ pub fn read_variable_data_file(path: PathBuf) -> Result<DataFrame> {
     Ok(df)
 }
 
-pub fn get_variable_data(indexes: &[usize], hm: &HashMap<usize, f64>) -> Vec<f64> {
-    indexes.iter().filter_map(|v| hm.get(v)).copied().collect()
-}
-
-const HEADER: &[&str] = &[
+type Row = [String; 14];
+const HEADER: [&str; 14] = [
     "contig",
     "pos",
+    "ref",
+    "alt",
     "marker_id",
     "bp_len",
     "marker_len",
@@ -49,8 +55,15 @@ const HEADER: &[&str] = &[
 ];
 
 #[doc(hidden)]
-pub fn run(args: ConciseArgs, limits: Limits, var_data: PathBuf, var_name: String) -> Result<()> {
+pub fn run(
+    args: ConciseArgs,
+    limits: Limits,
+    var_data: PathBuf,
+    var_name: String,
+    coord_list_path: Option<PathBuf>,
+) -> Result<()> {
     let mut var_hm = HashMap::new();
+
     let df = read_variable_data_file(var_data)?;
 
     let data: Result<Vec<f64>> = if let Ok(vec) = df[var_name.as_str()].f64() {
@@ -66,93 +79,197 @@ pub fn run(args: ConciseArgs, limits: Limits, var_data: PathBuf, var_name: Strin
     let data = data?;
     let ids: Vec<&str> = df["parsed_id"].utf8()?.into_iter().flatten().collect();
 
-    let hsts = read_tree_file(args.file)?;
-    let hsts = Arc::new(hsts);
-
-    for (id, value) in ids.iter().zip(data.iter()) {
-        var_hm.insert(hsts.get_sample_idx(id)?, *value);
-    }
-
-    let args = StandardArgs {
-        file: PathBuf::new(),
-        output: args.output,
-        info_limit: None,
-        coords: hsts.metadata.contig.clone(),
-        selection: hsts.metadata.selection.clone(),
-        prefix: args.prefix,
-        samples: None,
-        no_alt: false,
-    };
-
     ensure!(
         args.selection == Selection::All || args.selection == Selection::Haploid,
         "Running only with phased data and all chromsomes is supported."
     );
 
-    let mut output = args.output.clone();
-    push_to_output(&args, &mut output, "quantitative_scan", "csv");
-    let writer = open_csv_writer(output)?;
-
-    let (_contig, _start, _stop) = parse_coords(&args.coords)?;
-
-    // Define the minimizer/maximiser function for the HST
-    let optimizer = |hsts: Arc<HstScan>,
-                     hst: &Hst,
-                     coord: &Coord,
-                     limits: Limits|
-     -> Option<(Coord, NodeIndex, f64)> {
-        optimizer_inner(hsts, hst, coord, limits, &var_hm)
+    let args = StandardArgs {
+        file: args.file.clone(),
+        output: args.output,
+        info_limit: None,
+        coords: String::from(""),
+        selection: args.selection.clone(),
+        prefix: args.prefix,
+        samples: args.samples.clone(),
+        no_alt: true,
     };
 
-    // Define what information is wanted for each CSV row
-    let rower = |hsts: Arc<HstScan>, coord: &Coord, top_node_idx, optimized_value| -> AssocRow {
-        rower_inner(hsts, coord, top_node_idx, optimized_value, &var_hm)
-    };
+    let (tx, rx): (SyncSender<Row>, _) = sync_channel(2024);
 
-    let write_bam = false;
-    let assoc = return_assoc(&hsts, &args, limits, write_bam, optimizer, rower);
-    write_assoc(HEADER, assoc, writer)?;
+    let cargs = args.clone();
+    let writer_handle = thread::spawn(move || -> Result<()> {
+        let mut output = cargs.output.clone();
+        push_to_output(&cargs, &mut output, "quantitative_scan", "csv");
+        let mut writer = open_csv_writer(output)?;
+        writer.write_record(HEADER)?;
+
+        while let Ok(row) = rx.recv() {
+            writer.write_record(row)?;
+        }
+        Ok(())
+    });
+
+    let coord_list: Option<Vec<Coord>> = coord_list_path.map(|v| {
+        read_coords_file(&v).unwrap_or_else(|_| panic!("Could not read coords file {v:?}"))
+    });
+
+    match coord_list {
+        Some(coord_list) => {
+            tracing::info!("Reading {} coords to HSTs.", coord_list.len());
+            let mut map = HashMap::new();
+
+            for coord in coord_list {
+                map.entry(coord.contig.clone())
+                    .or_insert(Vec::new())
+                    .push(coord);
+            }
+
+            for (contig, coords) in map {
+                let args = StandardArgs {
+                    file: args.file.clone(),
+                    output: args.output.clone(),
+                    info_limit: None,
+                    coords: format!("{}", coords[0]),
+                    selection: args.selection.clone(),
+                    prefix: args.prefix.clone(),
+                    samples: args.samples.clone(),
+                    no_alt: true,
+                };
+
+                let vcf = read_vcf_to_matrix(&args, &contig, 0, None, None, None, true)?;
+
+                let samples = vcf.samples().clone();
+                let ploidy = *vcf.ploidy;
+                let nhaplotypes = vcf.nhaplotypes();
+
+                tracing::info!("Starting the case-ctrl scan for {contig}.");
+
+                coords
+                    .into_par_iter()
+                    .map(|coord| {
+                        let start_idxs = match args.selection {
+                            Selection::OnlyLongest => {
+                                let res = vcf.only_longest_indexes_no_shard(&coord);
+                                if res.is_err() {
+                                    panic!(
+                                        "failed to find the longest-haplotype for coord {coord:?}"
+                                    );
+                                }
+                                res.ok()
+                            }
+                            _ => None,
+                        };
+                        (
+                            construct_bhst_no_mut(&vcf, &coord, limits.0, start_idxs).unwrap(),
+                            coord,
+                        )
+                    })
+                    .filter_map(|(hst, coord)| optimizer(hst, coord, limits, &var_hm))
+                    .map(|(hst, coord, top_node_idx, optimized_value)| {
+                        rower(
+                            hst,
+                            coord,
+                            top_node_idx,
+                            optimized_value,
+                            &var_hm,
+                            nhaplotypes,
+                            &samples,
+                            ploidy,
+                        )
+                    })
+                    .try_for_each(|row| tx.send(row))?;
+            }
+        }
+        None => {
+            let hsts = read_tree_file(args.file)?;
+            for (id, value) in ids.iter().zip(data.iter()) {
+                var_hm.insert(hsts.get_sample_idx(id)?, *value);
+            }
+
+            let samples = hsts.metadata.samples.clone();
+            let ploidy = *hsts.metadata.ploidy;
+            let nhaplotypes = hsts.nhaplotypes();
+
+            hsts.hsts
+                .into_par_iter()
+                .filter_map(|(coord, hst)| optimizer(hst, coord, limits, &var_hm))
+                .map(|(hst, coord, top_node_idx, optimized_value)| {
+                    rower(
+                        hst,
+                        coord,
+                        top_node_idx,
+                        optimized_value,
+                        &var_hm,
+                        nhaplotypes,
+                        &samples,
+                        ploidy,
+                    )
+                })
+                .try_for_each(|row| tx.send(row))?;
+        }
+    }
+
+    tracing::info!("Finished the quantitative scan.");
+
+    let _ = writer_handle.join();
 
     Ok(())
 }
 
-fn rower_inner(
-    hsts: Arc<HstScan>,
-    coord: &Coord,
-    top_node_idx: NodeIndex,
-    optimized_value: f64,
-    var_hm: &HashMap<usize, f64>,
-) -> AssocRow {
-    let node = top_node_from_hsts(&hsts.hsts, coord, top_node_idx);
+pub fn get_variable_data(indexes: &[usize], hm: &HashMap<usize, f64>) -> Vec<f64> {
+    indexes.iter().filter_map(|v| hm.get(v)).copied().collect()
+}
 
-    let other_indexes: Vec<usize> = (0..hsts.nhaplotypes())
-        .filter(|i| !node.indexes.contains(i))
+#[allow(clippy::too_many_arguments)]
+fn rower(
+    hst: Hst,
+    coord: Coord,
+    top_node_idx: NodeIndex,
+    opt_value: f64,
+    var_hm: &HashMap<usize, f64>,
+    nhaplotypes: usize,
+    samples: &[String],
+    ploidy: usize,
+) -> Row {
+    let top_node = hst.node_weight(top_node_idx).unwrap();
+    let (nhet, nhom) = top_node.zygosity(samples, ploidy);
+
+    let other_indexes: Vec<usize> = (0..nhaplotypes)
+        .filter(|i| !top_node.indexes.contains(i))
         .collect();
 
-    let v1 = get_variable_data(&node.indexes, var_hm);
+    // Note: v1 does not necessarily equal indexes.len() because hashmap might miss data
+    let v1 = get_variable_data(&top_node.indexes, var_hm);
     let v2 = get_variable_data(&other_indexes, var_hm);
 
     let cases_mean = v1.iter().sum::<f64>() / v1.len() as f64;
     let ctrls_mean = v2.iter().sum::<f64>() / v2.len() as f64;
 
-    let (nhet, nhom) = zygosity_from_node(node);
-
-    let mut assoc_hm = BTreeMap::new();
-    assoc_hm.insert("n_hom".to_string(), nhom.to_string());
-    assoc_hm.insert("n_het".to_string(), nhet.to_string());
-    assoc_hm.insert("cases_mean".to_string(), cases_mean.to_string());
-    assoc_hm.insert("ctrls_mean".to_string(), ctrls_mean.to_string());
-
-    AssocRow::new(hsts.clone(), coord, top_node_idx, optimized_value, assoc_hm)
+    [
+        coord.contig,
+        coord.pos.to_string(),
+        coord.reference,
+        coord.alt,
+        top_node.identifier(),
+        (top_node.stop.pos.saturating_sub(top_node.start.pos)).to_string(),
+        top_node.haplotype.len().to_string(),
+        top_node.start.pos.to_string(),
+        top_node.stop.pos.to_string(),
+        opt_value.to_string(),
+        nhom.to_string(),
+        nhet.to_string(),
+        cases_mean.to_string(),
+        ctrls_mean.to_string(),
+    ]
 }
 
-fn optimizer_inner(
-    _hsts: Arc<HstScan>,
-    hst: &Hst,
-    coord: &Coord,
+fn optimizer(
+    hst: Hst,
+    coord: Coord,
     limits: Limits,
     hm: &HashMap<usize, f64>,
-) -> Option<(Coord, NodeIndex, f64)> {
+) -> Option<(Hst, Coord, NodeIndex, f64)> {
     let (nmin_samples, nmax_samples, nmin_variants, nmax_variants) = limits;
     let mut top_node_idx = NodeIndex::new(0);
 
@@ -214,7 +331,7 @@ fn optimizer_inner(
         return None;
     }
 
-    Some((coord.clone(), top_node_idx, optimized_value))
+    Some((hst, coord, top_node_idx, optimized_value))
 }
 
 #[cfg(test)]

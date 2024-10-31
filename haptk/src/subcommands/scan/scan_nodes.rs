@@ -1,21 +1,32 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    sync::mpsc::{sync_channel, SyncSender},
+    thread,
+};
 
-use color_eyre::Result;
+use color_eyre::{eyre::ensure, Result};
 use petgraph::graph::NodeIndex;
+use rayon::prelude::*;
 
 use crate::{
-    args::{ConciseArgs, StandardArgs},
+    args::{ConciseArgs, Selection, StandardArgs},
     io::{open_csv_writer, push_to_output},
+    read_vcf::read_vcf_to_matrix,
     structs::Coord,
-    subcommands::scan::{read_tree_file, return_assoc, write_assoc, AssocRow, HstScan, Limits},
-    utils::{centromeres_hg38, parse_coords},
+    subcommands::{
+        immutable_hst::construct_bhst_no_mut,
+        scan::{read_tree_file, Limits},
+    },
+    utils::parse_coords,
 };
 
 use super::Hst;
 
-const HEADER: &[&str] = &[
+type Row = [String; 11];
+const HEADER: [&str; 11] = [
     "contig",
     "pos",
+    "ref",
+    "alt",
     "marker_id",
     "bp_len",
     "marker_len",
@@ -25,83 +36,96 @@ const HEADER: &[&str] = &[
     "centromere",
 ];
 
-fn check_for_centromere(contig: &str, start: u64, stop: u64) -> bool {
-    let (c_start, c_stop) = centromeres_hg38(contig);
-
-    let c1 = start > c_start && start < c_stop;
-    let c2 = stop > c_start && stop < c_stop;
-    let c3 = start < c_start && stop > c_stop;
-
-    c1 || c2 || c3
-}
-
 #[doc(hidden)]
-pub fn run(args: ConciseArgs, limits: Limits) -> Result<()> {
-    let hsts = read_tree_file(args.file)?;
-    let hsts = Arc::new(hsts);
-
+pub fn run(
+    args: ConciseArgs,
+    limits: Limits,
+    construct_hsts_ad_hoc: bool,
+    coords: Option<String>,
+    step_size: usize,
+) -> Result<()> {
     let args = StandardArgs {
-        file: PathBuf::new(),
+        file: args.file.clone(),
         output: args.output,
         info_limit: None,
-        coords: hsts.metadata.contig.clone(),
-        selection: hsts.metadata.selection.clone(),
+        coords: coords.clone().unwrap(),
+        selection: args.selection.clone(),
         prefix: args.prefix,
-        samples: None,
-        no_alt: false,
+        samples: args.samples.clone(),
+        no_alt: true,
     };
 
-    let mut output = args.output.clone();
-    push_to_output(&args, &mut output, "node_scan", "csv");
-    let writer = open_csv_writer(output)?;
+    let (tx, rx): (SyncSender<Row>, _) = sync_channel(2024);
 
-    let (_contig, _start, _stop) = parse_coords(&args.coords)?;
+    let cargs = args.clone();
 
-    // Define the minimizer/maximiser function for the HST
-    let optimizer =
-        |hsts: Arc<HstScan>,
-         hst: &Hst,
-         coord: &Coord,
-         limits: Limits|
-         -> Option<(Coord, NodeIndex, f64)> { optimizer_inner(hsts, hst, coord, limits) };
+    let writer_handle = thread::spawn(move || -> Result<()> {
+        let mut output = cargs.output.clone();
+        push_to_output(&cargs, &mut output, "leaf_avg", "csv");
+        let mut writer = open_csv_writer(output)?;
+        writer.write_record(HEADER)?;
 
-    // Define what information is wanted for each CSV row
-    let rower = |hsts: Arc<HstScan>, coord: &Coord, top_node_idx, optimized_value| -> AssocRow {
-        rower_inner(hsts, coord, top_node_idx, optimized_value)
+        while let Ok(row) = rx.recv() {
+            writer.write_record(row)?;
+        }
+
+        Ok(())
+    });
+
+    match construct_hsts_ad_hoc {
+        true => {
+            ensure!( coords.is_some(), "If run ad hoc, please give the contig (with --coords) and the wanted selection (--alleles all/longest-haplotype)");
+
+            let (contig, start, stop) = parse_coords(&args.coords)?;
+            let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
+
+            tracing::info!("Starting the leaf node sum scan..");
+            vcf.coords()
+                .iter()
+                .enumerate()
+                .par_bridge()
+                .filter(|(n, _)| *n % step_size == 0)
+                .map(|(_, coord)| {
+                    let start_idxs = match args.selection {
+                        Selection::OnlyLongest => {
+                            let res = vcf.only_longest_indexes_no_shard(coord);
+                            if res.is_err() {
+                                panic!("failed to find the longest-haplotype for coord {coord:?}");
+                            }
+                            res.ok()
+                        }
+                        _ => None,
+                    };
+
+                    (
+                        coord,
+                        construct_bhst_no_mut(&vcf, coord, limits.0, start_idxs).unwrap(),
+                    )
+                })
+                .filter_map(|(coord, hst)| {
+                    find_max_value_and_create_csv_row(hst, coord.clone(), limits)
+                })
+                .try_for_each(|row| tx.send(row))?;
+        }
+        false => {
+            let hsts = read_tree_file(args.file)?;
+
+            tracing::info!("Starting the max length scan..");
+            hsts.hsts
+                .into_par_iter()
+                .filter_map(|(coord, hst)| find_max_value_and_create_csv_row(hst, coord, limits))
+                .try_for_each(|row| tx.send(row))?;
+        }
     };
 
-    let write_bam = false;
-    let assoc = return_assoc(&hsts, &args, limits, write_bam, optimizer, rower);
+    tracing::info!("Finished the HST scan.");
 
-    write_assoc(HEADER, assoc, writer)?;
+    let _ = writer_handle.join();
+
     Ok(())
 }
 
-fn rower_inner(
-    hsts: Arc<HstScan>,
-    coord: &Coord,
-    top_node_idx: NodeIndex,
-    optimized_value: f64,
-) -> AssocRow {
-    let hst = hsts.hsts.get(coord).unwrap();
-    let top_node = hst.node_weight(top_node_idx).unwrap();
-    let start = top_node.start.pos;
-    let stop = top_node.stop.pos;
-
-    let is_centromere = check_for_centromere(&coord.contig, start, stop);
-
-    let mut assoc_hm = BTreeMap::new();
-    assoc_hm.insert("centromere".to_string(), is_centromere.to_string());
-
-    AssocRow::new(hsts, coord, top_node_idx, optimized_value, assoc_hm)
-}
-
-fn optimizer_inner(
-    _hsts: Arc<HstScan>,
-    hst: &Hst,
-    coord: &Coord,
-    limits: Limits,
-) -> Option<(Coord, NodeIndex, f64)> {
+fn find_max_value_and_create_csv_row(hst: Hst, coord: Coord, limits: Limits) -> Option<Row> {
     let (nmin_samples, nmax_samples, nmin_variants, nmax_variants) = limits;
     let mut top_node_idx = NodeIndex::new(0);
 
@@ -158,5 +182,22 @@ fn optimizer_inner(
         return None;
     }
 
-    Some((coord.clone(), top_node_idx, optimized_value))
+    // Create CSV row
+
+    let top_node = hst.node_weight(top_node_idx).unwrap();
+    let is_centromere = top_node.check_for_centromere_hg38();
+
+    Some([
+        coord.contig,
+        coord.pos.to_string(),
+        coord.reference,
+        coord.alt,
+        top_node.identifier(),
+        (top_node.stop.pos.saturating_sub(top_node.start.pos)).to_string(),
+        top_node.haplotype.len().to_string(),
+        top_node.start.pos.to_string(),
+        top_node.stop.pos.to_string(),
+        optimized_value.to_string(),
+        is_centromere.to_string(),
+    ])
 }

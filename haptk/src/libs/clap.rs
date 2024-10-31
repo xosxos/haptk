@@ -16,7 +16,7 @@ use crate::subcommands::{
 // Genome-wide methods
 #[cfg(feature = "experimental")]
 use crate::{
-    args::{ConciseArgs, Selection},
+    args::ConciseArgs,
     subcommands::{
         mrca_scan,
         scan::{
@@ -363,6 +363,18 @@ pub enum SubCommand {
         /// Number of threads
         #[arg(short = 't', long, default_value_t = 8)]
         threads: usize,
+
+        /// Construct the HSTs and sum the leaf nodes simultaneously
+        #[arg(long)]
+        construct_hsts: bool,
+
+        /// The starting coordinate, i.e. chr9:27573534
+        #[arg(short = 'c', long)]
+        coords: Option<String>,
+
+        /// If constructing HSTs at the same time, scan every n markers
+        #[arg(long, default_value_t = 1)]
+        step_size: usize,
     },
 
     #[cfg(feature = "experimental")]
@@ -401,6 +413,10 @@ pub enum SubCommand {
         /// Path to controls vcf if controls are not included in the same file
         #[arg(long)]
         var_name: String,
+
+        /// Coords to generate HSTs for
+        #[arg(long)]
+        coords: Option<PathBuf>,      
     },
 
     #[cfg(feature = "experimental")]
@@ -435,6 +451,18 @@ pub enum SubCommand {
         /// Recombination rate file
         #[arg(short = 'r', long)]
         recombination_rates: PathBuf,
+
+        /// Construct the HSTs and sum the leaf nodes simultaneously
+        #[arg(long)]
+        construct_hsts: bool,
+
+        /// The starting coordinate, i.e. chr9:27573534
+        #[arg(short = 'c', long)]
+        coords: Option<String>,
+
+        /// If constructing HSTs at the same time, scan every n markers
+        #[arg(long, default_value_t = 1)]
+        step_size: usize,
     },
 
     #[cfg(feature = "experimental")]
@@ -697,27 +725,27 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         SubCommand::HstScan { args, step_size, min_sample_size, .. } => hst_scan::run(args, step_size, min_sample_size)?,
 
         #[cfg(feature = "experimental")]
-        SubCommand::ScanNodes { args, min_sample_size, max_sample_size, min_ht_len, max_ht_len,  .. }
-        => scan_nodes::run(args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len))?,
+        SubCommand::ScanNodes { args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, construct_hsts, coords, step_size,  .. }
+        => scan_nodes::run(args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), construct_hsts, coords, step_size)?,
 
         #[cfg(feature = "experimental")]
         SubCommand::ScanQuantitative {
-            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, var_data, var_name, ..
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, var_data, var_name, coords, ..
         } => scan_quantitative::run(
-                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), var_data, var_name,
+                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), var_data, var_name, coords
             )?,
 
         #[cfg(feature = "experimental")]
         SubCommand::ScanBranchMrca {
-            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, recombination_rates, ..
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, recombination_rates, construct_hsts, coords, step_size, ..
         } => scan_branch_mrca::run(
-                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), recombination_rates,
+                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), recombination_rates, construct_hsts, coords, step_size,
             )?,
 
         #[cfg(feature = "experimental")]
-        SubCommand::ScanSumHst { args, recombination_rates, centromere_cut_off, construct_hsts, coords,  step_size, min_sample_size, no_alt, length_in_bp, seg_samples, .. }
+        SubCommand::ScanSumHst { args, recombination_rates, centromere_cut_off, construct_hsts, coords, step_size, min_sample_size, length_in_bp, seg_samples, .. }
         => scan_sum_hsts::run(
-            args, recombination_rates, centromere_cut_off, construct_hsts, coords, step_size, min_sample_size, no_alt, length_in_bp, seg_samples,
+            args, recombination_rates, centromere_cut_off, construct_hsts, coords, step_size, min_sample_size, length_in_bp, seg_samples,
         )?,
 
         #[cfg(feature = "experimental")]

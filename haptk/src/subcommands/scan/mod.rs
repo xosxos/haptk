@@ -6,7 +6,4 @@ pub mod scan_quantitative;
 pub mod scan_segregate;
 pub mod scan_sum_hsts;
 pub use super::bhst::Metadata;
-pub use hst_scan::{
-    get_marker_id, read_tree_file, return_assoc, run, top_node_from_hsts, write_assoc,
-    zygosity_from_node, AssocRow, Hst, HstMap, HstScan, Limits,
-};
+pub use hst_scan::{read_tree_file, run, Hst, HstMap, HstScan, Limits};
