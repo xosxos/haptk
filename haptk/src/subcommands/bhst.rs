@@ -60,6 +60,14 @@ impl Node {
         (nheterozygotes, nhomozygotes)
     }
 
+    pub fn sample_name_list(&self, samples: &[String], ploidy: usize) -> String {
+        self.indexes
+            .iter()
+            .map(|i| &*samples[i / ploidy])
+            .collect::<Vec<&str>>()
+            .join(";")
+    }
+
     pub fn check_for_centromere_hg38(&self) -> bool {
         let start = self.start.pos;
         let stop = self.stop.pos;

@@ -143,6 +143,7 @@ pub fn run(
 
     tracing::info!("Finished the HST scan.");
 
+    drop(tx);
     let _ = writer_handle.join();
 
     Ok(())

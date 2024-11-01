@@ -429,7 +429,7 @@ pub enum SubCommand {
         log_and_verbosity: LogAndVerbosity,
 
         /// Branch sample size to end recursion
-        #[arg(long, default_value_t = 15)]
+        #[arg(long, default_value_t = 10)]
         min_sample_size: usize,
 
         /// Branch sample size to end recursion
@@ -463,6 +463,10 @@ pub enum SubCommand {
         /// If constructing HSTs at the same time, scan every n markers
         #[arg(long, default_value_t = 1)]
         step_size: usize,
+
+        /// Generations limit
+        #[arg(long, default_value_t = 40.0)]
+        limit: f64,
     },
 
     #[cfg(feature = "experimental")]
@@ -501,6 +505,10 @@ pub enum SubCommand {
         /// Coords to generate HSTs for
         #[arg(long)]
         coords: Option<PathBuf>,      
+
+        /// Generations limit
+        #[arg(long, default_value_t = 40.0)]
+        limit: f64,
     },
 
     #[cfg(feature = "experimental")]
@@ -737,9 +745,9 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
         #[cfg(feature = "experimental")]
         SubCommand::ScanBranchMrca {
-            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, recombination_rates, construct_hsts, coords, step_size, ..
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, recombination_rates, construct_hsts, coords, step_size, limit, ..
         } => scan_branch_mrca::run(
-                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), recombination_rates, construct_hsts, coords, step_size,
+                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), recombination_rates, construct_hsts, coords, step_size, limit,
             )?,
 
         #[cfg(feature = "experimental")]
@@ -750,9 +758,9 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
         #[cfg(feature = "experimental")]
         SubCommand::ScanSegregate {
-            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, case_samples, coords, ..
+            args, min_sample_size, max_sample_size, min_ht_len, max_ht_len, case_samples, coords, limit, ..
         } => scan_segregate::run(
-                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), case_samples, coords,
+                args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), case_samples, coords, limit,
             )?,
 
     };

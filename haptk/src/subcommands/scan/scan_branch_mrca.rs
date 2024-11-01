@@ -4,7 +4,6 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use color_eyre::eyre::ensure;
 use color_eyre::Result;
-use petgraph::graph::NodeIndex;
 use rayon::prelude::*;
 
 use crate::args::{ConciseArgs, Selection, StandardArgs};
@@ -18,9 +17,9 @@ use crate::utils::parse_coords;
 
 use super::Hst;
 
-type Row = [String; 13];
+type Row = [String; 14];
 
-const HEADER: [&str; 13] = [
+const HEADER: [&str; 14] = [
     "contig",
     "pos",
     "ref",
@@ -34,6 +33,7 @@ const HEADER: [&str; 13] = [
     "n_hom",
     "n_het",
     "centromere",
+    "samples",
 ];
 
 #[doc(hidden)]
@@ -45,6 +45,7 @@ pub fn run(
     ad_hoc: bool,
     coords: Option<String>,
     step_size: usize,
+    limit: f64,
 ) -> Result<()> {
     let rec_rates = read_recombination_file(rec_rates)?;
 
@@ -105,7 +106,7 @@ pub fn run(
                         construct_bhst_no_mut(&vcf, coord, limits.0, start_idxs).unwrap(),
                     )
                 })
-                .filter_map(|(coord, hst)| {
+                .try_for_each(|(coord, hst)| {
                     find_optimized_value_and_create_csv_row(
                         hst,
                         coord.clone(),
@@ -113,9 +114,10 @@ pub fn run(
                         &rec_rates,
                         vcf.samples(),
                         *vcf.ploidy,
+                        limit,
+                        tx.clone(),
                     )
-                })
-                .try_for_each(|row| tx.send(row))?;
+                })?;
         }
         false => {
             let hsts = read_tree_file(args.file)?;
@@ -124,24 +126,30 @@ pub fn run(
             let ploidy = *hsts.metadata.ploidy;
 
             tracing::info!("Starting the branch MRCA scan..");
-            hsts.hsts
-                .into_par_iter()
-                .filter_map(|(coord, hst)| {
-                    find_optimized_value_and_create_csv_row(
-                        hst, coord, limits, &rec_rates, &samples, ploidy,
-                    )
-                })
-                .try_for_each(|row| tx.send(row))?;
+            hsts.hsts.into_par_iter().try_for_each(|(coord, hst)| {
+                find_optimized_value_and_create_csv_row(
+                    hst,
+                    coord,
+                    limits,
+                    &rec_rates,
+                    &samples,
+                    ploidy,
+                    limit,
+                    tx.clone(),
+                )
+            })?;
         }
     };
 
     tracing::info!("Finished the HST scan.");
 
+    drop(tx);
     let _ = writer_handle.join();
 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn find_optimized_value_and_create_csv_row(
     hst: Hst,
     coord: Coord,
@@ -149,14 +157,10 @@ fn find_optimized_value_and_create_csv_row(
     rec_rates: &BTreeMap<u64, f32>,
     samples: &[String],
     ploidy: usize,
-) -> Option<Row> {
+    limit: f64,
+    tx: SyncSender<Row>,
+) -> Result<()> {
     let (nmin_samples, nmax_samples, nmin_variants, nmax_variants) = limits;
-    let mut top_node_idx = NodeIndex::new(0);
-
-    // START VALUE
-    let start_value = f64::MAX;
-
-    let mut optimized_value = start_value;
 
     let mut iterator = hst.node_indices();
 
@@ -223,44 +227,33 @@ fn find_optimized_value_and_create_csv_row(
             let value = i_tau_hat as f64;
 
             // Define the clause
-            let clause = value < optimized_value;
+            let clause = value < limit;
 
             // OPTIMIZER CODE END
-
             if clause {
-                optimized_value = value;
-                top_node_idx = idx;
+                // Create a CSV row
+                let (nhet, nhom) = node.zygosity(samples, ploidy);
+                let is_centromere = node.check_for_centromere_hg38();
+                let names = node.sample_name_list(samples, ploidy);
+
+                tx.send([
+                    coord.contig.clone(),
+                    coord.pos.to_string(),
+                    coord.reference.clone(),
+                    coord.alt.clone(),
+                    node.identifier(),
+                    (node.stop.pos.saturating_sub(node.start.pos)).to_string(),
+                    node.haplotype.len().to_string(),
+                    node.start.pos.to_string(),
+                    node.stop.pos.to_string(),
+                    value.to_string(),
+                    nhom.to_string(),
+                    nhet.to_string(),
+                    is_centromere.to_string(),
+                    names,
+                ])?;
             }
         }
     }
-
-    if optimized_value == start_value {
-        tracing::warn!(
-            "No optimized value for the HST in contig {} at pos {}",
-            coord.contig,
-            coord.pos
-        );
-        return None;
-    }
-
-    // Create CSV row
-    let top_node = hst.node_weight(top_node_idx).unwrap();
-    let (nhet, nhom) = top_node.zygosity(samples, ploidy);
-    let is_centromere = top_node.check_for_centromere_hg38();
-
-    Some([
-        coord.contig,
-        coord.pos.to_string(),
-        coord.reference,
-        coord.alt,
-        top_node.identifier(),
-        (top_node.stop.pos.saturating_sub(top_node.start.pos)).to_string(),
-        top_node.haplotype.len().to_string(),
-        top_node.start.pos.to_string(),
-        top_node.stop.pos.to_string(),
-        optimized_value.to_string(),
-        nhom.to_string(),
-        nhet.to_string(),
-        is_centromere.to_string(),
-    ])
+    Ok(())
 }

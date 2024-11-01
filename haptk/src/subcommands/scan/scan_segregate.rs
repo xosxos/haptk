@@ -1,11 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::thread;
 
 use color_eyre::Result;
 use fishers_exact::fishers_exact;
-use petgraph::graph::NodeIndex;
 use rayon::prelude::*;
 
 use crate::args::{ConciseArgs, Selection, StandardArgs};
@@ -16,9 +15,9 @@ use crate::subcommands::bhst::Node;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
 use crate::subcommands::scan::{read_tree_file, Hst, Limits};
 
-type Row = [String; 14];
+type Row = [String; 15];
 
-const HEADER: [&str; 14] = [
+const HEADER: [&str; 15] = [
     "contig",
     "pos",
     "ref",
@@ -33,16 +32,18 @@ const HEADER: [&str; 14] = [
     "nhet_ctrls",
     "nhom_cases",
     "nhom_ctrls",
+    "samples",
 ];
 
 #[doc(hidden)]
 pub fn run(
     args: ConciseArgs,
     limits: Limits,
-    seg_samples: PathBuf,
+    case_samples: PathBuf,
     coord_list_path: Option<PathBuf>,
+    limit: f64,
 ) -> Result<()> {
-    let seg_samples = read_sample_ids(&Some(seg_samples))?.unwrap();
+    let case_samples = read_sample_ids(&Some(case_samples))?.unwrap();
 
     let args = StandardArgs {
         file: args.file.clone(),
@@ -86,7 +87,9 @@ pub fn run(
             }
 
             let mut run_once = true;
-            let mut seg_sample_idxs: Vec<usize> = vec![];
+            let mut case_list: Vec<usize> = vec![];
+            let mut case_list_names: Vec<String> = vec![];
+            let mut samples = vec![];
 
             for (contig, coords) in map {
                 let args = StandardArgs {
@@ -104,7 +107,7 @@ pub fn run(
 
                 if run_once {
                     // Filter out samples not present in the HST SCAN
-                    let seg_samples: Vec<String> = seg_samples
+                    case_list_names = case_samples
                         .iter()
                         .filter(|&s| {
                             if vcf.samples().contains(s) {
@@ -119,11 +122,18 @@ pub fn run(
                         .cloned()
                         .collect();
 
-                    seg_sample_idxs = vcf.get_idxs_for_samples(&seg_samples).unwrap();
+                    case_list = vcf.get_idxs_for_samples(&case_list_names).unwrap();
+
+                    samples = vcf.samples().clone();
                     run_once = false;
                 }
-                let ncases = seg_sample_idxs.len();
-                let ncontrols = vcf.nhaplotypes() - ncases;
+
+                let ctrl_list: Vec<_> = vcf
+                    .samples()
+                    .iter()
+                    .filter(|s| !case_list_names.contains(s))
+                    .flat_map(|name| vcf.get_idxs_for_samples(&[name.clone()]).unwrap())
+                    .collect();
 
                 tracing::info!("Starting the case-ctrl scan for {contig}.");
 
@@ -147,24 +157,26 @@ pub fn run(
                             coord,
                         )
                     })
-                    .filter_map(|(hst, coord)| {
+                    .try_for_each(|(hst, coord)| {
                         find_optimized_value_and_create_csv_row(
                             hst,
                             coord,
                             limits,
-                            &seg_sample_idxs,
-                            ncases,
-                            ncontrols,
+                            &samples,
+                            &case_list,
+                            &ctrl_list,
+                            *vcf.ploidy,
+                            limit,
+                            tx.clone(),
                         )
-                    })
-                    .try_for_each(|row| tx.send(row))?;
+                    })?;
             }
         }
         None => {
             let hsts = read_tree_file(args.file)?;
 
             // Filter out samples not present in the HST SCAN
-            let seg_samples: Vec<String> = seg_samples
+            let case_list_names: Vec<String> = case_samples
                 .into_iter()
                 .filter(|s| {
                     if hsts.metadata.samples.contains(s) {
@@ -176,51 +188,58 @@ pub fn run(
                 })
                 .collect();
 
-            let seg_sample_idxs = hsts.get_sample_idxs(&seg_samples).unwrap();
+            let case_list = hsts.get_sample_idxs(&case_list_names).unwrap();
 
-            let ncases = seg_sample_idxs.len();
-            let ncontrols = hsts.nhaplotypes() - ncases;
+            let ctrl_list: Vec<_> = hsts
+                .metadata
+                .samples
+                .iter()
+                .filter(|s| !case_list_names.contains(s))
+                .flat_map(|name| hsts.get_sample_idxs(&[name.clone()]).unwrap())
+                .collect();
+
+            let ploidy = hsts.metadata.ploidy;
+            let samples = hsts.metadata.samples;
 
             tracing::info!("Starting the case-ctrl scan.");
 
-            hsts.hsts
-                .into_par_iter()
-                .filter_map(|(coord, hst)| {
-                    find_optimized_value_and_create_csv_row(
-                        hst,
-                        coord,
-                        limits,
-                        &seg_sample_idxs,
-                        ncases,
-                        ncontrols,
-                    )
-                })
-                .try_for_each(|row| tx.send(row))?;
+            hsts.hsts.into_par_iter().try_for_each(|(coord, hst)| {
+                find_optimized_value_and_create_csv_row(
+                    hst,
+                    coord,
+                    limits,
+                    &samples,
+                    &case_list,
+                    &ctrl_list,
+                    *ploidy,
+                    limit,
+                    tx.clone(),
+                )
+            })?;
         }
     }
 
     tracing::info!("Finished the case-ctrl scan.");
 
+    drop(tx);
     let _ = writer_handle.join();
 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn find_optimized_value_and_create_csv_row(
     hst: Hst,
     coord: Coord,
     limits: Limits,
+    samples: &[String],
     case_list: &[usize],
-    ncases: usize,
-    ncontrols: usize,
-) -> Option<Row> {
+    ctrl_list: &[usize],
+    ploidy: usize,
+    limit: f64,
+    tx: SyncSender<Row>,
+) -> Result<()> {
     let (nmin_samples, nmax_samples, nmin_variants, nmax_variants) = limits;
-    let mut top_node_idx = NodeIndex::new(0);
-
-    // START VALUE
-    let start_value = f64::MAX;
-
-    let mut optimized_value = start_value;
 
     let mut iterator = hst.node_indices();
 
@@ -238,73 +257,50 @@ fn find_optimized_value_and_create_csv_row(
             // OPTIMIZER CODE
             let node = hst.node_weight(idx).unwrap();
 
-            // if let Some(value) = segregation_optimizer(case_list, names, optimized_value) {
-            if let Some(value) =
-                fisher_optimizer(ncases, ncontrols, case_list, &node.indexes, optimized_value)
-            {
-                optimized_value = value;
-                top_node_idx = idx;
+            // let value = segregation_optimizer(case_list, names);
+            let value = fisher_optimizer(case_list, ctrl_list, &node.indexes);
+
+            if value < limit {
+                let (nhet_cases, nhom_cases, nhet_ctrls, nhom_ctrls) =
+                    case_ctrl_zygosity_from_node(node, case_list, ctrl_list, samples, ploidy);
+                let names = node.sample_name_list(samples, ploidy);
+
+                tx.send([
+                    coord.contig.clone(),
+                    coord.pos.to_string(),
+                    coord.reference.clone(),
+                    coord.alt.clone(),
+                    node.identifier(),
+                    (node.stop.pos.saturating_sub(node.start.pos)).to_string(),
+                    node.haplotype.len().to_string(),
+                    node.start.pos.to_string(),
+                    node.stop.pos.to_string(),
+                    value.to_string(),
+                    nhet_cases.to_string(),
+                    nhom_cases.to_string(),
+                    nhet_ctrls.to_string(),
+                    nhom_ctrls.to_string(),
+                    names.to_string(),
+                ])?
             }
         }
     }
-
-    if optimized_value == start_value {
-        tracing::warn!(
-            "No optimized value for the HST in contig {} at pos {}",
-            coord.contig,
-            coord.pos,
-        );
-        return None;
-    }
-
-    let top_node = hst.node_weight(top_node_idx).unwrap();
-
-    let (nhet_cases, nhom_cases, nhet_ctrls, nhom_ctrls) =
-        case_ctrl_zygosity_from_node(top_node, case_list);
-
-    Some([
-        coord.contig,
-        coord.pos.to_string(),
-        coord.reference,
-        coord.alt,
-        top_node.identifier(),
-        (top_node.stop.pos.saturating_sub(top_node.start.pos)).to_string(),
-        top_node.haplotype.len().to_string(),
-        top_node.start.pos.to_string(),
-        top_node.stop.pos.to_string(),
-        optimized_value.to_string(),
-        nhet_cases.to_string(),
-        nhom_cases.to_string(),
-        nhet_ctrls.to_string(),
-        nhom_ctrls.to_string(),
-    ])
+    Ok(())
 }
 
 #[allow(dead_code)]
-fn segregation_optimizer(
-    case_list: &[String],
-    names: Vec<String>,
-    optimized_value: f64,
-) -> Option<f64> {
-    // Check that all samples are only from the wanted list and return their amount
-    let nsamples = match names.iter().all(|name| case_list.contains(name)) {
+// Check that all samples are only from the wanted list and return their amount
+fn segregation_optimizer(case_list: &[String], names: Vec<String>) -> f64 {
+    match names.iter().all(|name| case_list.contains(name)) {
         true => names.len() as f64,
         false => 0.0,
-    };
-
-    match nsamples > optimized_value {
-        true => Some(nsamples),
-        false => None,
     }
 }
 
-fn fisher_optimizer(
-    ncases: usize,
-    ncontrols: usize,
-    case_list: &[usize],
-    indexes: &[usize],
-    optimized_value: f64,
-) -> Option<f64> {
+fn fisher_optimizer(case_list: &[usize], ctrl_list: &[usize], indexes: &[usize]) -> f64 {
+    let ncases = case_list.len();
+    let ncontrols = ctrl_list.len();
+
     let cases_true = indexes
         .iter()
         .filter(|name| case_list.contains(name))
@@ -315,65 +311,49 @@ fn fisher_optimizer(
     let cases_false = ncases - cases_true;
     let controls_false = ncontrols - controls_true;
 
-    // println!(
-    //     "{:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}",
-    //     hsts.metadata.samples.len(),
-    //     hsts.nhaplotypes(),
-    //     ncases,
-    //     ncontrols,
-    //     cases_true,
-    //     cases_false,
-    //     controls_true,
-    //     controls_false
-    // );
-
-    let pvalue = fishers_exact(&[
+    fishers_exact(&[
         cases_true as u32,
         controls_true as u32,
         cases_false as u32,
         controls_false as u32,
     ])
     .unwrap()
-    .greater_pvalue;
-
-    match pvalue < optimized_value {
-        true => Some(pvalue),
-        false => None,
-    }
+    .greater_pvalue
 }
 
 pub fn case_ctrl_zygosity_from_node(
     node: &Node,
     case_list: &[usize],
+    ctrl_list: &[usize],
+    samples: &[String],
+    ploidy: usize,
 ) -> (usize, usize, usize, usize) {
-    let controls = node
+    // Filter in only ctrl samples and then count the samples
+    // Finally, filter out all duplicates (homozygotes) by collecting to a set
+    let mut ctrl_prior = 0;
+    let ctrl_post: HashSet<_> = node
         .indexes
         .iter()
-        .filter(|i| !case_list.contains(i))
-        .copied()
-        .collect::<Vec<usize>>();
+        .filter(|i| ctrl_list.contains(i))
+        .inspect(|_| ctrl_prior += 1)
+        .map(|i| &samples[i / ploidy])
+        .collect();
 
-    let cases = node
+    let mut case_prior = 0;
+    let case_post: HashSet<_> = node
         .indexes
         .iter()
         .filter(|i| case_list.contains(i))
-        .copied()
-        .collect::<Vec<usize>>();
+        .inspect(|_| case_prior += 1)
+        .map(|i| &samples[i / ploidy])
+        .collect();
 
-    let (nhet_ctrls, nhom_ctrls) = calculate_zygote_n(controls);
-    let (nhet_cases, nhom_cases) = calculate_zygote_n(cases);
+    // Calculate homozygosity statistics based on the amount of homozygotes removed above
+    let nhom_cases = case_prior - case_post.len();
+    let nhet_cases = (2 * case_post.len()) - case_prior;
+
+    let nhom_ctrls = ctrl_prior - ctrl_post.len();
+    let nhet_ctrls = (2 * ctrl_post.len()) - ctrl_prior;
 
     (nhet_cases, nhom_cases, nhet_ctrls, nhom_ctrls)
-}
-
-fn calculate_zygote_n(mut indexes: Vec<usize>) -> (usize, usize) {
-    let prior_len = indexes.len();
-    indexes.sort();
-    indexes.dedup();
-    let post_len = indexes.len();
-
-    let nhomozygotes = prior_len - post_len;
-    let nheterozygotes = post_len - nhomozygotes;
-
-    (nheterozygotes, nhomozygotes)
 }

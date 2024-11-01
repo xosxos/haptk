@@ -21,8 +21,8 @@ use crate::{
 
 use super::Hst;
 
-type Row = [String; 11];
-const HEADER: [&str; 11] = [
+type Row = [String; 14];
+const HEADER: [&str; 14] = [
     "contig",
     "pos",
     "ref",
@@ -33,7 +33,10 @@ const HEADER: [&str; 11] = [
     "start",
     "stop",
     "opt_value",
+    "nhom",
+    "nhet",
     "centromere",
+    "samples",
 ];
 
 #[doc(hidden)]
@@ -79,6 +82,9 @@ pub fn run(
             let (contig, start, stop) = parse_coords(&args.coords)?;
             let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
 
+            let samples = vcf.samples().clone();
+            let ploidy = *vcf.ploidy;
+
             tracing::info!("Starting the leaf node sum scan..");
             vcf.coords()
                 .iter()
@@ -103,29 +109,41 @@ pub fn run(
                     )
                 })
                 .filter_map(|(coord, hst)| {
-                    find_max_value_and_create_csv_row(hst, coord.clone(), limits)
+                    find_max_value_and_create_csv_row(hst, coord.clone(), limits, &samples, ploidy)
                 })
                 .try_for_each(|row| tx.send(row))?;
         }
         false => {
             let hsts = read_tree_file(args.file)?;
 
+            let samples = hsts.metadata.samples.clone();
+            let ploidy = *hsts.metadata.ploidy;
+
             tracing::info!("Starting the max length scan..");
             hsts.hsts
                 .into_par_iter()
-                .filter_map(|(coord, hst)| find_max_value_and_create_csv_row(hst, coord, limits))
+                .filter_map(|(coord, hst)| {
+                    find_max_value_and_create_csv_row(hst, coord, limits, &samples, ploidy)
+                })
                 .try_for_each(|row| tx.send(row))?;
         }
     };
 
     tracing::info!("Finished the HST scan.");
 
+    drop(tx);
     let _ = writer_handle.join();
 
     Ok(())
 }
 
-fn find_max_value_and_create_csv_row(hst: Hst, coord: Coord, limits: Limits) -> Option<Row> {
+fn find_max_value_and_create_csv_row(
+    hst: Hst,
+    coord: Coord,
+    limits: Limits,
+    samples: &[String],
+    ploidy: usize,
+) -> Option<Row> {
     let (nmin_samples, nmax_samples, nmin_variants, nmax_variants) = limits;
     let mut top_node_idx = NodeIndex::new(0);
 
@@ -187,6 +205,9 @@ fn find_max_value_and_create_csv_row(hst: Hst, coord: Coord, limits: Limits) -> 
     let top_node = hst.node_weight(top_node_idx).unwrap();
     let is_centromere = top_node.check_for_centromere_hg38();
 
+    let (nhet, nhom) = top_node.zygosity(samples, ploidy);
+    let names = top_node.sample_name_list(samples, ploidy);
+
     Some([
         coord.contig,
         coord.pos.to_string(),
@@ -198,6 +219,9 @@ fn find_max_value_and_create_csv_row(hst: Hst, coord: Coord, limits: Limits) -> 
         top_node.start.pos.to_string(),
         top_node.stop.pos.to_string(),
         optimized_value.to_string(),
+        nhom.to_string(),
+        nhet.to_string(),
         is_centromere.to_string(),
+        names,
     ])
 }

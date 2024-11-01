@@ -36,8 +36,8 @@ pub fn read_variable_data_file(path: PathBuf) -> Result<DataFrame> {
     Ok(df)
 }
 
-type Row = [String; 14];
-const HEADER: [&str; 14] = [
+type Row = [String; 15];
+const HEADER: [&str; 15] = [
     "contig",
     "pos",
     "ref",
@@ -52,6 +52,7 @@ const HEADER: [&str; 14] = [
     "ctrls_mean",
     "n_het",
     "n_hom",
+    "samples",
 ];
 
 #[doc(hidden)]
@@ -212,6 +213,7 @@ pub fn run(
 
     tracing::info!("Finished the quantitative scan.");
 
+    drop(tx);
     let _ = writer_handle.join();
 
     Ok(())
@@ -246,6 +248,8 @@ fn rower(
     let cases_mean = v1.iter().sum::<f64>() / v1.len() as f64;
     let ctrls_mean = v2.iter().sum::<f64>() / v2.len() as f64;
 
+    let names = top_node.sample_name_list(samples, ploidy);
+
     [
         coord.contig,
         coord.pos.to_string(),
@@ -261,6 +265,7 @@ fn rower(
         nhet.to_string(),
         cases_mean.to_string(),
         ctrls_mean.to_string(),
+        names,
     ]
 }
 
