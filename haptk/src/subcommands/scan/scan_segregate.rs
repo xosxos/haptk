@@ -3,21 +3,26 @@ use std::path::PathBuf;
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::thread;
 
+use color_eyre::eyre::ensure;
 use color_eyre::Result;
 use fishers_exact::fishers_exact;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
-use crate::args::{ConciseArgs, Selection, StandardArgs};
-use crate::io::{open_csv_writer, push_to_output, read_coords_file, read_sample_ids};
+use crate::args::{ConciseArgs, StandardArgs};
+use crate::io::{
+    filter_out_non_vcf_sample_names, open_csv_writer, push_to_output, read_coords_sample_file,
+    read_sample_ids,
+};
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::Coord;
 use crate::subcommands::bhst::Node;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
-use crate::subcommands::scan::{read_tree_file, Hst, Limits};
+use crate::subcommands::scan::{Hst, Limits};
 
-type Row = [String; 15];
+type Row = [String; 17];
 
-const HEADER: [&str; 15] = [
+const HEADER: [&str; 17] = [
     "contig",
     "pos",
     "ref",
@@ -28,22 +33,48 @@ const HEADER: [&str; 15] = [
     "start",
     "stop",
     "n",
+    "case_ht_n",
+    "ctrl_ht_n",
     "nhet_cases",
-    "nhet_ctrls",
     "nhom_cases",
+    "nhet_ctrls",
     "nhom_ctrls",
     "samples",
 ];
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct CoordSamples {
+    pub contig: String,
+    pub pos: u64,
+    #[serde(rename(serialize = "ref"), alias = "ref")]
+    pub reference: String,
+    pub alt: String,
+    #[serde(default)]
+    pub samples: Option<String>,
+}
+
+impl From<CoordSamples> for Coord {
+    fn from(hap: CoordSamples) -> Self {
+        Self {
+            contig: hap.contig,
+            pos: hap.pos,
+            reference: hap.reference,
+            alt: hap.alt,
+        }
+    }
+}
 
 #[doc(hidden)]
 pub fn run(
     args: ConciseArgs,
     limits: Limits,
-    case_samples: PathBuf,
+    case_samples: Option<PathBuf>,
+    ctrl_samples: PathBuf,
     coord_list_path: Option<PathBuf>,
     limit: f64,
 ) -> Result<()> {
-    let case_samples = read_sample_ids(&Some(case_samples))?.unwrap();
+    let case_samples = read_sample_ids(&case_samples)?;
+    let ctrl_samples = read_sample_ids(&Some(ctrl_samples))?.unwrap();
 
     let args = StandardArgs {
         file: args.file.clone(),
@@ -71,32 +102,38 @@ pub fn run(
         Ok(())
     });
 
-    let coord_list: Option<Vec<Coord>> = coord_list_path.map(|v| {
-        read_coords_file(&v).unwrap_or_else(|_| panic!("Could not read coords file {v:?}"))
+    let coord_list: Option<Vec<CoordSamples>> = coord_list_path.map(|v| {
+        read_coords_sample_file(&v).unwrap_or_else(|_| panic!("Could not read coords file {v:?}"))
     });
 
     match coord_list {
         Some(coord_list) => {
+            ensure!(!coord_list.is_empty(), "The coordinate list is empty");
             tracing::info!("Reading {} coords to HSTs.", coord_list.len());
-            let mut map = HashMap::new();
+            let mut out_map = HashMap::new();
+
+            let contig = &coord_list[0].contig;
+            let ctrl_samples = filter_out_non_vcf_sample_names(&args.file, contig, ctrl_samples)?;
+
+            let case_samples = case_samples.map(|samples| {
+                filter_out_non_vcf_sample_names(&args.file, contig, samples).unwrap()
+            });
 
             for coord in coord_list {
-                map.entry(coord.contig.clone())
+                out_map
+                    .entry(coord.contig.clone())
+                    .or_insert(HashMap::new())
+                    .entry(std::convert::Into::<Coord>::into(coord.clone()))
                     .or_insert(Vec::new())
-                    .push(coord);
+                    .push(coord.samples);
             }
 
-            let mut run_once = true;
-            let mut case_list: Vec<usize> = vec![];
-            let mut case_list_names: Vec<String> = vec![];
-            let mut samples = vec![];
-
-            for (contig, coords) in map {
+            for (contig, in_map) in out_map {
                 let args = StandardArgs {
                     file: args.file.clone(),
                     output: args.output.clone(),
                     info_limit: None,
-                    coords: format!("{}", coords[0]),
+                    coords: contig.to_string(),
                     selection: args.selection.clone(),
                     prefix: args.prefix.clone(),
                     samples: args.samples.clone(),
@@ -105,117 +142,105 @@ pub fn run(
 
                 let vcf = read_vcf_to_matrix(&args, &contig, 0, None, None, None, true)?;
 
-                if run_once {
-                    // Filter out samples not present in the HST SCAN
-                    case_list_names = case_samples
+                let case_samples = case_samples
+                    .as_ref()
+                    .map(|samples| vcf.get_idxs_for_samples(samples).unwrap());
+
+                let filter = |samples: &[String]| {
+                    samples
                         .iter()
-                        .filter(|&s| {
+                        .filter(|s| {
                             if vcf.samples().contains(s) {
-                                true
-                            } else {
-                                tracing::warn!(
-                                    "Sample {s:?} is on the ID list, but not in the HSTs."
-                                );
-                                false
+                                return true;
                             }
+                            tracing::warn!("Sample {s:?} is on the ID list, but not in the HSTs.");
+                            false
                         })
                         .cloned()
-                        .collect();
-
-                    case_list = vcf.get_idxs_for_samples(&case_list_names).unwrap();
-
-                    samples = vcf.samples().clone();
-                    run_once = false;
-                }
-
-                let ctrl_list: Vec<_> = vcf
-                    .samples()
-                    .iter()
-                    .filter(|s| !case_list_names.contains(s))
-                    .flat_map(|name| vcf.get_idxs_for_samples(&[name.clone()]).unwrap())
-                    .collect();
+                        .collect::<Vec<String>>()
+                };
 
                 tracing::info!("Starting the case-ctrl scan for {contig}.");
 
-                coords
+                in_map
                     .into_par_iter()
-                    .map(|coord| {
-                        let start_idxs = match args.selection {
-                            Selection::OnlyLongest => {
-                                let res = vcf.only_longest_indexes_no_shard(&coord);
-                                if res.is_err() {
-                                    panic!(
-                                        "failed to find the longest-haplotype for coord {coord:?}"
-                                    );
+                    .try_for_each(|(coord, cases_list)| -> Result<()> {
+                        let hst = construct_bhst_no_mut(&vcf, &coord, limits.0, None)?;
+
+                        for case_list in &cases_list {
+                            let case_list = match case_list {
+                                Some(case_list) => {
+                                    let samples: Vec<String> =
+                                        case_list.split(";").map(String::from).collect();
+                                    let samples = filter(&samples);
+                                    vcf.get_idxs_for_samples(&samples).unwrap()
                                 }
-                                res.ok()
-                            }
-                            _ => None,
-                        };
-                        (
-                            construct_bhst_no_mut(&vcf, &coord, limits.0, start_idxs).unwrap(),
-                            coord,
-                        )
-                    })
-                    .try_for_each(|(hst, coord)| {
-                        find_optimized_value_and_create_csv_row(
-                            hst,
-                            coord,
-                            limits,
-                            &samples,
-                            &case_list,
-                            &ctrl_list,
-                            *vcf.ploidy,
-                            limit,
-                            tx.clone(),
-                        )
+                                None => case_samples.clone().unwrap(),
+                            };
+
+                            let ctrl_list = vcf.get_idxs_for_samples(&ctrl_samples).unwrap();
+
+                            find_optimized_value_and_create_csv_row(
+                                &hst,
+                                &coord,
+                                limits,
+                                vcf.samples(),
+                                &case_list,
+                                &ctrl_list,
+                                *vcf.ploidy,
+                                limit,
+                                tx.clone(),
+                            )?;
+                        }
+                        Ok(())
                     })?;
             }
         }
         None => {
-            let hsts = read_tree_file(args.file)?;
+            unreachable!()
+            // let hsts = read_tree_file(args.file)?;
 
-            // Filter out samples not present in the HST SCAN
-            let case_list_names: Vec<String> = case_samples
-                .into_iter()
-                .filter(|s| {
-                    if hsts.metadata.samples.contains(s) {
-                        true
-                    } else {
-                        tracing::warn!("Sample {s:?} is on the ID list, but not in the HSTs.");
-                        false
-                    }
-                })
-                .collect();
+            // // // Filter out samples not present in the HST SCAN
+            // // let case_list_names: Vec<String> = case_samples
+            // //     .into_iter()
+            // //     .filter(|s| {
+            // //         if hsts.metadata.samples.contains(s) {
+            // //             true
+            // //         } else {
+            // //             tracing::warn!("Sample {s:?} is on the ID list, but not in the HSTs.");
+            // //             false
+            // //         }
+            // //     })
+            // //     .collect();
 
-            let case_list = hsts.get_sample_idxs(&case_list_names).unwrap();
+            // let case_list = hsts.get_sample_idxs(&case_list_names).unwrap();
 
-            let ctrl_list: Vec<_> = hsts
-                .metadata
-                .samples
-                .iter()
-                .filter(|s| !case_list_names.contains(s))
-                .flat_map(|name| hsts.get_sample_idxs(&[name.clone()]).unwrap())
-                .collect();
+            // let ctrl_list: Vec<_> = hsts
+            //     .metadata
+            //     .samples
+            //     .iter()
+            //     .filter(|s| !case_list_names.contains(s))
+            //     .flat_map(|name| hsts.get_sample_idxs(&[name.clone()]).unwrap())
+            //     .collect();
 
-            let ploidy = hsts.metadata.ploidy;
-            let samples = hsts.metadata.samples;
+            // let ploidy = hsts.metadata.ploidy;
+            // let samples = hsts.metadata.samples;
 
-            tracing::info!("Starting the case-ctrl scan.");
+            // tracing::info!("Starting the case-ctrl scan.");
 
-            hsts.hsts.into_par_iter().try_for_each(|(coord, hst)| {
-                find_optimized_value_and_create_csv_row(
-                    hst,
-                    coord,
-                    limits,
-                    &samples,
-                    &case_list,
-                    &ctrl_list,
-                    *ploidy,
-                    limit,
-                    tx.clone(),
-                )
-            })?;
+            // hsts.hsts.into_par_iter().try_for_each(|(coord, hst)| {
+            //     find_optimized_value_and_create_csv_row(
+            //         &hst,
+            //         &coord,
+            //         limits,
+            //         &samples,
+            //         &case_list,
+            //         &ctrl_list,
+            //         *ploidy,
+            //         limit,
+            //         tx.clone(),
+            //     )
+            // })?;
         }
     }
 
@@ -229,8 +254,8 @@ pub fn run(
 
 #[allow(clippy::too_many_arguments)]
 fn find_optimized_value_and_create_csv_row(
-    hst: Hst,
-    coord: Coord,
+    hst: &Hst,
+    coord: &Coord,
     limits: Limits,
     samples: &[String],
     case_list: &[usize],
@@ -275,7 +300,9 @@ fn find_optimized_value_and_create_csv_row(
                     node.haplotype.len().to_string(),
                     node.start.pos.to_string(),
                     node.stop.pos.to_string(),
-                    value.to_string(),
+                    format!("{value:+.4e}"),
+                    case_list.len().to_string(),
+                    ctrl_list.len().to_string(),
                     nhet_cases.to_string(),
                     nhom_cases.to_string(),
                     nhet_ctrls.to_string(),
@@ -306,7 +333,10 @@ fn fisher_optimizer(case_list: &[usize], ctrl_list: &[usize], indexes: &[usize])
         .filter(|name| case_list.contains(name))
         .count();
 
-    let controls_true = indexes.len() - cases_true;
+    let controls_true = indexes
+        .iter()
+        .filter(|name| ctrl_list.contains(name))
+        .count();
 
     let cases_false = ncases - cases_true;
     let controls_false = ncontrols - controls_true;

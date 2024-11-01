@@ -246,7 +246,7 @@ fn find_optimized_value_and_create_csv_row(
                     node.haplotype.len().to_string(),
                     node.start.pos.to_string(),
                     node.stop.pos.to_string(),
-                    value.to_string(),
+                    format!("{value:.4}"),
                     nhom.to_string(),
                     nhet.to_string(),
                     is_centromere.to_string(),

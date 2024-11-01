@@ -15,8 +15,10 @@ use csv::{QuoteStyle, Reader, ReaderBuilder, Writer, WriterBuilder};
 use rust_htslib::bcf::{header::HeaderRecord, IndexedReader, Read};
 
 use crate::args::{Selection, StandardArgs};
+use crate::read_vcf::get_reader;
 use crate::structs::Coord;
 use crate::structs::HapVariant;
+use crate::subcommands::scan::scan_segregate::CoordSamples;
 use crate::utils::strip_prefix;
 
 #[allow(clippy::upper_case_acronyms)]
@@ -82,6 +84,53 @@ pub fn read_coords_file(path: &PathBuf) -> Result<Vec<Coord>> {
     }
 
     Ok(variants)
+}
+
+pub fn read_coords_sample_file(path: &PathBuf) -> Result<Vec<CoordSamples>> {
+    let input = get_input(Some(path.clone()))?;
+
+    let mut rdr = match FileType::from_path(path)? {
+        FileType::CSV => get_csv_reader(input),
+        FileType::TSV => get_tsv_reader(input, false),
+        FileType::BED => get_tsv_reader(input, false),
+        _ => return Err(eyre!("Filetype from {path:?} is not supported")),
+    };
+
+    let mut variants: Vec<CoordSamples> = vec![];
+
+    for line in rdr.records() {
+        let record = line?;
+        let variant: CoordSamples = record.deserialize(None)?;
+        variants.push(variant);
+    }
+
+    Ok(variants)
+}
+
+pub fn filter_out_non_vcf_sample_names(
+    path: &PathBuf,
+    contig: &str,
+    wanted_samples: Vec<String>,
+) -> Result<Vec<String>> {
+    let reader = get_reader(path, contig, None)?;
+
+    let samples = reader
+        .header()
+        .samples()
+        .into_iter()
+        .map(|sample| Ok(String::from_utf8_lossy(sample).to_string()))
+        .collect::<Result<Vec<String>>>()?;
+
+    for i in &wanted_samples {
+        if !samples.contains(i) {
+            tracing::warn!("Wanted sample {i} is not in the VCF");
+        }
+    }
+
+    Ok(samples
+        .into_iter()
+        .filter(|s| wanted_samples.contains(s))
+        .collect())
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
