@@ -500,7 +500,7 @@ pub enum SubCommand {
 
         /// Case samples
         #[arg(long)]
-        case_samples: Option<PathBuf>,
+        case_samples: PathBuf,
 
         /// Ctrl samples
         #[arg(long)]

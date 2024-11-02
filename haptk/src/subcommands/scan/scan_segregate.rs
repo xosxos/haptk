@@ -50,7 +50,7 @@ pub struct CoordSamples {
     pub reference: String,
     pub alt: String,
     #[serde(default)]
-    pub samples: Option<String>,
+    pub marker_id: Option<String>,
 }
 
 impl From<CoordSamples> for Coord {
@@ -68,12 +68,12 @@ impl From<CoordSamples> for Coord {
 pub fn run(
     args: ConciseArgs,
     limits: Limits,
-    case_samples: Option<PathBuf>,
+    case_samples: PathBuf,
     ctrl_samples: PathBuf,
     coord_list_path: Option<PathBuf>,
     limit: f64,
 ) -> Result<()> {
-    let case_samples = read_sample_ids(&case_samples)?;
+    let case_samples = read_sample_ids(&Some(case_samples))?.unwrap();
     let ctrl_samples = read_sample_ids(&Some(ctrl_samples))?.unwrap();
 
     let args = StandardArgs {
@@ -113,11 +113,9 @@ pub fn run(
             let mut out_map = HashMap::new();
 
             let contig = &coord_list[0].contig;
-            let ctrl_samples = filter_out_non_vcf_sample_names(&args.file, contig, ctrl_samples)?;
 
-            let case_samples = case_samples.map(|samples| {
-                filter_out_non_vcf_sample_names(&args.file, contig, samples).unwrap()
-            });
+            let ctrl_samples = filter_out_non_vcf_sample_names(&args.file, contig, ctrl_samples)?;
+            let case_samples = filter_out_non_vcf_sample_names(&args.file, contig, case_samples)?;
 
             for coord in coord_list {
                 out_map
@@ -125,7 +123,7 @@ pub fn run(
                     .or_insert(HashMap::new())
                     .entry(std::convert::Into::<Coord>::into(coord.clone()))
                     .or_insert(Vec::new())
-                    .push(coord.samples);
+                    .push(coord.marker_id);
             }
 
             for (contig, in_map) in out_map {
@@ -142,23 +140,8 @@ pub fn run(
 
                 let vcf = read_vcf_to_matrix(&args, &contig, 0, None, None, None, true)?;
 
-                let case_samples = case_samples
-                    .as_ref()
-                    .map(|samples| vcf.get_idxs_for_samples(samples).unwrap());
-
-                let filter = |samples: &[String]| {
-                    samples
-                        .iter()
-                        .filter(|s| {
-                            if vcf.samples().contains(s) {
-                                return true;
-                            }
-                            tracing::warn!("Sample {s:?} is on the ID list, but not in the HSTs.");
-                            false
-                        })
-                        .cloned()
-                        .collect::<Vec<String>>()
-                };
+                let ctrl_list = vcf.get_idxs_for_samples(&ctrl_samples)?;
+                let case_list = vcf.get_idxs_for_samples(&case_samples)?;
 
                 tracing::info!("Starting the case-ctrl scan for {contig}.");
 
@@ -167,19 +150,7 @@ pub fn run(
                     .try_for_each(|(coord, cases_list)| -> Result<()> {
                         let hst = construct_bhst_no_mut(&vcf, &coord, limits.0, None)?;
 
-                        for case_list in &cases_list {
-                            let case_list = match case_list {
-                                Some(case_list) => {
-                                    let samples: Vec<String> =
-                                        case_list.split(";").map(String::from).collect();
-                                    let samples = filter(&samples);
-                                    vcf.get_idxs_for_samples(&samples).unwrap()
-                                }
-                                None => case_samples.clone().unwrap(),
-                            };
-
-                            let ctrl_list = vcf.get_idxs_for_samples(&ctrl_samples).unwrap();
-
+                        for marker_id in &cases_list {
                             find_optimized_value_and_create_csv_row(
                                 &hst,
                                 &coord,
@@ -188,6 +159,7 @@ pub fn run(
                                 &case_list,
                                 &ctrl_list,
                                 *vcf.ploidy,
+                                marker_id,
                                 limit,
                                 tx.clone(),
                             )?;
@@ -261,6 +233,7 @@ fn find_optimized_value_and_create_csv_row(
     case_list: &[usize],
     ctrl_list: &[usize],
     ploidy: usize,
+    marker_id: &Option<String>,
     limit: f64,
     tx: SyncSender<Row>,
 ) -> Result<()> {
@@ -290,25 +263,50 @@ fn find_optimized_value_and_create_csv_row(
                     case_ctrl_zygosity_from_node(node, case_list, ctrl_list, samples, ploidy);
                 let names = node.sample_name_list(samples, ploidy);
 
-                tx.send([
-                    coord.contig.clone(),
-                    coord.pos.to_string(),
-                    coord.reference.clone(),
-                    coord.alt.clone(),
-                    node.identifier(),
-                    (node.stop.pos.saturating_sub(node.start.pos)).to_string(),
-                    node.haplotype.len().to_string(),
-                    node.start.pos.to_string(),
-                    node.stop.pos.to_string(),
-                    format!("{value:+.4e}"),
-                    case_list.len().to_string(),
-                    ctrl_list.len().to_string(),
-                    nhet_cases.to_string(),
-                    nhom_cases.to_string(),
-                    nhet_ctrls.to_string(),
-                    nhom_ctrls.to_string(),
-                    names.to_string(),
-                ])?
+                if let Some(id) = marker_id {
+                    if id == &node.identifier() {
+                        tx.send([
+                            coord.contig.clone(),
+                            coord.pos.to_string(),
+                            coord.reference.clone(),
+                            coord.alt.clone(),
+                            node.identifier(),
+                            (node.stop.pos.saturating_sub(node.start.pos)).to_string(),
+                            node.haplotype.len().to_string(),
+                            node.start.pos.to_string(),
+                            node.stop.pos.to_string(),
+                            format!("{value:+.4e}"),
+                            case_list.len().to_string(),
+                            ctrl_list.len().to_string(),
+                            nhet_cases.to_string(),
+                            nhom_cases.to_string(),
+                            nhet_ctrls.to_string(),
+                            nhom_ctrls.to_string(),
+                            names.to_string(),
+                        ])?;
+                        return Ok(());
+                    }
+                } else {
+                    tx.send([
+                        coord.contig.clone(),
+                        coord.pos.to_string(),
+                        coord.reference.clone(),
+                        coord.alt.clone(),
+                        node.identifier(),
+                        (node.stop.pos.saturating_sub(node.start.pos)).to_string(),
+                        node.haplotype.len().to_string(),
+                        node.start.pos.to_string(),
+                        node.stop.pos.to_string(),
+                        format!("{value:+.4e}"),
+                        case_list.len().to_string(),
+                        ctrl_list.len().to_string(),
+                        nhet_cases.to_string(),
+                        nhom_cases.to_string(),
+                        nhet_ctrls.to_string(),
+                        nhom_ctrls.to_string(),
+                        names.to_string(),
+                    ])?;
+                }
             }
         }
     }
