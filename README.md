@@ -151,6 +151,6 @@ git clone https://github.com/xosxos/haptk
 cd haptk
 
 # Build. The binary will be available in `./target/release/` 
-cargo build --release -p haptk
+cargo build --release --bin haptk
 
 ```
