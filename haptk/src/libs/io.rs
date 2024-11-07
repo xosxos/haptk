@@ -18,8 +18,10 @@ use crate::args::{Selection, StandardArgs};
 use crate::read_vcf::get_reader;
 use crate::structs::Coord;
 use crate::structs::HapVariant;
-use crate::subcommands::scan::scan_segregate::CoordSamples;
 use crate::utils::strip_prefix;
+
+#[cfg(feature = "experimental")]
+use crate::subcommands::scan::scan_segregate::CoordSamples;
 
 #[allow(clippy::upper_case_acronyms)]
 enum FileType {
@@ -86,6 +88,7 @@ pub fn read_coords_file(path: &PathBuf) -> Result<Vec<Coord>> {
     Ok(variants)
 }
 
+#[cfg(feature = "experimental")]
 pub fn read_coords_sample_file(path: &PathBuf) -> Result<Vec<CoordSamples>> {
     let input = get_input(Some(path.clone()))?;
 
