@@ -5,6 +5,7 @@ A toolkit for haplotype analysis using haplotype sharing trees, haplotype window
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 ![Rust 1.70](https://img.shields.io/badge/rust-1.70-green.svg)
 ![Rust 1.81](https://img.shields.io/badge/rust-1.81-green.svg)
+![Python 3.12](https://img.shields.io/badge/python-3.12-green.svg)
 [![Crates.io](https://img.shields.io/crates/v/haptk.svg)](https://crates.io/crates/haptk)
 
 ## How to install
@@ -23,10 +24,14 @@ fish_add_path "$HOME/.cargo/bin"
 # Make sure cmake is installed
 # It is available in all common package managers such as apt, dnf, brew
 
-# Install HAPTK
+# Install HAPTK using cargo (recommended), or download a binary from the releases page
 cargo install haptk --locked
 
-# Install the HAPTK Python library for tree visualizations
+# Install the python graph library using anaconda or micromamba (environment.yml is located at the github root directory)
+micromamba env create -f environment.yml
+micromamba activate haptk
+
+# OR by running pip. Using python 3.12 is highly recommended.
 pip install haptk
 ```
 
@@ -100,11 +105,11 @@ Commands:
   compare-to-haplotype  Check differences between samples and a haplotype
   compare-to-hst        Check what haplotypes of the HST are present in samples
   compare-haplotypes    Compare haplotypes to each other by alignment
-  coverage              Show coverage levels per contig in a VCF
   haplotypes            Read the haplotypes of a given sample
   samples               Output the sample names from FAM / VCF / HST files
   markers               Output the markers from a HST file
-  to-vcf                Convert a haplotype CSV into VCF
+  haplotype-to-vcf      Convert a haplotype CSV into VCF
+  fasta-to-haplotype    Convert fasta sequences to haplotype csv format
   help                  Print this message or the help of the given subcommand(s)
 ```
 
