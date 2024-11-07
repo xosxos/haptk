@@ -142,6 +142,19 @@ _The shared ancestry between the C9orf72 hexanucleotide repeat expansion and int
 
 [https://pubmed.ncbi.nlm.nih.gov/38242117/](https://pubmed.ncbi.nlm.nih.gov/38242117/)
 
+```
+@article{rautila2024shared,
+  title={The shared ancestry between the C9orf72 hexanucleotide repeat expansion and intermediate-length alleles using haplotype sharing trees and HAPTK},
+  author={Rautila, Osma S and Kaivola, Karri and Rautila, Harri and Hokkanen, Laura and Launes, Jyrki and Strandberg, Timo E and Laaksovirta, Hannu and Palmio, Johanna and Tienari, Pentti J},
+  journal={The American Journal of Human Genetics},
+  volume={111},
+  number={2},
+  pages={383--392},
+  year={2024},
+  publisher={Elsevier}
+}
+```
+
 ## Installing from source
 ```bash
 # Clone the repository
