@@ -189,10 +189,13 @@ pub fn insert_nodes_to_uhst(
 ) -> std::result::Result<Vec<Vec<NodeIndex>>, HaptkError> {
     let (tx, rx) = sync_channel(2024);
 
-    let outres = hst
+    // Loop all nodes of the HST
+    let blacklist = hst
         .node_indices()
         .par_bridge()
+        // Filter out nodes that were blacklisted (genotyping data ran out or node haplotypes min_size was reached )
         .filter(|n| !blacklist_nodes.contains(n))
+        // Filter in leaf nodes with 2 or more haplotypes
         .filter_map(|node_idx| {
             let node = hst.node_weight(node_idx).unwrap();
 
@@ -205,6 +208,7 @@ pub fn insert_nodes_to_uhst(
                 false => None,
             }
         })
+        // Search for contradictory genotypes by extending the node haplotype
         .map(|(parent_idx, node)| {
             match find_contradictory_gt_uhst(vcf, start_coord, &node, direction) {
                 Err(e) => Err(e),
@@ -240,11 +244,14 @@ pub fn insert_nodes_to_uhst(
 
     drop(tx);
 
+    // Receive nodes for the iterator and add them to the tree
+    // We use a channel because if genotyping data needes to be dynamically extended, we dont want to lose the already computed nodes
     while let Ok((parent_idx, insert_node)) = rx.recv() {
         let idx = hst.add_node(insert_node.clone());
         hst.add_edge(parent_idx, idx, ());
     }
-    outres
+
+    blacklist
 }
 
 #[doc(hidden)]
@@ -308,6 +315,7 @@ pub fn find_contradictory_gt_uhst(
         );
     }
 
+    // If data ran out and no contradictory genotypes were found, return none
     Ok(None)
 }
 

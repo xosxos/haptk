@@ -264,7 +264,9 @@ pub fn insert_nodes_to_bhst(
     let blacklist = hst
         .node_indices()
         .par_bridge()
+        // Filter out nodes that were blacklisted (genotyping data ran out or node haplotypes min_size was reached )
         .filter(|n| !blacklist_nodes.contains(n))
+        // Filter in leaf nodes with 2 or more haplotypes
         .filter_map(|node_idx| {
             let node = hst.node_weight(node_idx).unwrap();
 
@@ -277,6 +279,7 @@ pub fn insert_nodes_to_bhst(
                 false => None,
             }
         })
+        // Search for contradictory genotypes by extending the node haplotype
         .map(
             |(parent_idx, node)| match find_contradictory_gt_bhst(vcf, &node) {
                 Err(e) => Err(e),
@@ -301,10 +304,13 @@ pub fn insert_nodes_to_bhst(
 
     drop(tx);
 
+    // Receive nodes for the iterator and add them to the tree
+    // We use a channel because if genotyping data needes to be dynamically extended, we dont want to lose the already computed nodes
     while let Ok((parent_idx, insert_node)) = rx.recv() {
         let idx = hst.add_node(insert_node.clone());
         hst.add_edge(parent_idx, idx, ());
     }
+
     blacklist
 }
 
@@ -360,6 +366,7 @@ pub fn find_contradictory_gt_bhst(
             let nodes = create_nodes_from_buckets(vcf, left, right, oo, oz, zo, zz);
             Ok(Some(nodes))
         }
+        // Handle if data ran out on the right side
         (Some((left, left_vec)), None) => {
             if !vcf.is_genome_wide() {
                 tracing::warn!(
@@ -378,6 +385,7 @@ pub fn find_contradictory_gt_bhst(
                 create_nodes_from_buckets(vcf, left, vcf.coords().last().unwrap(), oo, oz, zo, zz);
             Ok(Some(nodes))
         }
+        // Handle if data ran out on the left side
         (None, Some((right, right_vec))) => {
             if !vcf.is_genome_wide() {
                 tracing::warn!(
@@ -403,6 +411,7 @@ pub fn find_contradictory_gt_bhst(
             );
             Ok(Some(nodes))
         }
+        // Handle if data ran out on both sides
         (None, None) => Ok(None),
     }
 }
