@@ -35,10 +35,10 @@ def draw_normal_tree(hst, t, samples_to_tag, colors, proportions, show_haplotype
             label = f"{label}"
 
         if show_haplotype:
-            label = f"N={len(node_data["indexes"])}\n{hst.haplotype_string(node_data, n_markers)}"
+            label = f"N={len(node_data['indexes'])}\n{hst.haplotype_string(node_data, n_markers)}"
 
         if show_pos:
-            label = f"N={len(node_data["indexes"])}"
+            label = f"N={len(node_data['indexes'])}"
             haplotype = hst.haplotype_string(node_data, n_markers)
             start = node_data['start']['pos']
             stop = node_data['stop']['pos']
