@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## haptk version 0.3.2
+- Regression: Bhst and uhst got stuck in a loop if genotyping data ran out on both sides
+- Python: Recombination rates not mandatory for ancestral segment lengths python plots
+- Python: Fixed HST construction for --all, published new version py-haptk 0.0.8
 
 ## haptk version 0.3.1
 
@@ -34,3 +38,4 @@ Fixes:
 - `Coverage` subcommand deprecated
 - Rust based graphs deprecated except for `MatrixGraph`
 - Experimental genome-wide methods outlined
+
