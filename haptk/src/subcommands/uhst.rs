@@ -233,7 +233,7 @@ pub fn insert_nodes_to_uhst(
 
                     Ok(black_list_nodes)
                 }
-                _ => Ok(vec![]),
+                _ => Ok(vec![parent_idx]),
             }
         })
         .collect::<std::result::Result<Vec<Vec<NodeIndex>>, HaptkError>>();
