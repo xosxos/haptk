@@ -1,0 +1,9 @@
+name: haptk
+channels:
+- conda-forge
+- bioconda
+- defaults
+dependencies:
+- python=3.12
+- pip:
+  - haptk==0.0.9
