@@ -56,6 +56,17 @@ class HST:
 
         return leaf_nodes
 
+    def find_leaf_node_for_id(self, sample_id):
+        for idx in self.G.node_indices():
+            if len(self.G.out_edges(idx)) == 0:
+            
+                samples = self.node_samples([idx])
+                if sample_id in samples[0]:
+                    return idx
+
+        return -1
+
+
     def node_samples(self, nodes):
         list_of_samples = []
 
