@@ -45,27 +45,4 @@ def find_leaf_neighbors(hst):
 
     return neighbor_sets
 
-def find_average_leaf_node_length(hst):
-    leaf_nodes = get_leaf_nodes(hst)
-
-    sum = 0
-
-    for node_idx in leaf_nodes:
-        node_data = hst.get_node_data(node_idx)
-
-        # A saturating substraction just to be sure
-        length = max(node_data['stop'] - node_data['start'], 0)
-        sum += length
-
-    return sum / len(leaf_nodes)
-
-def get_leaf_nodes(hst):
-    leaf_nodes = []
-
-    for idx in hst.node_indices():
-        if len(hst.out_edges(idx)) == 0:
-            leaf_nodes.append(idx)
-
-    return leaf_nodes
-
    
