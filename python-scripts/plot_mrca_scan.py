@@ -21,7 +21,7 @@ parser.add_argument('--height', type=int, default=1440)
 parser.add_argument('-o', '--output', type=str, required=False)
 args = parser.parse_args()
 
-df: pd.DataFrame = pd.read_csv(args.data, usecols=['POS', 'mrca'])
+df: pd.DataFrame = pd.read_csv(args.data, usecols=['pos', 'mrca'])
 
 df["mrca"] = np.log10(df["mrca"])
 
@@ -31,7 +31,7 @@ fig = plt.figure(figsize=(args.width / 100, args.height / 100))
 ax = fig.add_subplot(111)
 
 # ax.plot(df.pos, df.mrca, linestyle='-', color="#ec66e6", linewidth=4, alpha=.25)
-ax.plot(df["POS"], df["mrca"], linestyle='-', color="#f62323", linewidth=3, alpha=.5)
+ax.plot(df["pos"], df["mrca"], linestyle='-', color="#f62323", linewidth=3, alpha=.5)
 
 # std = np.std(df.mrca)
 # mean = np.mean(df.mrca)
@@ -39,11 +39,11 @@ ax.plot(df["POS"], df["mrca"], linestyle='-', color="#f62323", linewidth=3, alph
 # plt.axhline(y = sig_line, color="#222", linestyle=(0, (3, 5, 1, 5)), linewidth=4, alpha=.5)
 
 if args.ctrls:
-    ctrl_df: pd.DataFrame = pd.read_csv(args.ctrls, usecols=['POS', 'mrca'])
+    ctrl_df: pd.DataFrame = pd.read_csv(args.ctrls, usecols=['pos', 'mrca'])
     ctrl_mrca2 = savgol_filter(ctrl_df.mrca, args.window_length, args.polyorder)
-    ax.plot(ctrl_df["POS"], ctrl_mrca2, color='#484848', linewidth=4, alpha=1)
+    ax.plot(ctrl_df["pos"], ctrl_mrca2, color='#484848', linewidth=4, alpha=1)
 
-ax.plot(df["POS"], mrca2, color='black', linewidth=3.5, alpha=1)
+ax.plot(df["pos"], mrca2, color='black', linewidth=3.5, alpha=1)
 
 ax.spines.right.set_visible(False)
 ax.spines.top.set_visible(False)
@@ -51,7 +51,7 @@ ax.spines.top.set_visible(False)
 ax.get_xaxis().set_major_formatter(
         matplotlib.ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
 
-plt.xlim(xmin=df["POS"].min(), xmax=df["POS"].max())
+plt.xlim(xmin=df["pos"].min(), xmax=df["pos"].max())
 plt.ylim(ymin=1.0, ymax=args.ymax)
 
 

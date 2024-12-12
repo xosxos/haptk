@@ -16,5 +16,6 @@ idx = hst.find_leaf_node_for_id(args.id)
 
 if idx != -1:
     data = hst.get_node_data(idx)
+    print(data)
     print(data['stop']['pos'] - data['start']['pos'])
 
