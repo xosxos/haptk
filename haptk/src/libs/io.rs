@@ -24,7 +24,7 @@ use crate::utils::strip_prefix;
 use crate::subcommands::scan::scan_segregate::CoordSamples;
 
 #[allow(clippy::upper_case_acronyms)]
-enum FileType {
+pub enum FileType {
     BED,
     VCF,
     CSV,
@@ -33,7 +33,7 @@ enum FileType {
 }
 
 impl FileType {
-    fn from_path(path: &PathBuf) -> Result<Self> {
+    pub fn from_path(path: &PathBuf) -> Result<Self> {
         let extension: &str = Path::new(&path)
             .extension()
             .and_then(OsStr::to_str)

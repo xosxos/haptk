@@ -20,7 +20,7 @@ use crate::{
     subcommands::{
         mrca_scan,
         scan::{
-            hst_scan, scan_branch_mrca, scan_nodes, scan_quantitative, scan_segregate, scan_sum_hsts
+            hst_scan, scan_branch_mrca, scan_nodes, scan_quantitative, scan_segregate, scan_sum_hsts, scan_annotate,
         }
     }
 };
@@ -565,6 +565,17 @@ pub enum SubCommand {
         seg_samples: Option<Vec<PathBuf>>,
 
     },
+    
+    #[cfg(feature = "experimental")]
+    /// (experimental) Annotate a scan using a bed file
+    AnnotateScan {
+        file: PathBuf,
+
+        annotate_file: PathBuf,
+
+        #[command(flatten)]
+        log_and_verbosity: LogAndVerbosity,
+    },
 
 }
 
@@ -616,6 +627,7 @@ impl SubCommand {
             | SubCommand::ScanQuantitative { log_and_verbosity,  .. }
             | SubCommand::ScanSumHst { log_and_verbosity, .. }
             | SubCommand::ScanNodes { log_and_verbosity,  .. }
+            | SubCommand::AnnotateScan { log_and_verbosity, .. } 
             => (log_and_verbosity.verbosity, &log_and_verbosity.log_file, log_and_verbosity.silent),
         }
     }
@@ -659,6 +671,9 @@ impl SubCommand {
             | SubCommand::HaplotypeToVcf { .. }
             | SubCommand::FastaToHaplotype { .. }
             | SubCommand::Markers { .. } => None,
+
+            #[cfg(feature = "experimental")]
+            SubCommand::AnnotateScan { .. } => None,
 
             #[cfg(feature = "experimental")]
             SubCommand::MrcaScan { args: StandardArgs { output, .. }, ..}
@@ -764,6 +779,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         } => scan_segregate::run(
                 args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), case_samples, ctrl_samples, coords, limit,
             )?,
+        #[cfg(feature = "experimental")]
+        SubCommand::AnnotateScan { file, annotate_file, .. } => scan_annotate::run(file, annotate_file)?,
 
     };
     Ok(())
