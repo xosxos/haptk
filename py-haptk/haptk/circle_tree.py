@@ -19,16 +19,12 @@ def circle_tree_style():
 
     return ts
 
-
-
-def draw_circle_tree(hst, t, samples_to_tag, colors, branch_point_size, branch_length_as_majority):
+def draw_circle_tree(hst, t, samples_to_tag, colors):
     style = NodeStyle()
     style["size"] = 0
 
     narea_color = "#DAF7A6"
     larea_color = "#FFB6C1"
-
-    # spent_parents = []
 
     for n in t.traverse():
         n.set_style(style)
@@ -39,9 +35,6 @@ def draw_circle_tree(hst, t, samples_to_tag, colors, branch_point_size, branch_l
             F = TextFace(label, tight_text=True, penwidth=30, fsize=8)
             F.rotation = 270
             n.add_face(F, column=0)
-
-            # text_face = TextFace("", fsize=30, tight_text=True, fgcolor="red")
-            # utils.tag_branching_point_to_node(hst, n, text_face, branch_point_size)
 
         if n.is_leaf():
             if samples_to_tag == []:
@@ -54,8 +47,6 @@ def draw_circle_tree(hst, t, samples_to_tag, colors, branch_point_size, branch_l
                     n.set_style(utils.return_node_style(colors[color_i], 0))
                     n.img_style["bgcolor"] = colors[color_i]
 
-            # text_face = TextFace("", fsize=30, fgcolor="white")
-            # spent_parents = utils.tag_big_branch_to_node(hst, n, spent_parents, text_face, branch_length_as_majority)
 
     return t
 

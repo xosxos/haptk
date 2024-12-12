@@ -10,8 +10,8 @@ from haptk.circle_tree import draw_circle_tree, circle_tree_style
 from haptk.index_tree import draw_index_tree, index_tree_style
 from haptk.normal_tree import draw_normal_tree, normal_tree_style
 from haptk.match_tree import circle_match_tree_style, draw_match_tree, match_tree_style
-from haptk.leaf_neighbors import find_leaf_neighbors
 from haptk.iterate_tree import iterate_tree_inner, iterate_tree_style
+from haptk.leaf_nodes import find_leaf_neighbors
 
 class HST:
     def __init__(self, G, coords, samples, metadata):
@@ -146,43 +146,77 @@ class HST:
 
             return f'{haplotype_string}'
 
+    def find_average_leaf_node_length(self):
+        leaf_nodes = self.get_leaf_nodes()
 
-    def is_maj_up_to(self, node, value):
-        iter_node = node
-        # print(f"checking {iter_node.name} for majority")
-        for _ in range(0, value):
-            if iter_node.name == "0":
-                return True
+        sum = 0
 
-            if not iter_node.up.name == "0":
-                # print("input node:", iter_node.up)
-                is_big = self.is_majority_node(iter_node.up)
-                if is_big == False:
-                    # print(f"run {_}: {iter_node.up.name} is not big")
-                    return False
+        for node_idx in leaf_nodes:
+            node_data = self.get_node_data(node_idx)
 
-            iter_node = iter_node.up
-            
-        return True
+            # A saturating substraction just to be sure
+            length = max(node_data['stop']['pos'] - node_data['start']['pos'], 0)
+            sum += length
 
-    def is_majority_node(self, node):
-        parent = node.up
-        input_node_data = self.get_node_data(int(node.name))
-        value = len(input_node_data["indexes"])
-        # print(f"input node {node.name} has {value} indexes")
+        return sum / len(leaf_nodes)
 
-        siblings = {}
-        for child in parent.children:
-            data = self.get_node_data(int(child.name))
-            if not child.name == node.name:
-                siblings[child.name] = len(data["indexes"])
+    def get_leaf_nodes(self):
+        leaf_nodes = []
 
+        for idx in self.G.node_indices():
+            if len(self.G.out_edges(idx)) == 0:
+                leaf_nodes.append(idx)
 
-        # print(value, siblings.values())
-        for v in siblings.values():
-            if value < v: 
-                return False
-  
+        return leaf_nodes
+
+    def find_majority_len(self):
+        maj_node_idx = self.find_majority_leaf_node()
+        node_data = self.get_node_data(maj_node_idx)
+        maj_node_len = max(node_data['stop']['pos'] - node_data['start']['pos'], 0)
+        return maj_node_len
+   
+    def find_majority_leaf_node(self):
+        def recurse_maj_branch(idx):
+            # Get children by moving down (bool=False)
+            children = self.G.adj_direction(idx, False)
+
+            # Check not empty
+            if len(children) != 0:
+                # Find largest node
+                max_idx = max(children, key = lambda node: len(self.get_node_data(node)['indexes']))
+
+                # Recurse down using largest node idx
+                return recurse_maj_branch(max_idx)
+            else:
+                return idx
+
+        root = 0
+
+        return recurse_maj_branch(root)
+
+    def avg_maj_ancestral_segment(self):
+        paths = rx.dijkstra_shortest_paths(self.G, self.find_majority_leaf_node(), 0, as_undirected=True)
+
+        sum = 0
+        spent_indexes = []
+        last_length = 0
+
+        for node_idx in paths[0]:
+            data = self.get_node_data(node_idx)
+            length = max(data['stop']['pos'] - data['start']['pos'], 0)
+
+            if last_length == 0:
+                last_length = length
+
+            for idx in data["indexes"]:
+                if idx not in spent_indexes:
+                    # the length of the shared haplotype is actually the length in the child node
+                    sum += last_length
+                    spent_indexes.append(idx)
+
+            last_length = length
+
+        return sum / len(self.get_node_data(0)['indexes'])
 
     def get_children_idx_amounts(self, node):
         return [len(self.get_node_data(c.name)["indexes"]) for c in node.children]
@@ -207,23 +241,39 @@ class HST:
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
 
-    def circle_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, w=1624, h=1624, dpi=600, tree_style=circle_tree_style(), branch_length_as_majority = 999999999, branch_point_size = 999999999): 
+    def circle_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, w=1624, h=1624, dpi=600, tree_style=circle_tree_style()): 
         if len(to_tag) > len(colors):
             raise ValueError("more samples to tag than available colors")
 
+        self.print_statistics()
+
         t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up=False)
-        t = draw_circle_tree(self, t, to_tag, colors, branch_point_size, branch_length_as_majority)
+        t = draw_circle_tree(self, t, to_tag, colors)
 
         t.render(output, w=w, h=h, units="px", tree_style=tree_style, dpi=dpi)
 
-    def normal_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=normal_tree_style(), show_haplotype=False, n_markers=3, show_pos=False, branch_length_as_majority = 999999999, branch_point_size = 999999999): 
+    def normal_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=normal_tree_style(), show_haplotype=False, n_markers=3, show_pos=False): 
         if len(to_tag) > len(colors):
             raise ValueError("more samples to tag than available colors")
 
+        self.print_statistics()
+
         t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up=False)
-        t = draw_normal_tree(self, t, to_tag, colors, proportions, show_haplotype, n_markers, show_pos, branch_point_size, branch_length_as_majority)
+        t = draw_normal_tree(self, t, to_tag, colors, proportions, show_haplotype, n_markers, show_pos)
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
+
+    def print_statistics(self):
+        maj_node_len = self.find_majority_len()
+        avg_anc_segment = self.avg_maj_ancestral_segment()
+        avg_leaf_length = self.find_average_leaf_node_length()
+
+        print("THESE AVERAGES ARE EXPERIMENTAL, the values are 2 SNP distances too high")
+        print(f"Majority-based ancestral haplotype length: {maj_node_len}")
+        print(f"Avg. majority-based ancestral haplotype segment length: {avg_anc_segment}")
+        print(f"Avg. min unique haplotype length: {avg_leaf_length}")
+
+        
 
 class Coord:
     def __init__(self, contig, pos, ref, alt):

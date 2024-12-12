@@ -35,43 +35,6 @@ def color_fader(c1,c2,mix): #fade (linear interpolate) from color c1 (at mix=0) 
     c2=np.array(mpl.colors.to_rgb(c2))
     return mpl.colors.to_hex((1-mix)*c1 + mix*c2)
 
-def tag_branching_point_to_node(hst, n, text_face, branch_sizes):
-    count = 0
-    for i in hst.get_children_idx_amounts(n):
-        if i > branch_sizes:
-            count += 1
-
-    if count > 1:
-        haplotype = hst.get_node_haplotype(n.name)
-        text_face.text = f"{len(haplotype)}"
-        n.add_face(text_face, column=0)
-
-def tag_big_branch_to_node(hst, n, spent_parents, text_face, branch_node_amount):
-    if n.up:
-        parent = n.up
-        parent_indexes = hst.get_node_indexes(parent.name)
-
-        if len(parent_indexes) == 2:
-            if parent in spent_parents:
-                if hst.is_maj_up_to(n, branch_node_amount):
-                    # print(f"{n.name} is_maj")
-
-                    haplotype = hst.get_node_haplotype(n.name)
-                    start = hst.get_node_start(n.name)
-                    stop = hst.get_node_stop(n.name)
-                    # print(start, stop)
-                    bp = stop['pos'] - start['pos']
-                    # text_face.text = f"{len(haplotype)}, {bp}"
-                    text_face.text = f"{len(haplotype)}"
-                    # F.margin_left = 50
-                    n.add_face(text_face, column=0)
-
-                    # n.set_style(utils.return_node_style("white", 0))
-                    # n.img_style["bgcolor"] = "white"
-            else:
-                spent_parents.append(parent)
-    return spent_parents
-
 def return_node_style(color, size):
     style = NodeStyle()
     style["fgcolor"] = color
