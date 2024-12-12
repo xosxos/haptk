@@ -1,5 +1,33 @@
+#![allow(
+    clippy::large_enum_variant,
+    clippy::too_many_arguments,
+    clippy::new_without_default,
+    clippy::uninlined_format_args,
+    clippy::missing_errors_doc,
+    clippy::unreadable_literal,
+    clippy::too_many_lines,
+    clippy::must_use_candidate,
+    clippy::enum_glob_use,
+    clippy::missing_panics_doc,
+    clippy::module_name_repetitions,
+    clippy::match_bool,
+    clippy::single_match_else,
+    clippy::cast_possible_wrap,
+    clippy::return_self_not_must_use,
+    clippy::used_underscore_binding,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::float_cmp,
+    clippy::wildcard_in_or_patterns,
+    clippy::needless_pass_by_value,
+    clippy::default_trait_access,
+    clippy::struct_field_names,
+    clippy::unused_self
+)]
+
 // HATK - Haplotype analysis toolkit
-// Copyright (C) 2022  Osma S. Rautila
+// Copyright (C) 2024  Osma S. Rautila
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
