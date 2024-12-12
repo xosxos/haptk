@@ -29,7 +29,7 @@ use crate::{
 #[command(author, version, about, styles=get_styles())]
 pub struct Arguments {
     #[command(subcommand)]
-    cmd: SubCommand,
+    pub cmd: SubCommand,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -689,18 +689,20 @@ impl SubCommand {
     }
 }
 
-pub fn run_args(args: Arguments) -> Result<()> {
+#[rustfmt::skip]
+pub fn run_cmd(cmd: SubCommand) -> Result<()> {
+
     // Initialize threadpool
     rayon::ThreadPoolBuilder::new()
-        .num_threads(args.cmd.threads())
+        .num_threads(cmd.threads())
         .build_global()?;
 
     // Initialize logger
-    let (verbosity, log_file, is_silent) = args.cmd.log_and_verbosity();
+    let (verbosity, log_file, is_silent) = cmd.log_and_verbosity();
     let _guard = init_tracing(verbosity, log_file, is_silent)?;
 
     // Create output directory
-    if let Some(output) = args.cmd.output() {
+    if let Some(output) = cmd.output() {
         if let Err(e) = std::fs::create_dir(output.clone()) {
             match e.kind() {
                 std::io::ErrorKind::AlreadyExists => (),
@@ -709,13 +711,6 @@ pub fn run_args(args: Arguments) -> Result<()> {
         }
     }
 
-    run_cmd(args.cmd)?;
-
-    Ok(())
-}
-
-#[rustfmt::skip]
-pub fn run_cmd(cmd: SubCommand) -> Result<()> {
     match cmd {
         SubCommand::CompareToHaplotype { 
             args, haplotype, mark_samples, mark_shorter_alleles, graph_args, png, npy, sort_option, .. 
