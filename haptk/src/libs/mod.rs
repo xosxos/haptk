@@ -39,5 +39,4 @@ pub mod structs;
 /// Utils
 pub mod utils;
 
-#[cfg(feature = "clap")]
 pub mod clap;

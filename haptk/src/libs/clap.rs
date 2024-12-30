@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
 #[allow(unused_imports)]
 use color_eyre::{
     eyre::{ensure, eyre},
@@ -25,203 +24,206 @@ use crate::{
     }
 };
 
-#[derive(Parser, Debug)]
-#[command(author, version, about, styles=get_styles())]
+#[derive(Debug)]
+#[cfg_attr(feature = "clap", derive(clap::Parser))]
+#[cfg_attr(feature = "clap", command(author, version, about, styles=get_styles()))]
 pub struct Arguments {
-    #[command(subcommand)]
+    #[cfg_attr(feature = "clap", command(subcommand))]
     pub cmd: SubCommand,
 }
 
-#[derive(Args, Debug, Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct LogAndVerbosity {
     /// Verbosity level
-    #[arg(short, long, action = clap::ArgAction::Count, default_value_t = 3)]
+    #[cfg_attr(feature = "clap", arg(short, long, action = clap::ArgAction::Count, default_value_t = 3))]
     pub verbosity: u8,
 
     /// A file path to save logs to
-    #[arg(short, long)]
+    #[cfg_attr(feature = "clap", arg(short, long))]
     pub log_file: Option<PathBuf>,
 
     /// Silence all warning and info messages
-    #[arg(long)]
+    #[cfg_attr(feature = "clap", arg(long))]
     pub silent: bool,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Debug)]
+#[cfg_attr(feature = "clap", derive(clap::Subcommand))]
 pub enum SubCommand {
     /// Build unidirectional haplotype sharing trees at a coordinate
     Uhst {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
         /// Min amount of samples per node
-        #[arg(short = 'm', long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(short = 'm', long, default_value_t = 1))]
         min_size: usize,
 
         /// Remove sample IDs and hard cut out all nodes with samples less than or equal to `min_size`
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         publish: bool,
 
         /// If you most likely dont need to read the entire VCF for a HST use a window e.g. 5000000 or 2000000 (5Mb or 2Mb) around the locus
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         window: Option<u64>,
     },
 
     /// Build a bidirectional haplotype sharing tree at a coordinate
     Bhst {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
         /// Min amount of samples per node
-        #[arg(short = 'm', long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(short = 'm', long, default_value_t = 1))]
         min_size: usize,
 
         /// Remove sample IDs and hard cut out all nodes with samples less than or equal to `min_size`
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         publish: bool,
 
         /// If you most likely dont need to read the entire VCF for a HST use a window e.g. 5000000 or 2000000 (5Mb or 2Mb) around the locus
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         window: Option<u64>,
     },
     /// Analyze the MRCA based on the Gamma method at a coordinate
     Mrca {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Recombination rate file
-        #[arg(short = 'r', long)]
+        #[cfg_attr(feature = "clap", arg(short = 'r', long))]
         recombination_rates: PathBuf,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
         /// If you most likely dont need to read the entire VCF for a HST use a window e.g. 5000000 or 2000000 (5Mb or 2Mb) around the locus
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         window: Option<u64>,
     },
 
     ///  (experimental) Analyze the MRCA every x markers along a given contig
     #[cfg(feature = "experimental")]
     MrcaScan {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Recombination rate file/files
-        #[arg(short = 'r', long, value_delimiter = ' ', num_args = 1.. )]
+        #[cfg_attr(feature = "clap", arg(short = 'r', long, value_delimiter = ' ', num_args = 1.. ))]
         recombination_rates: Vec<PathBuf>,
 
         /// Run the MRCA analysis every n markers
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         step_size: usize,
 
         /// Dont output to csv
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         no_csv: bool,
 
         /// List of samples for HST construction (one ID per row)
-        #[arg(long, value_delimiter = ',', num_args = 1.. )]
+        #[cfg_attr(feature = "clap", arg(long, value_delimiter = ',', num_args = 1.. ))]
         contigs: Option<Vec<String>>,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
         /// The percentage of haplotypes that can overlap centromeres before tagging the position "centromeric"
-        #[arg(long, default_value_t = 0.1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 0.1))]
         centromere_cut_off: f32,
     },
 
     /// Check if samples share a given haplotype
     CheckForHaplotype {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Haplotype for checking
-        #[arg(short = 'h', long)]
+        #[cfg_attr(feature = "clap", arg(short = 'h', long))]
         haplotype: PathBuf,
     },
     /// Check differences between samples and a haplotype
     CompareToHaplotype {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Haplotype for comparing to
-        #[arg(short = 'H', long)]
+        #[cfg_attr(feature = "clap", arg(short = 'H', long))]
         haplotype: PathBuf,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
         /// Mark sample names for tagging
-        #[arg(short = 'm', long)]
+        #[cfg_attr(feature = "clap", arg(short = 'm', long))]
         mark_samples: Option<PathBuf>,
 
         /// Mark shorter alleles to graph
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         mark_shorter_alleles: bool,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         graph_args: GraphArgs,
 
         /// Output .png image
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         png: bool,
 
         /// Output .npy matrix
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         npy: bool,
 
-        #[arg(long = "sort", value_enum, default_value_t=SortOption::Left)]
+        #[cfg_attr(feature = "clap", arg(long = "sort", value_enum, default_value_t=SortOption::Left))]
         sort_option: SortOption,
     },
 
     /// Check which haplotypes of the HST are present in samples
     CompareToHst {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// A HST to compare to
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         hst: PathBuf,
 
         /// Filter out every match for each sample, except the longest match measured in basepairs
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         only_longest_leafs: bool,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
     },
 
@@ -229,58 +231,58 @@ pub enum SubCommand {
     CompareHaplotypes {
         haplotypes: Vec<PathBuf>,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Output directory
-        #[arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("./"))]
+        #[cfg_attr(feature = "clap", arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("./")))]
         output: PathBuf,
 
         /// Output filename prefix
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         prefix: Option<String>,
 
         /// Output to csv instead of stdout
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         csv: bool,
 
         /// Hide missing (meaning yellow) variants from the stdout print
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         hide_missing: bool,
 
         /// Tag with ok for matching, err for mismatching and mis for mismatching to null rows
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         tag_rows: bool,
 
-        #[arg(short = 'n', long)]
+        #[cfg_attr(feature = "clap", arg(short = 'n', long))]
         nucleotides: bool,
     },
     /// Read the haplotypes of a given sample
     Haplotypes {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         selection_variant: Option<String>,
 
-        #[arg(short = 'n', long)]
+        #[cfg_attr(feature = "clap", arg(short = 'n', long))]
         nucleotides: bool,
     },
     /// Output the sample names from FAM / VCF / HST files
     Samples {
         file: PathBuf,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
     },
     /// Output the markers from a HST file
     Markers {
         file: PathBuf,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
     },
 
@@ -288,13 +290,13 @@ pub enum SubCommand {
     HaplotypeToVcf {
         file: PathBuf,
 
-        #[arg(short = 's', long)]
+        #[cfg_attr(feature = "clap", arg(short = 's', long))]
         sample_name: String,
 
-        #[arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("-"))]
+        #[cfg_attr(feature = "clap", arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("-")))]
         output: PathBuf,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
     },
 
@@ -303,265 +305,265 @@ pub enum SubCommand {
         file: PathBuf,
 
         /// Fasta sequences to transform into a haplotpye
-        #[arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. )]
+        #[cfg_attr(feature = "clap", arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. ))]
         seq_name: Vec<String>,
 
-        #[arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("-"))]
+        #[cfg_attr(feature = "clap", arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("-")))]
         output: PathBuf,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
     },
 
     #[cfg(feature = "experimental")]
     /// (experimental) HST scan
     HstScan {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Run the scan every n markers
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         step_size: usize,
 
         /// Branch sample size to end recursion
-        #[arg(long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
         min_sample_size: usize,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
     },
 
     #[cfg(feature = "experimental")]
     /// (experimental) Scan all nodes of all trees for a node specific value
     ScanNodes {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: ConciseArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Branch sample size to end recursion
-        #[arg(long, default_value_t = 4)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 4))]
         min_sample_size: usize,
 
         /// Branch sample size to end recursion
-        #[arg(long, default_value_t = 10000000)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 10_000_000))]
         max_sample_size: usize,
 
         /// Minimum number of variants required in the haplotype
-        #[arg(long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
         min_ht_len: usize,
 
         /// Maximum number of variants in the haplotype
-        #[arg(long, default_value_t = 10000000)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 10_000_000))]
         max_ht_len: usize,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
         /// Construct the HSTs and sum the leaf nodes simultaneously
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         construct_hsts: bool,
 
         /// The starting coordinate, i.e. chr9:27573534
-        #[arg(short = 'c', long)]
+        #[cfg_attr(feature = "clap", arg(short = 'c', long))]
         coords: Option<String>,
 
         /// If constructing HSTs at the same time, scan every n markers
-        #[arg(long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
         step_size: usize,
     },
 
     #[cfg(feature = "experimental")]
     /// (experimental) Scan all nodes of all trees for a difference in a quantative variable
     ScanQuantitative {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: ConciseArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Branch sample size to end recursion
-        #[arg(long, default_value_t = 4)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 4))]
         min_sample_size: usize,
 
         /// Branch sample size to end recursion
-        #[arg(long, default_value_t = 10000000)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 10000000))]
         max_sample_size: usize,
 
         /// Minimum number of variants required in the haplotype
-        #[arg(long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
         min_ht_len: usize,
 
         /// Maximum number of variants in the haplotype
-        #[arg(long, default_value_t = 10000000)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 10000000))]
         max_ht_len: usize,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
         /// List of control ids
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         var_data: PathBuf,
 
         /// Path to controls vcf if controls are not included in the same file
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         var_name: String,
 
         /// Coords to generate HSTs for
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         coords: Option<PathBuf>,      
     },
 
     #[cfg(feature = "experimental")]
     /// (experimental) Scan all branches of all trees for the smallest MRCA value
     ScanBranchMrca {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: ConciseArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Branch sample size to end recursion
-        #[arg(long, default_value_t = 10)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 10))]
         min_sample_size: usize,
 
         /// Branch sample size to end recursion
-        #[arg(long, default_value_t = 10000000)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 10_000_000))]
         max_sample_size: usize,
 
         /// Minimum number of variants required in the haplotype
-        #[arg(long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
         min_ht_len: usize,
 
         /// Maximum number of variants in the haplotype
-        #[arg(long, default_value_t = 10000000)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 10_000_000))]
         max_ht_len: usize,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
         /// Recombination rate file
-        #[arg(short = 'r', long)]
+        #[cfg_attr(feature = "clap", arg(short = 'r', long))]
         recombination_rates: PathBuf,
 
         /// Construct the HSTs and sum the leaf nodes simultaneously
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         construct_hsts: bool,
 
         /// The starting coordinate, i.e. chr9:27573534
-        #[arg(short = 'c', long)]
+        #[cfg_attr(feature = "clap", arg(short = 'c', long))]
         coords: Option<String>,
 
         /// If constructing HSTs at the same time, scan every n markers
-        #[arg(long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
         step_size: usize,
 
         /// Generations limit
-        #[arg(long, default_value_t = 40.0)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 40.0))]
         limit: f64,
     },
 
     #[cfg(feature = "experimental")]
     /// (experimental) Find bHST based segregated haplotypes genome-wide
     ScanSegregate {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: ConciseArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Branch sample size to end recursion
-        #[arg(long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
         min_sample_size: usize,
 
         /// Branch sample size to end recursion
-        #[arg(long, default_value_t = 10000000)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1_000_0000))]
         max_sample_size: usize,
 
         /// Minimum number of variants required in the haplotype
-        #[arg(long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
         min_ht_len: usize,
 
         /// Maximum number of variants in the haplotype
-        #[arg(long, default_value_t = 10000000)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1_000_0000))]
         max_ht_len: usize,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
         /// Case samples
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         case_samples: PathBuf,
 
         /// Ctrl samples
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         ctrl_samples: PathBuf,
 
         /// Coords to generate HSTs for
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         coords: Option<PathBuf>,      
 
         /// Generations limit
-        #[arg(long, default_value_t = 0.005)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 0.005))]
         limit: f64,
     },
 
     #[cfg(feature = "experimental")]
     /// (experimental) Scan all leaf nodes to quantify haplotype sharing
     ScanSumHst {
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         args: ConciseArgs,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
 
         /// Number of threads
-        #[arg(short = 't', long, default_value_t = 8)]
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
         /// The percentage of haplotypes that can overlap centromeres before tagging the position "centromeric"
-        #[arg(long, default_value_t = 0.1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 0.1))]
         centromere_cut_off: f32,
 
         /// Recombination rate file
-        #[arg(short = 'r', long)]
+        #[cfg_attr(feature = "clap", arg(short = 'r', long))]
         recombination_rates: PathBuf,
 
         /// Construct the HSTs and sum the leaf nodes simultaneously
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         construct_hsts: bool,
 
         /// The starting coordinate, i.e. chr9:27573534
-        #[arg(short = 'c', long)]
+        #[cfg_attr(feature = "clap", arg(short = 'c', long))]
         coords: Option<String>,
 
         /// If constructing HSTs at the same time, scan every n markers
-        #[arg(long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
         step_size: usize,
 
         /// If constructing HSTs at the same time, branch sample size to end recursion
-        #[arg(long, default_value_t = 1)]
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
         min_sample_size: usize,
 
         /// If constructing HSTs at the same time, do not include non-contradictory genotypes
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         no_alt: bool,
 
         /// Length in basepairs instead of centimorgans
-        #[arg(long)]
+        #[cfg_attr(feature = "clap", arg(long))]
         length_in_bp: bool,
 
         /// List of samples for HST construction (one ID per row)
-        #[arg(long, value_delimiter = ' ', num_args = 1.. )]
+        #[cfg_attr(feature = "clap", arg(long, value_delimiter = ' ', num_args = 1.. ))]
         seg_samples: Option<Vec<PathBuf>>,
 
     },
@@ -573,7 +575,7 @@ pub enum SubCommand {
 
         annotate_file: PathBuf,
 
-        #[command(flatten)]
+        #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
     },
 
@@ -647,7 +649,7 @@ impl SubCommand {
                 ensure!(
                     *min_sample_size >= 1,
                     "Min sample size needs to be atleast one"
-                )
+                );
             }
             _ => return Ok(()),
         };
@@ -691,15 +693,12 @@ impl SubCommand {
 
 #[rustfmt::skip]
 pub fn run_cmd(cmd: SubCommand) -> Result<()> {
-
-    // Initialize threadpool
-    rayon::ThreadPoolBuilder::new()
+    // Try to initialize a threadpool
+    if let Err(e) = rayon::ThreadPoolBuilder::new()
         .num_threads(cmd.threads())
-        .build_global()?;
-
-    // Initialize logger
-    let (verbosity, log_file, is_silent) = cmd.log_and_verbosity();
-    let _guard = init_tracing(verbosity, log_file, is_silent)?;
+        .build_global() {
+        tracing::warn!("Failed building a threadpool for HAPTK {e}");
+    }
 
     // Create output directory
     if let Some(output) = cmd.output() {
@@ -781,52 +780,7 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
     Ok(())
 }
 
-pub fn init_tracing(
-    verbosity: u8,
-    log_file: &Option<PathBuf>,
-    is_silent: bool,
-) -> Result<tracing_appender::non_blocking::WorkerGuard> {
-    use tracing::Level;
-
-    let level = if is_silent {
-        Level::ERROR
-    } else {
-        match verbosity {
-            0 => unreachable!(),
-            1 => Level::ERROR,
-            2 => Level::WARN,
-            3 => Level::INFO,
-            4 => Level::DEBUG,
-            5..=u8::MAX => Level::TRACE,
-        }
-    };
-
-    // Write logs to stderr or file
-    let (wrtr, guard) = match log_file {
-        Some(path) => {
-            let file = std::fs::File::options()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(path)?;
-            tracing_appender::non_blocking(file)
-        }
-        None => tracing_appender::non_blocking(std::io::stderr()),
-    };
-
-    let timer = time::format_description::parse("[hour]:[minute]:[second].[subsecond digits:3]")?;
-    let time_offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
-    let timer = tracing_subscriber::fmt::time::OffsetTime::new(time_offset, timer);
-
-    tracing_subscriber::fmt()
-        .with_max_level(level)
-        .with_writer(wrtr)
-        .with_timer(timer)
-        .init();
-
-    Ok(guard)
-}
-
+#[cfg(feature = "clap")]
 pub fn get_styles() -> clap::builder::Styles {
     clap::builder::Styles::styled()
         .usage(
