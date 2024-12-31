@@ -48,7 +48,7 @@ pub struct LogAndVerbosity {
     pub silent: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Subcommand))]
 pub enum SubCommand {
     /// Build unidirectional haplotype sharing trees at a coordinate
