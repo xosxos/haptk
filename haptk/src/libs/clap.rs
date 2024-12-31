@@ -24,7 +24,7 @@ use crate::{
     }
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 #[cfg_attr(feature = "clap", command(author, version, about, styles=get_styles()))]
 pub struct Arguments {
