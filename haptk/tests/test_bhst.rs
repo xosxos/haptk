@@ -67,7 +67,6 @@ mod test_bhst {
             coords: String::from("chr9:32"),
             selection: haptk::args::Selection::All,
             samples: None,
-            info_limit: None,
             prefix: Some("test_core".to_string()),
             no_alt: false,
         };

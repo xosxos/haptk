@@ -75,7 +75,6 @@ mod compare_hst {
             coords: String::from("chr9:32"),
             selection: selection.clone(),
             samples: None,
-            info_limit: None,
             prefix: None,
             no_alt: false,
         };
@@ -96,7 +95,6 @@ mod compare_hst {
             coords: String::from("chr9:32"),
             selection,
             samples: None,
-            info_limit: None,
             prefix: Some(String::from("left")),
             no_alt: false,
         };

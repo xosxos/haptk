@@ -22,8 +22,6 @@ pub struct StandardArgs {
     #[cfg_attr(feature = "clap", arg(short = 'a', long = "alleles", value_enum, default_value_t = Selection::All))]
     pub selection: Selection,
 
-    pub info_limit: Option<f32>,
-
     /// Output filename prefix
     #[cfg_attr(feature = "clap", arg(short = 'p', long))]
     pub prefix: Option<String>,

@@ -50,7 +50,6 @@ pub fn run(
     let args = StandardArgs {
         file: args.file.clone(),
         output: args.output,
-        info_limit: None,
         coords: coords.clone().unwrap(),
         selection: args.selection.clone(),
         prefix: args.prefix,

@@ -45,7 +45,6 @@ pub fn clap_standard_args(select: Selection) -> haptk::args::StandardArgs {
         coords: String::from(COORDS),
         selection: select,
         samples: None,
-        info_limit: None,
         prefix: None,
         no_alt: false,
     }

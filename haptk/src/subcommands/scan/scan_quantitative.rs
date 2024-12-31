@@ -88,7 +88,6 @@ pub fn run(
     let args = StandardArgs {
         file: args.file.clone(),
         output: args.output,
-        info_limit: None,
         coords: String::from(""),
         selection: args.selection.clone(),
         prefix: args.prefix,
@@ -130,7 +129,6 @@ pub fn run(
                 let args = StandardArgs {
                     file: args.file.clone(),
                     output: args.output.clone(),
-                    info_limit: None,
                     coords: format!("{}", coords[0]),
                     selection: args.selection.clone(),
                     prefix: args.prefix.clone(),
