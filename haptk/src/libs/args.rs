@@ -12,7 +12,7 @@ pub struct StandardArgs {
     pub coords: String,
 
     /// Output directory
-    #[cfg_attr(feature = "clap", arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("./")))]
+    #[cfg_attr(feature = "clap", arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("./"), value_hint = clap::ValueHint::DirPath))]
     pub output: PathBuf,
 
     /// List of samples for HST construction (one ID per row)
