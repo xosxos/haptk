@@ -1,12 +1,17 @@
 # HAPTK
 
-A toolkit for haplotype analysis using haplotype sharing trees, haplotype windowing and long-read assemblied haplotypes
+Haplotype and identity-by-descent analysis toolkit especially for haplotype sharing trees (HST)
 
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 ![Rust 1.70](https://img.shields.io/badge/rust-1.70-green.svg)
 ![Rust 1.81](https://img.shields.io/badge/rust-1.81-green.svg)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-green.svg)
 [![Crates.io](https://img.shields.io/crates/v/haptk.svg)](https://crates.io/crates/haptk)
+
+## Constructing haplotype sharing trees
+![](assets/hst.gif)
+
+![](assets/hst_circular.gif)
 
 ## How to install
 ```bash
