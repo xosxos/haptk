@@ -44,7 +44,7 @@ def visualize(df, rec_rates, snps, min, max, gargs, args, sample_colors):
         else:
             ax.plot(y[idx], [ids[idx], ids[idx]], c=lines_color, linewidth='5')
 
-    if rec_rates:
+    if rec_rates is not None:
         ax.plot(rec_rates['pos'], rec_rates['rate'], c=rec_color, linewidth='1')
 
     plt.yticks(fontsize=3)
