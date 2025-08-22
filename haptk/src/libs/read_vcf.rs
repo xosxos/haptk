@@ -211,6 +211,7 @@ pub fn read_vcf_to_matrix_by_indexes(
     tracing::info!("Using {} samples from the VCF.", indexes.len());
 
     if let Some(window) = window {
+        assert!(variant_pos.checked_add(window).is_some(), "Error: Variant position: {variant_pos} added to the window: {window} is larger than the largest allowed 64-bit unsigned integer {}", u64::MAX);
         range = Some((
             Some(variant_pos.saturating_sub(window)),
             Some(variant_pos + window),

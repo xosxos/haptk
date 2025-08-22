@@ -15,10 +15,10 @@ mod test_bhst {
     fn bhst_all() {
         run_bhst(Selection::All);
 
-        let res = std::fs::read_to_string("tests/results/bhst_mbah.csv").unwrap();
+        let res = std::fs::read_to_string("tests/results/bhst_ancestral_haplotype.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
 
-        let res = std::fs::read_to_string("tests/results/bhst_shared_core_haplotype.csv").unwrap();
+        let res = std::fs::read_to_string("tests/results/bhst_core_haplotype.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
     }
 
@@ -26,11 +26,12 @@ mod test_bhst {
     fn bhst_only_ref() {
         run_bhst(Selection::OnlyRefs);
 
-        let res = std::fs::read_to_string("tests/results/bhst_mbah_only_refs.csv").unwrap();
+        let res = std::fs::read_to_string("tests/results/bhst_ancestral_haplotype_only_refs.csv")
+            .unwrap();
         insta::assert_yaml_snapshot!(res);
 
-        let res = std::fs::read_to_string("tests/results/bhst_shared_core_haplotype_only_refs.csv")
-            .unwrap();
+        let res =
+            std::fs::read_to_string("tests/results/bhst_core_haplotype_only_refs.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
     }
 
@@ -38,11 +39,12 @@ mod test_bhst {
     fn bhst_only_alt() {
         run_bhst(Selection::OnlyAlts);
 
-        let res = std::fs::read_to_string("tests/results/bhst_mbah_only_alts.csv").unwrap();
+        let res = std::fs::read_to_string("tests/results/bhst_ancestral_haplotype_only_alts.csv")
+            .unwrap();
         insta::assert_yaml_snapshot!(res);
 
-        let res = std::fs::read_to_string("tests/results/bhst_shared_core_haplotype_only_alts.csv")
-            .unwrap();
+        let res =
+            std::fs::read_to_string("tests/results/bhst_core_haplotype_only_alts.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
     }
 
@@ -50,12 +52,13 @@ mod test_bhst {
     fn bhst_only_longest() {
         run_bhst(Selection::OnlyLongest);
 
-        let res = std::fs::read_to_string("tests/results/bhst_mbah_only_longest.csv").unwrap();
+        let res =
+            std::fs::read_to_string("tests/results/bhst_ancestral_haplotype_only_longest.csv")
+                .unwrap();
         insta::assert_yaml_snapshot!(res);
 
         let res =
-            std::fs::read_to_string("tests/results/bhst_shared_core_haplotype_only_longest.csv")
-                .unwrap();
+            std::fs::read_to_string("tests/results/bhst_core_haplotype_only_longest.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
     }
 
@@ -81,8 +84,8 @@ mod test_bhst {
         };
         haptk::clap::run_cmd(cmd).unwrap();
 
-        let res = std::fs::read_to_string("tests/results/test_core_bhst_shared_core_haplotype.csv")
-            .unwrap();
+        let res =
+            std::fs::read_to_string("tests/results/test_core_bhst_core_haplotype.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
     }
 

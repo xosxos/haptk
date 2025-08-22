@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, sync::mpsc::sync_channel};
+use std::{cmp::Ordering, collections::HashMap, sync::mpsc::sync_channel};
 
 use color_eyre::{
     eyre::{ensure, eyre},
@@ -14,7 +14,13 @@ use crate::{
     io::{open_csv_writer, push_to_output, write_haplotype},
     libs::structs::{CoordDataSlot, PhasedMatrix},
     structs::{Coord, HapVariant},
-    subcommands::bhst::{self, HstType, Node},
+    subcommands::{
+        bhst::{self, HstType, Node},
+        compare_to_haplotype::{
+            find_shared_haplotype_ranges, range_length_avg, range_length_median,
+            transform_gt_matrix_to_match_matrix, write_ranges_to_csv,
+        },
+    },
 };
 
 #[doc(hidden)]
@@ -34,12 +40,12 @@ impl std::fmt::Display for LocDirection {
 }
 
 #[doc(hidden)]
-pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: Option<u64>) -> Result<()> {
+pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> Result<()> {
     if args.selection == Selection::Unphased {
         return Err(eyre!("Running with unphased data is not supported."));
     }
 
-    let mut vcf = bhst::read_vcf_with_selections(&args, window)?;
+    let mut vcf = bhst::read_vcf_with_selections(&args, Some(window))?;
 
     ensure!(
         vcf.nhaplotypes() >= min_size,
@@ -83,16 +89,11 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: Option<u6
 
             // Write to .hst
             let mut hst_output = args.output.clone();
-            push_to_output(
-                &args,
-                &mut hst_output,
-                &format!("uhst_{direction}"),
-                "hst.gz",
-            );
+            push_to_output(&args, &mut hst_output, &format!("{direction}"), "hst.gz");
 
             let hst_type = match direction {
-                LocDirection::Left => HstType::UhstLeft,
-                LocDirection::Right => HstType::UhstRight,
+                LocDirection::Left => HstType::HstLeft,
+                LocDirection::Right => HstType::HstRight,
             };
 
             bhst::write_hst_file(uhst, &vcf, hst_output, publish, args.clone(), hst_type)?;
@@ -107,7 +108,7 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: Option<u6
 
     // Shared core haplotype
     let mut sh_output = args.output.clone();
-    push_to_output(&args, &mut sh_output, "uhst_shared_core_haplotype", "csv");
+    push_to_output(&args, &mut sh_output, "core_haplotype", "csv");
     let writer = open_csv_writer(sh_output)?;
     let core_haplotype = combine_node_haplotypes(
         &[
@@ -121,17 +122,43 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: Option<u6
 
     // Majority based haplotype
     let mut sh_output = args.output.clone();
-    push_to_output(&args, &mut sh_output, "uhst_mbah", "csv");
+    push_to_output(&args, &mut sh_output, "ancestral_haplotype", "csv");
     let writer = open_csv_writer(sh_output)?;
-    let mbah = combine_node_haplotypes(
+    let ancestral_haplotype = combine_node_haplotypes(
         &[
             first_and_mbah_nodes[0].1.clone(),
             first_and_mbah_nodes[1].1.clone(),
         ],
         &vcf,
     );
-    write_haplotype(mbah, writer)?;
+
+    write_haplotype(ancestral_haplotype.clone(), writer)?;
     tracing::debug!("Finished writing majority based ancestral haplotype");
+
+    // Vec into Map for speed up
+    let ht: HashMap<Coord, HapVariant> = ancestral_haplotype
+        .into_iter()
+        .map(|v| (v.clone().into(), v))
+        .collect();
+
+    let variant_pos = vcf.variant_idx_pos();
+    let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?;
+
+    let shared_ranges = find_shared_haplotype_ranges(&vcf);
+
+    let mut sh_output = args.output.clone();
+    push_to_output(&args, &mut sh_output, "ancestral_segments", "csv");
+    let mut writer = open_csv_writer(sh_output)?;
+
+    write_ranges_to_csv(&vcf, &shared_ranges, None, None, &mut writer)?;
+
+    tracing::info!(
+        "Sample haplotypes: {}, average length: {}, median length: {}",
+        shared_ranges.len(),
+        range_length_avg(&shared_ranges),
+        range_length_median(&shared_ranges)
+    );
+    tracing::debug!("Finished writing ancestral segment lengths");
 
     Ok(())
 }

@@ -51,8 +51,8 @@ pub struct LogAndVerbosity {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Subcommand))]
 pub enum SubCommand {
-    /// Build unidirectional haplotype sharing trees at a coordinate
-    Uhst {
+    /// Build haplotype sharing trees at a coordinate
+    Hst {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
@@ -71,9 +71,8 @@ pub enum SubCommand {
         #[cfg_attr(feature = "clap", arg(long))]
         publish: bool,
 
-        /// If you most likely dont need to read the entire VCF for a HST use a window e.g. 5000000 or 2000000 (5Mb or 2Mb) around the locus
-        #[cfg_attr(feature = "clap", arg(long))]
-        window: Option<u64>,
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 10_000_000))]
+        window: u64,
     },
 
     /// Build a bidirectional haplotype sharing tree at a coordinate
@@ -588,7 +587,7 @@ impl SubCommand {
             SubCommand::CompareToHaplotype { threads, .. }
             | SubCommand::CompareToHst { threads, .. }
             | SubCommand::Mrca { threads, .. }
-            | SubCommand::Uhst { threads, .. }
+            | SubCommand::Hst { threads, .. }
             | SubCommand::Bhst { threads, .. } => *threads,
 
             #[cfg(feature = "experimental")]
@@ -613,7 +612,7 @@ impl SubCommand {
             | SubCommand::CompareToHst { log_and_verbosity, .. }
             | SubCommand::CompareHaplotypes { log_and_verbosity, .. }
             | SubCommand::Mrca { log_and_verbosity, .. }
-            | SubCommand::Uhst { log_and_verbosity, .. }
+            | SubCommand::Hst { log_and_verbosity, .. }
             | SubCommand::Bhst { log_and_verbosity, .. }
             | SubCommand::Samples { log_and_verbosity, .. }
             | SubCommand::Markers { log_and_verbosity, .. }
@@ -665,7 +664,7 @@ impl SubCommand {
             | SubCommand::CompareToHst { args: StandardArgs { output, .. }, ..}
             | SubCommand::CompareHaplotypes { output, .. }
             | SubCommand::Mrca { args: StandardArgs { output, .. }, ..}
-            | SubCommand::Uhst { args: StandardArgs { output, .. }, ..}
+            | SubCommand::Hst { args: StandardArgs { output, .. }, ..}
             | SubCommand::Bhst { args: StandardArgs { output, .. }, ..}
             => Some(output.clone()),
 
@@ -718,7 +717,7 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
             )?,
 
         SubCommand::Bhst { args,  min_size, publish, window, .. } => bhst::run(args, min_size, publish, window)?,
-        SubCommand::Uhst {args,  min_size, publish, window, .. } => uhst::run(args, min_size, publish, window)?,
+        SubCommand::Hst {args,  min_size, publish, window, .. } => uhst::run(args, min_size, publish, window)?,
 
         SubCommand::CompareHaplotypes { haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides, .. }
             => compare_haplotypes::run(haplotypes, output, prefix, csv, hide_missing, tag_rows, nucleotides)?,

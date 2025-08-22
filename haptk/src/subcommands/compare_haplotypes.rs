@@ -13,7 +13,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use termion::color;
 
-use crate::io::{get_csv_writer, get_input};
+use crate::io::{get_csv_writer, get_input, open_csv_writer};
 use crate::structs::Coord;
 use crate::utils::strip_prefix;
 
@@ -166,7 +166,7 @@ pub fn run(
     haplotypes: Vec<PathBuf>,
     mut output: PathBuf,
     prefix: Option<String>,
-    csv: bool,
+    to_csv_file: bool,
     hide_missing: bool,
     tag_rows: bool,
     nucleotides: bool,
@@ -199,10 +199,11 @@ pub fn run(
 
     tracing::debug!("Finished aligning haplotypes");
 
-    match csv {
-        true => aligner.to_csv(output, nucleotides)?,
+    match to_csv_file {
+        true => aligner.to_csv(output, nucleotides, to_csv_file)?,
         false => aligner.print(hide_missing, tag_rows, nucleotides),
     }
+
     Ok(())
 }
 
@@ -415,9 +416,11 @@ impl HaplotypeAligner {
         (freq_line, n_line)
     }
 
-    pub fn to_csv(&self, _path: PathBuf, yes_nucleotides: bool) -> Result<()> {
-        // let mut wrtr = open_csv_writer(path)?;
-        let mut wrtr = get_csv_writer(Box::new(std::io::stdout()));
+    pub fn to_csv(&self, path: PathBuf, yes_nucleotides: bool, to_file: bool) -> Result<()> {
+        let mut wrtr: csv::Writer<Box<dyn std::io::Write>> = match to_file {
+            true => open_csv_writer(path)?,
+            false => get_csv_writer(Box::new(std::io::stdout())),
+        };
 
         let mut header = self.header(yes_nucleotides);
         header.extend(self.header_names());

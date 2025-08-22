@@ -9,14 +9,14 @@ use haptk::{args::Selection, subcommands::uhst};
 #[cfg(feature = "clap")]
 fn compare_haplotypes() {
     let args = standard_args(Selection::All);
-    uhst::run(args, 1, false, None).unwrap();
+    uhst::run(args, 1, false, 20_000).unwrap();
 
     let args = standard_args(Selection::OnlyLongest);
-    uhst::run(args, 1, false, None).unwrap();
+    uhst::run(args, 1, false, 20_000).unwrap();
 
     let files = vec![
-        PathBuf::from("tests/results/uhst_mbah.csv"),
-        PathBuf::from("tests/results/uhst_shared_core_haplotype_only_longest.csv"),
+        PathBuf::from("tests/results/ancestral_haplotype.csv"),
+        PathBuf::from("tests/results/core_haplotype_only_longest.csv"),
     ];
     let output = PathBuf::from(OUTDIR);
     let cmd = haptk::clap::SubCommand::CompareHaplotypes {

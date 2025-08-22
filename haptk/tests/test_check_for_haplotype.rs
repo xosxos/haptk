@@ -110,12 +110,12 @@ mod test_check_for_haplotype {
 
     fn check_for_haplotype(selection: Selection) {
         let args = standard_args(Selection::OnlyLongest);
-        uhst::run(args, 1, false, None).unwrap();
+        uhst::run(args, 1, false, 20000).unwrap();
 
         let args = clap_standard_args(selection);
         let cmd = haptk::clap::SubCommand::CheckForHaplotype {
             args,
-            haplotype: PathBuf::from("tests/results/uhst_shared_core_haplotype_only_longest.csv"),
+            haplotype: PathBuf::from("tests/results/core_haplotype_only_longest.csv"),
             log_and_verbosity: haptk::clap::LogAndVerbosity {
                 verbosity: 1,
                 log_file: None,

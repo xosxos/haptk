@@ -144,13 +144,13 @@ mod test_compare_to_haplotype {
 
     fn compare_to_haplotype(selection: Selection, mark: bool, png: bool) {
         let args = standard_args(Selection::OnlyLongest);
-        uhst::run(args, 1, false, None).unwrap();
+        uhst::run(args, 1, false, 20_000).unwrap();
 
         let args = common::clap_standard_args(selection);
 
         let cmd = haptk::clap::SubCommand::CompareToHaplotype {
             args,
-            haplotype: PathBuf::from("tests/results/uhst_shared_core_haplotype_only_longest.csv"),
+            haplotype: PathBuf::from("tests/results/core_haplotype_only_longest.csv"),
             threads: 8,
             mark_samples: None,
             mark_shorter_alleles: mark,

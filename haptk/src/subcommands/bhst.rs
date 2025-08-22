@@ -143,7 +143,7 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: Option<u6
 
     // Write it to file
     let mut sh_output = args.output.clone();
-    push_to_output(&args, &mut sh_output, "bhst_mbah", "csv");
+    push_to_output(&args, &mut sh_output, "bhst_ancestral_haplotype", "csv");
     write_haplotype(mbah, open_csv_writer(sh_output)?)?;
 
     // Find the shared core haplotype
@@ -151,7 +151,7 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: Option<u6
 
     // Write it to file
     let mut sh_output = args.output.clone();
-    push_to_output(&args, &mut sh_output, "bhst_shared_core_haplotype", "csv");
+    push_to_output(&args, &mut sh_output, "bhst_core_haplotype", "csv");
     write_haplotype(ht, open_csv_writer(sh_output)?)?;
 
     // Write the HST to file
@@ -617,8 +617,8 @@ impl Hst {
 
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub enum HstType {
-    UhstLeft,
-    UhstRight,
+    HstLeft,
+    HstRight,
     #[default]
     Bhst,
 }

@@ -90,7 +90,11 @@ pub fn run(
                 false,
             )?;
             let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?;
-            only_longest = Some(vcf.only_longest_indexes_no_shard(vcf.start_coord())?);
+
+            if mark_shorter_alleles {
+                only_longest = Some(vcf.only_longest_indexes_no_shard(vcf.start_coord())?);
+            }
+
             vcf
         }
         Selection::OnlyAlts | Selection::OnlyRefs => {
@@ -186,7 +190,7 @@ pub fn run(
 
     let shared_ranges = find_shared_haplotype_ranges(&vcf);
 
-    print_ranges_to_csv(
+    write_ranges_to_csv(
         &vcf,
         &shared_ranges,
         decoy_samples.as_ref(),
@@ -434,7 +438,7 @@ pub fn range_length_median(ranges: &[(usize, usize, usize)]) -> usize {
     vec[vec.len() / 2]
 }
 
-pub fn print_ranges_to_csv(
+pub fn write_ranges_to_csv(
     vcf: &PhasedMatrix,
     ranges: &[(usize, usize, usize)],
     decoy_samples: Option<&Vec<String>>,
