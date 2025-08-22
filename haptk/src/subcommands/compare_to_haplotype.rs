@@ -388,7 +388,7 @@ fn sort_indexes_for_diff_graph(
     values.iter().map(|v| v.0).collect::<Vec<usize>>()
 }
 
-pub fn find_shared_haplotype_ranges(vcf: &PhasedMatrix) -> Vec<(usize, usize, usize)> {
+pub fn find_shared_haplotype_ranges(vcf: &PhasedMatrix) -> Vec<(usize, usize, usize, bool)> {
     vcf.matrix_axis_iter(0)
         .into_par_iter()
         .enumerate()
@@ -406,11 +406,11 @@ pub fn find_shared_haplotype_ranges(vcf: &PhasedMatrix) -> Vec<(usize, usize, us
                     }
                     0 => {
                         if i == vcf.variant_idx() {
-                            return (idx, i, i);
+                            return (idx, i, i, false);
                         }
                         if let (Some(end), Some(start)) = (last_end, last_start) {
                             if vcf.variant_idx() <= end && vcf.variant_idx() >= start {
-                                return (idx, start, end);
+                                return (idx, start, end, true);
                             }
                         }
 
@@ -420,19 +420,19 @@ pub fn find_shared_haplotype_ranges(vcf: &PhasedMatrix) -> Vec<(usize, usize, us
                 }
             }
             //
-            (idx, last_start.unwrap(), vcf.ncoords() - 1)
+            (idx, last_start.unwrap(), vcf.ncoords() - 1, true)
             // panic!("No haplotye found in check-diff algo")
         })
         .collect()
 }
 
-pub fn range_length_avg(ranges: &[(usize, usize, usize)]) -> f32 {
+pub fn range_length_avg(ranges: &[(usize, usize, usize, bool)]) -> f32 {
     // ranges.iter().for_each(|n| println!("{}", n.2 - n.1));
     let sum: usize = ranges.iter().map(|n| n.2 - n.1).sum();
     sum as f32 / ranges.len() as f32
 }
 
-pub fn range_length_median(ranges: &[(usize, usize, usize)]) -> usize {
+pub fn range_length_median(ranges: &[(usize, usize, usize, bool)]) -> usize {
     let mut vec: Vec<_> = ranges.iter().map(|n| n.2 - n.1).collect();
     vec.sort();
     vec[vec.len() / 2]
@@ -440,7 +440,7 @@ pub fn range_length_median(ranges: &[(usize, usize, usize)]) -> usize {
 
 pub fn write_ranges_to_csv(
     vcf: &PhasedMatrix,
-    ranges: &[(usize, usize, usize)],
+    ranges: &[(usize, usize, usize, bool)],
     decoy_samples: Option<&Vec<String>>,
     only_longest: Option<&Vec<usize>>,
     writer: &mut csv::Writer<Box<dyn std::io::Write>>,
@@ -454,16 +454,26 @@ pub fn write_ranges_to_csv(
         "is_marked",
         "is_longest",
     ])?;
-    for (idx, start, stop) in ranges {
+    for (idx, start, stop, is_first_variant_match) in ranges {
         let start_pos = vcf.get_pos(*start);
         let stop_pos = vcf.get_pos(*stop);
+
+        let length_bp = match is_first_variant_match {
+            false => "0".to_string(),
+            true => (stop_pos - start_pos + 1).to_string(),
+        };
+
+        let length_markers = match is_first_variant_match {
+            false => "0".to_string(),
+            true => (stop - start + 1).to_string(),
+        };
 
         let mut row = vec![
             format!("{}", vcf.get_sample_name(*idx)),
             start_pos.to_string(),
             stop_pos.to_string(),
-            (stop_pos - start_pos + 1).to_string(),
-            (stop - start + 1).to_string(),
+            length_bp,
+            length_markers,
         ];
 
         match decoy_samples {
