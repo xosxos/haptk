@@ -115,13 +115,13 @@ class HST:
 
                 return f'{ht_string}'
             
-            if self.metadata['hst_type'] == 'UhstLeft':
+            if self.metadata['hst_type'] == 'HstLeft':
                 ending = haplotype[-size:]
                 ending = '-'.join(str(x) for x in ending)
 
                 return f'{haplotype[0]}..({between_len})..{ending}'
 
-            elif self.metadata['hst_type'] == 'UhstRight':
+            elif self.metadata['hst_type'] == 'HstRight':
                 beginning = haplotype[0:size]
                 beginning = '-'.join(str(x) for x in beginning)
 

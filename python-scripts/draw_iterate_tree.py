@@ -76,9 +76,9 @@ df["sex"] = df["sex"].apply(lambda x: 0 if x == "M" else 1)
 def tree_style(hst):
     ts = TreeStyle()
 
-    if hst.metadata['hst_type'] == 'UhstLeft':
+    if hst.metadata['hst_type'] == 'HstLeft':
         ts.rotation = 180
-    elif hst.metadata['hst_type'] == 'UhstRight':
+    elif hst.metadata['hst_type'] == 'HstRight':
         ts.rotation = 0
     elif hst.metadata['hst_type'] == 'Bhst':
         ts.rotation = 270
@@ -237,12 +237,15 @@ def create_text_face(label, hst, bgcolor, fgcolor):
         return F
 
 def create_root_face(hst, bgcolor):
-        if hst.metadata['hst_type'] == 'UhstLeft':
-            root_label = f"<- {hst.metadata['start_coord']}"
-        elif hst.metadata['hst_type'] == 'UhstRight':
-            root_label = f"{hst.metadata['start_coord']} ->"
+        coord = hst.metadata['start_coord']
+        coord = f"{coord['contig']}:{coord['pos']}"
+
+        if hst.metadata['hst_type'] == 'HstLeft':
+            root_label = f"<- {coord}"
+        elif hst.metadata['hst_type'] == 'HstRight':
+            root_label = f"{coord} ->"
         elif hst.metadata['hst_type'] == 'Bhst':
-            root_label = f"<- {hst.metadata['start_coord']} ->"
+            root_label = f"<- {coord} ->"
         else:
             root_label = f"{hst.metadata.start_coord}"
 
@@ -256,9 +259,9 @@ def create_root_face(hst, bgcolor):
         return F
 
 def get_rotation(hst):
-    if hst.metadata['hst_type'] == 'UhstLeft':
+    if hst.metadata['hst_type'] == 'HstLeft':
         rotation = 540
-    elif hst.metadata['hst_type'] == 'UhstRight':
+    elif hst.metadata['hst_type'] == 'HstRight':
         rotation = 360
     elif hst.metadata['hst_type'] == 'Bhst':
         rotation = 270
@@ -269,7 +272,7 @@ def get_rotation(hst):
 
 
 # # Render the tree
-if hst.metadata['hst_type'] == 'UhstRight':
+if hst.metadata['hst_type'] == 'HstRight':
     hst.iterate_tree(df, optimizer, args.output, w=args.w, h=args.h, to_tag=samples_to_tag, min_size=args.min_size, hard_cut=args.hard_cut, min_start=args.min_start, max_stop=args.max_stop, tree_style=tree_style(hst), right_up=True)
 else:
     hst.iterate_tree(df, optimizer, args.output, w=args.w, h=args.h, to_tag=samples_to_tag, min_size=args.min_size, hard_cut=args.hard_cut, min_start=args.min_start, max_stop=args.max_stop, tree_style=tree_style(hst))
