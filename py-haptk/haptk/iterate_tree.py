@@ -30,7 +30,8 @@ def iterate_tree_inner(hst, t, samples_to_tag, df, optimizer):
         
         F = optimizer(hst, n, df, samples_to_tag)      
 
-        n.add_face(F, column=0)
+        if F is not None:
+            n.add_face(F, column=0)
         
 
     return t

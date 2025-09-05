@@ -24,6 +24,10 @@ parser.add_argument('--w', type=int)
 parser.add_argument('--h', type=int)
 parser.add_argument('-o', '--output', type=str)
 
+
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
+
 args = parser.parse_args()
 
 ADJUST_FOR_ROOT = args.adjust_for_root
@@ -71,7 +75,7 @@ df["site"] = df["site"].apply(lambda x: 0 if x == "SPINAL" else 1)
 # Code sex as male=0 and female=1
 df["sex"] = df["sex"].apply(lambda x: 0 if x == "M" else 1)
 
-# print(df)
+print(df)
 
 def tree_style(hst):
     ts = TreeStyle()
@@ -81,18 +85,18 @@ def tree_style(hst):
     elif hst.metadata['hst_type'] == 'HstRight':
         ts.rotation = 0
     elif hst.metadata['hst_type'] == 'Bhst':
-        ts.rotation = 270
+        ts.rotation = 90
 
     ts.show_leaf_name = False
     ts.show_scale = False
-    # ts.min_leaf_separation = 10
-    ts.branch_vertical_margin = 25
+    ts.min_leaf_separation = 10
+    ts.branch_vertical_margin = 250
     ts.optimal_scale_level = "full"
     ts.allow_face_overlap = False
 
     # ts.legend.add_face(TextFace("p < 0.05"), column=0)
 
-    # ts.branch_vertical_margin = 10
+    ts.branch_vertical_margin = 10
     # ts.show_leaf_name = False
     # ts.show_scale = False
 
@@ -155,6 +159,11 @@ def optimizer(hst, n, df, _samples_to_tag):
     # color = "#ffffff"
     text_color = "black"
 
+    ht_size_to_truncate = 9
+
+    # if len(node_data['indexes']) < 20:
+        # return None
+
     # print(n.name)
     if n.name != "0":
 
@@ -183,7 +192,7 @@ def optimizer(hst, n, df, _samples_to_tag):
             clause = alt_homs < 5
 
         if clause:
-            label = f" N={freq:.2g} AVG={avg}\n{hst.haplotype_string(node_data, 5)}"
+            label = f"{freq:.2g}\n {avg} y \n{hst.haplotype_string(node_data, ht_size_to_truncate)}"
             return create_text_face(label, hst, color, text_color)
 
 
@@ -206,7 +215,7 @@ def optimizer(hst, n, df, _samples_to_tag):
         coef = round(cph.summary['coef'].iloc[4], 6)
         e_coef = round(cph.summary['exp(coef)'].iloc[4], 6)
         p = cph.summary['p'].iloc[4]
-        label = f"N={freq:.3g} AVG={avg}\nHR={e_coef:.3g} P={p:.2g}\n{hst.haplotype_string(node_data, 5)}"
+        label = f"{freq:.3g} {hst.haplotype_string(node_data, ht_size_to_truncate)}\n{node_data['start']['pos']}-{node_data['stop']['pos']}\n{avg} y (HR {e_coef:.3g}, p {p:.2g})"
         # print(n.name, len(indexes), hets, alt_homs, coef, e_coef, p)
 
         if p < 0.05:
@@ -245,7 +254,7 @@ def create_root_face(hst, bgcolor):
         elif hst.metadata['hst_type'] == 'HstRight':
             root_label = f"{coord} ->"
         elif hst.metadata['hst_type'] == 'Bhst':
-            root_label = f"<- {coord} ->"
+            root_label = f"{coord}"
         else:
             root_label = f"{hst.metadata.start_coord}"
 
