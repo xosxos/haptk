@@ -104,10 +104,12 @@ pub fn read_vcf_with_selections(args: &StandardArgs, window: Option<u64>) -> Res
     let (contig, pos) = parse_snp_coord(&args.coords)?;
 
     let (indexes, _) = get_sample_names(args, contig, None)?;
+
     ensure!(
         indexes.len() > 1,
         "Cannot build a tree with less than 2 samples."
     );
+
     let mut vcf = read_vcf_to_matrix(args, contig, pos, None, None, window, false)?;
 
     if args.selection == Selection::OnlyLongest {

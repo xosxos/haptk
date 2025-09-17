@@ -157,6 +157,26 @@ impl std::fmt::Display for Coord {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialOrd, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CigarVariant {
+    pub pos: u64,
+    pub alt: char,
+}
+
+impl Ord for CigarVariant {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.pos < other.pos {
+            return Ordering::Less;
+        }
+
+        if self.pos > other.pos {
+            return Ordering::Greater;
+        }
+
+        return self.alt.cmp(&other.alt);
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Ploidy {
     Mixed,
@@ -199,7 +219,9 @@ impl std::ops::Deref for Ploidy {
 impl From<&Selection> for Ploidy {
     fn from(selection: &Selection) -> Self {
         match selection {
-            Selection::Haploid | Selection::OnlyRefs | Selection::OnlyAlts => Ploidy::Haploid,
+            Selection::Haploid | Selection::OnlyRefs | Selection::OnlyAlts | Selection::List => {
+                Ploidy::Haploid
+            }
             _ => Ploidy::Diploid,
         }
     }
@@ -208,7 +230,9 @@ impl From<&Selection> for Ploidy {
 impl From<Selection> for Ploidy {
     fn from(selection: Selection) -> Self {
         match selection {
-            Selection::Haploid | Selection::OnlyRefs | Selection::OnlyAlts => Ploidy::Haploid,
+            Selection::Haploid | Selection::OnlyRefs | Selection::OnlyAlts | Selection::List => {
+                Ploidy::Haploid
+            }
             _ => Ploidy::Diploid,
         }
     }
@@ -460,6 +484,22 @@ impl PhasedMatrix {
 
     pub fn select_only_longest(&mut self) -> Result<()> {
         let longest_indexes = self.only_longest_indexes()?;
+
+        // Update lookups
+        let mut lookups = vec![];
+
+        for idx in &longest_indexes {
+            let idxs = self.get_idxs_for_samples(&[self.get_sample_name(*idx)])?;
+            let pos = idxs.iter().position(|i| idx == i).unwrap();
+            let lookup = match pos {
+                0 => [true, false],
+                1 => [false, true],
+                _ => unreachable!("Only diploid genotypes are supported"),
+            };
+            lookups.push(lookup);
+        }
+
+        self.metadata.lookups = lookups;
 
         self.select_rows(longest_indexes);
         self.ploidy = Ploidy::Haploid;

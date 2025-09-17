@@ -29,6 +29,10 @@ pub struct StandardArgs {
     /// Do not include no ALTs
     #[cfg_attr(feature = "clap", arg(long))]
     pub no_alt: bool,
+
+    /// List of phase sets / haplotypes to include per sample
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub list: Option<PathBuf>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -127,6 +131,8 @@ pub enum Selection {
     OnlyRefs,
     /// Select only the alleles containing the ALT variant at given a coordinate
     OnlyAlts,
+    /// Use to select phased chromosomes from a list
+    List,
     /// Use for unphased data (currently not supported for most commands)
     Unphased,
     /// Use for haploid genotypes
@@ -140,6 +146,7 @@ impl std::fmt::Display for Selection {
             Self::OnlyLongest => write!(f, "Longest haplotype"),
             Self::OnlyRefs => write!(f, "Only ref. alleles"),
             Self::OnlyAlts => write!(f, "Only alt. alleles"),
+            Self::List => write!(f, "Listed haplotypes"),
             Self::Unphased => write!(f, "Unphased"),
             Self::Haploid => write!(f, "Haploid"),
         }

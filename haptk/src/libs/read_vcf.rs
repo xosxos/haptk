@@ -16,7 +16,7 @@ use rust_htslib::bcf::Read;
 use crate::{
     args::{Selection, StandardArgs},
     error::HaptkError::{NormalizeError, SamplesNotFoundError},
-    io::{get_htslib_contig_len, read_multiple_sample_ids},
+    io::{get_htslib_contig_len, read_multiple_sample_ids, read_sample_ht_list_file},
     structs::{Coord, PhasedMatrix, Ploidy, ReadMetadata},
 };
 
@@ -90,6 +90,7 @@ pub fn get_sample_names(
     let sample_indexes = filter_samples(&samples, wanted);
 
     ensure!(!sample_indexes.is_empty(), SamplesNotFoundError);
+
     let samples: Vec<String> = sample_indexes
         .iter()
         .map(|s| &samples[*s])
@@ -169,11 +170,50 @@ pub fn read_vcf_to_matrix(
     window: Option<u64>,
     is_genome_wide: bool,
 ) -> Result<PhasedMatrix> {
-    let (indexes, samples) = get_sample_names(args, contig, wanted_samples)?;
+    let (mut indexes, samples) = get_sample_names(args, contig, wanted_samples)?;
 
     let (lookups, samples) = match args.selection {
         Selection::OnlyRefs => prune_by_gt(args, contig, variant_pos, &indexes, samples, 0)?,
         Selection::OnlyAlts => prune_by_gt(args, contig, variant_pos, &indexes, samples, 1)?,
+        // TODO: New ugly code
+        Selection::List => {
+            ensure!(
+                args.list.is_some(),
+                eyre!("List selection enabled, but no list was given with the --list parameter")
+            );
+            let lookups = read_sample_ht_list_file(&args.list.clone().unwrap())?;
+
+            indexes = samples
+                .iter()
+                .zip(indexes.iter())
+                .filter(|(v, _i)| lookups.get(*v).is_some())
+                .map(|(_, i)| i)
+                .cloned()
+                .collect();
+
+            (
+                samples
+                    .iter()
+                    .flat_map(|v| {
+                        if lookups.get(v).is_none() {
+                            tracing::warn!("wanted sample {} was not in the list file", v);
+                        }
+                        lookups.get(v)
+                    })
+                    .copied()
+                    .collect(),
+                samples
+                    .iter()
+                    .filter(|&v| lookups.get(v).is_some())
+                    .map(|v| (v, lookups.get(v).unwrap()))
+                    .flat_map(|(s, lookup)| match (lookup[0], lookup[1]) {
+                        (true, true) => vec![s.clone(), s.clone()],
+                        (true, false) | (false, true) => vec![s.clone()],
+                        (false, false) => vec![],
+                    })
+                    .collect(),
+            )
+        }
         _ => (indexes.iter().map(|_| [true, true]).collect(), samples),
     };
 
@@ -362,6 +402,7 @@ fn read_parallel(
         _ => (0, get_htslib_contig_len(file_path, contig)?),
     };
     let mut batches = vec![];
+
     let nthreads = rayon::current_num_threads();
     let batch_size = (last_pos - first_pos) / (nthreads * 5) as u64;
     let mut start = first_pos;
@@ -422,6 +463,7 @@ fn construct_phased_matrix(
         coords.len(),
         markers.len()
     );
+
     let matrix = Array2::from_shape_vec((samples.len() * *ploidy, coords.len()).f(), markers)?;
 
     let mut vcf = PhasedMatrix::new(

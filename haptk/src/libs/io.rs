@@ -13,6 +13,8 @@ use color_eyre::eyre::{eyre, OptionExt, WrapErr};
 use color_eyre::Result;
 use csv::{QuoteStyle, Reader, ReaderBuilder, Writer, WriterBuilder};
 use rust_htslib::bcf::{header::HeaderRecord, IndexedReader, Read};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::args::{Selection, StandardArgs};
 use crate::read_vcf::get_reader;
@@ -67,11 +69,61 @@ pub fn return_double_extension_filetype(path: &Path, e1: &str) -> Result<String>
     Ok(format!("{e2}.{e1}"))
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct SampleHaplotypeList {
+    pub sample: String,
+    pub haplotypes: String,
+}
+
+pub fn read_sample_ht_list_file(path: &PathBuf) -> Result<HashMap<String, [bool; 2]>> {
+    let input = get_input(Some(path.clone()))?;
+
+    let mut rdr = match FileType::from_path(path)? {
+        FileType::CSV => get_csv_reader(input, false),
+        FileType::TSV => get_tsv_reader(input, false),
+        FileType::BED => get_tsv_reader(input, false),
+        _ => return Err(eyre!("Filetype from {path:?} is not supported")),
+    };
+
+    let mut variants = HashMap::new();
+
+    for line in rdr.records() {
+        let record = line?;
+        let variant: SampleHaplotypeList = record.deserialize(None)?;
+
+        let haplotypes: Vec<_> = variant.haplotypes.split(":").collect();
+
+        if haplotypes.len() > 2 {
+            return Err(eyre!(
+                "Detected more than 2 chromosomes  for {}. Only max. diploid organisms are supported.", variant.sample
+            ));
+        }
+
+        if haplotypes.len() == 0 {
+            return Err(eyre!("No haplotypes for sample {}.", variant.sample));
+        }
+
+        if haplotypes.len() == 2 {
+            variants.insert(variant.sample.clone(), [true, true]);
+        }
+
+        if haplotypes.len() == 1 {
+            if haplotypes[0] == "1" {
+                variants.insert(variant.sample, [false, true]);
+            } else {
+                variants.insert(variant.sample, [true, false]);
+            }
+        }
+    }
+
+    Ok(variants)
+}
+
 pub fn read_coords_file(path: &PathBuf) -> Result<Vec<Coord>> {
     let input = get_input(Some(path.clone()))?;
 
     let mut rdr = match FileType::from_path(path)? {
-        FileType::CSV => get_csv_reader(input),
+        FileType::CSV => get_csv_reader(input, false),
         FileType::TSV => get_tsv_reader(input, false),
         FileType::BED => get_tsv_reader(input, false),
         _ => return Err(eyre!("Filetype from {path:?} is not supported")),
@@ -93,7 +145,7 @@ pub fn read_coords_sample_file(path: &PathBuf) -> Result<Vec<CoordSamples>> {
     let input = get_input(Some(path.clone()))?;
 
     let mut rdr = match FileType::from_path(path)? {
-        FileType::CSV => get_csv_reader(input),
+        FileType::CSV => get_csv_reader(input, false),
         FileType::TSV => get_tsv_reader(input, false),
         FileType::BED => get_tsv_reader(input, false),
         _ => return Err(eyre!("Filetype from {path:?} is not supported")),
@@ -188,7 +240,7 @@ pub fn read_recombination_file(path: PathBuf) -> Result<BTreeMap<u64, f32>> {
 
 pub fn read_haplotype_file(ht_path: PathBuf) -> Result<Vec<HapVariant>> {
     let input = get_input(Some(ht_path))?;
-    let mut rdr = get_csv_reader(input);
+    let mut rdr = get_csv_reader(input, true);
 
     let mut variants: Vec<HapVariant> = vec![];
 
@@ -264,6 +316,7 @@ pub fn push_to_output(args: &StandardArgs, output: &mut PathBuf, name: &str, suf
             Selection::OnlyAlts => output.push(format!("{prefix}_{name}_only_alts.{suffix}")),
             Selection::OnlyRefs => output.push(format!("{prefix}_{name}_only_refs.{suffix}")),
             Selection::OnlyLongest => output.push(format!("{prefix}_{name}_only_longest.{suffix}")),
+            Selection::List => output.push(format!("{prefix}_{name}_list.{suffix}")),
             Selection::Unphased => output.push(format!("{prefix}_{name}_rwc.{suffix}")),
             Selection::Haploid => output.push(format!("{prefix}_{name}_haploid.{suffix}")),
         }
@@ -273,6 +326,7 @@ pub fn push_to_output(args: &StandardArgs, output: &mut PathBuf, name: &str, suf
             Selection::OnlyAlts => output.push(format!("{name}_only_alts.{suffix}")),
             Selection::OnlyRefs => output.push(format!("{name}_only_refs.{suffix}")),
             Selection::OnlyLongest => output.push(format!("{name}_only_longest.{suffix}")),
+            Selection::List => output.push(format!("{name}_list.{suffix}")),
             Selection::Unphased => output.push(format!("{name}_rwc.{suffix}")),
             Selection::Haploid => output.push(format!("{name}_haploid.{suffix}")),
         }
@@ -341,10 +395,10 @@ pub fn get_tsv_reader<R: io::Read>(input: R, has_headers: bool) -> Reader<R> {
         .from_reader(input)
 }
 
-pub fn get_csv_reader<R: io::Read>(input: R) -> Reader<R> {
+pub fn get_csv_reader<R: io::Read>(input: R, has_headers: bool) -> Reader<R> {
     ReaderBuilder::new()
         .delimiter(b',')
-        .has_headers(true)
+        .has_headers(has_headers)
         .flexible(false)
         .from_reader(input)
 }
