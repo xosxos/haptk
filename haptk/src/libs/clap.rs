@@ -5,6 +5,7 @@ use color_eyre::{
     eyre::{ensure, eyre},
     Result,
 };
+use num_traits::ops::overflowing::OverflowingSub;
 
 use crate::args::{GraphArgs, SortOption, StandardArgs};
 use crate::subcommands::{
@@ -18,6 +19,7 @@ use crate::{
     args::ConciseArgs,
     subcommands::{
         mrca_scan,
+        haplotag,
         scan::{
             hst_scan, scan_branch_mrca, scan_nodes, scan_quantitative, scan_segregate, scan_sum_hsts, scan_annotate,
         }
@@ -578,6 +580,32 @@ pub enum SubCommand {
         log_and_verbosity: LogAndVerbosity,
     },
 
+    #[cfg(feature = "experimental")]
+    /// (experimental) Haplotagging
+    Haplotag {
+        #[cfg_attr(feature = "clap", command(flatten))]
+        args: StandardArgs,
+
+        /// Bam file
+        #[cfg_attr(feature = "clap", arg(short = 'b', long))]
+        bam_file: PathBuf,
+
+        /// Ref file
+        #[cfg_attr(feature = "clap", arg(short = 'r', long))]
+        ref_file: PathBuf,
+
+        /// Contigs to be searched, if not set, use all available contigs
+        #[arg(long, value_delimiter = ' ', num_args = 1.. )]
+        contigs: Vec<String>,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
+
+        /// Number of threads
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
+        threads: usize,
+    },
+
 }
 
 
@@ -597,6 +625,7 @@ impl SubCommand {
             | SubCommand::ScanBranchMrca { threads, .. }
             | SubCommand::ScanQuantitative { threads, .. }
             | SubCommand::ScanSumHst { threads, .. }
+            | SubCommand::Haplotag { threads, .. } 
             | SubCommand::ScanNodes { threads, .. } => *threads,
 
             _ => 1,
@@ -629,6 +658,7 @@ impl SubCommand {
             | SubCommand::ScanSumHst { log_and_verbosity, .. }
             | SubCommand::ScanNodes { log_and_verbosity,  .. }
             | SubCommand::AnnotateScan { log_and_verbosity, .. } 
+            | SubCommand::Haplotag { log_and_verbosity, .. } 
             => (log_and_verbosity.verbosity, &log_and_verbosity.log_file, log_and_verbosity.silent),
         }
     }
@@ -684,6 +714,7 @@ impl SubCommand {
             | SubCommand::ScanQuantitative { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanSumHst { args: ConciseArgs { output, .. }, ..}
             | SubCommand::ScanNodes { args: ConciseArgs { output, .. }, ..}
+            | SubCommand::Haplotag { args: StandardArgs { output, .. }, ..}
             => Some(output.clone()),
 
         }
@@ -692,19 +723,29 @@ impl SubCommand {
 
 #[rustfmt::skip]
 pub fn run_cmd(cmd: SubCommand) -> Result<()> {
+    let nthreads = cmd.threads();
+
     // Try to initialize a threadpool
     if let Err(e) = rayon::ThreadPoolBuilder::new()
-        .num_threads(cmd.threads())
+        .num_threads(nthreads)
         .build_global() {
         tracing::warn!("Failed building a threadpool for HAPTK {e}");
     }
 
     // Create output directory
     if let Some(output) = cmd.output() {
-        if let Err(e) = std::fs::create_dir(output.clone()) {
-            match e.kind() {
-                std::io::ErrorKind::AlreadyExists => (),
-                _ => return Err(eyre!("Error creating directory {output:?}")),
+        let clause = if cfg!(feature = "experimental") {
+            !matches!(cmd, SubCommand::Haplotag {..})
+        } else {
+            true
+        };
+
+        if clause {
+            if let Err(e) = std::fs::create_dir(output.clone()) {
+                match e.kind() {
+                    std::io::ErrorKind::AlreadyExists => (),
+                    _ => return Err(eyre!("Error creating directory {output:?}")),
+                }
             }
         }
     }
@@ -772,8 +813,12 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         } => scan_segregate::run(
                 args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), case_samples, ctrl_samples, coords, limit,
             )?,
+
         #[cfg(feature = "experimental")]
         SubCommand::AnnotateScan { file, annotate_file, .. } => scan_annotate::run(file, annotate_file)?,
+
+        #[cfg(feature = "experimental")]
+        SubCommand::Haplotag { args, bam_file, ref_file, contigs, .. } => haplotag::run(args, bam_file, ref_file, contigs, nthreads)?,
 
     };
     Ok(())

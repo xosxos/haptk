@@ -42,3 +42,6 @@ pub mod compare_haplotypes;
 
 #[cfg(feature = "experimental")]
 pub mod scan;
+
+#[cfg(feature = "experimental")]
+pub mod haplotag;

@@ -35,13 +35,14 @@ default      = ["clap"]
 no-clap      = []
 clap         = ["dep:clap", "dep:anstyle"]
 enum_methods = ["dep:strum"]
-experimental = ["clap", "dep:fishers_exact", "dep:polars", "dep:serde_with"]
+haplotag = ["dep:num-traits", "dep:gxhash", "dep:crossbeam-channel", "dep:regex"]
+experimental = ["clap", "dep:fishers_exact", "dep:polars", "dep:serde_with", "haplotag"]
 
 [dependencies]
 alphanumeric-sort = "1.5"
 bgzip = "0.3"
 bio = "2.0"
-niffler = "2.6"
+niffler = "3.0"
 ndarray = { version = "0.16", features = ["rayon", "blas", "serde"] }
 ndarray-npy = { version = "0.9", default-features = false }
 termion = "4.0"
@@ -75,6 +76,13 @@ serde_with = { version = "3.11", optional = true }
 
 # Enum methods for GUI
 strum = { version = "0.26.3", features = ["derive"], optional = true } 
+
+# Haplotag
+num-traits = {version = "0.2", optional = true }
+gxhash = { version = "3.4.1", optional = true }
+crossbeam-channel = { version = "0.5.13", optional = true }
+regex = { version = "1.11", optional = true }
+noodles = { path = "../../noodles/noodles", features = ["cram", "sam", "bam", "fasta", "core"], optional = true}
 
 [dev-dependencies]
 insta = { version = "1.26.0", default-features = false, features = ["yaml"] }
