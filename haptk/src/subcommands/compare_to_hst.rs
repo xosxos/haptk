@@ -22,6 +22,12 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
         return Err(eyre!("Running with unphased data is not supported."));
     }
 
+    if args.selection == Selection::List {
+        return Err(eyre!(
+            "Running with list selection is not supported for now."
+        ));
+    }
+
     // File reads
     let hst_import = read_hst_file(hst_path)?;
 
@@ -78,7 +84,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
                 false,
             )?
         }
-        Selection::Unphased => unreachable!(),
+        Selection::Unphased | Selection::List => unreachable!(),
     };
 
     if hst_import.metadata.coords.len() > vcf.ncoords() {

@@ -34,7 +34,7 @@ pub fn get_sample_names(path: PathBuf) -> Result<Vec<String>> {
 
     let mut ids = vec![];
     match extension.as_str() {
-        "vcf.gz" | "vcf" | "bcf" => {
+        "vcf.gz" | "vcf" | "bcf" | "bcf.gz" => {
             use rust_htslib::bcf::{Read, Reader};
             let bcf = Reader::from_path(path).expect("Error opening file.");
             let header = bcf.header().clone();

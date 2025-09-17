@@ -77,6 +77,7 @@ mod compare_hst {
             samples: None,
             prefix: None,
             no_alt: false,
+            list: None,
         };
 
         let cmd = haptk::clap::SubCommand::CompareToHst {
@@ -97,6 +98,7 @@ mod compare_hst {
             samples: None,
             prefix: Some(String::from("left")),
             no_alt: false,
+            list: None,
         };
 
         let cmd = haptk::clap::SubCommand::CompareToHst {

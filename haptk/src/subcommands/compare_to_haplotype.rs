@@ -44,6 +44,10 @@ pub fn run(
         return Err(eyre!("Running with unphased data is not supported."));
     }
 
+    if args.selection == Selection::List {
+        return Err(eyre!("Running with list option is not supported for now."));
+    }
+
     // File reads
     let decoy_samples = read_sample_ids(&decoy_samples)?;
     let ht = read_haplotype_file(haplotype_path)?;
@@ -157,7 +161,7 @@ pub fn run(
 
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
         }
-        Selection::Unphased => unreachable!(),
+        Selection::Unphased | Selection::List => unreachable!(),
     };
 
     if ht.len() > vcf.ncoords() {
@@ -447,6 +451,8 @@ pub fn write_ranges_to_csv(
 ) -> Result<()> {
     writer.write_record(vec![
         "id",
+        "idx",
+        "ht_num",
         "start",
         "stop",
         "length",
@@ -468,8 +474,30 @@ pub fn write_ranges_to_csv(
             true => (stop - start + 1).to_string(),
         };
 
+        let sample = format!("{}", vcf.get_sample_name(*idx));
+        // let idxs = vcf.get_idxs_for_samples(&[sample.clone()])?;
+
+        let lookups: Vec<(usize, bool)> = vcf
+            .metadata
+            .lookups
+            .iter()
+            .map(|v| {
+                v.iter()
+                    .copied()
+                    .enumerate()
+                    .collect::<Vec<(usize, bool)>>()
+            })
+            .flatten()
+            .filter(|(_i, is_included)| *is_included)
+            // .copied()
+            .collect();
+
+        let (ht_num, _) = lookups[*idx];
+
         let mut row = vec![
-            format!("{}", vcf.get_sample_name(*idx)),
+            sample,
+            idx.to_string(),
+            ht_num.to_string(),
             start_pos.to_string(),
             stop_pos.to_string(),
             length_bp,

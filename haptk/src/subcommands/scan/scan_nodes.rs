@@ -55,6 +55,7 @@ pub fn run(
         prefix: args.prefix,
         samples: args.samples.clone(),
         no_alt: true,
+        list: None,
     };
 
     let (tx, rx): (SyncSender<Row>, _) = sync_channel(2024);
