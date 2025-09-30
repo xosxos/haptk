@@ -2,4 +2,4 @@
 source: haptk/tests/test_compare_to_haplotype.rs
 expression: res
 ---
-"id,start,stop,length,markers,is_marked,is_longest\nSAMPLE1,32,32,0,0,na,na\nSAMPLE2,32,32,0,0,na,na\nSAMPLE3,32,32,0,0,na,na\nSAMPLE4,32,32,0,0,na,na\nSAMPLE5,32,32,0,0,na,na\nSAMPLE6,32,32,0,0,na,na\nSAMPLE7,32,32,0,0,na,na\nSAMPLE8,32,32,0,0,na,na\nSAMPLE9,32,32,0,0,na,na\nSAMPLE10,32,32,0,0,na,na\nSAMPLE11,32,32,0,0,na,na\nSAMPLE12,32,32,0,0,na,na\nSAMPLE13,32,32,0,0,na,na\n"
+"id,idx,ht_num,start,stop,length,markers,is_marked,is_longest\nSAMPLE1,0,0,32,32,0,0,na,na\nSAMPLE2,1,0,32,32,0,0,na,na\nSAMPLE3,2,0,32,32,0,0,na,na\nSAMPLE4,3,0,32,32,0,0,na,na\nSAMPLE5,4,0,32,32,0,0,na,na\nSAMPLE6,5,0,32,32,0,0,na,na\nSAMPLE7,6,0,32,32,0,0,na,na\nSAMPLE8,7,0,32,32,0,0,na,na\nSAMPLE9,8,0,32,32,0,0,na,na\nSAMPLE10,9,0,32,32,0,0,na,na\nSAMPLE11,10,0,32,32,0,0,na,na\nSAMPLE12,11,0,32,32,0,0,na,na\nSAMPLE13,12,0,32,32,0,0,na,na\n"

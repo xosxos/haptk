@@ -30,6 +30,10 @@ pub struct StandardArgs {
     #[cfg_attr(feature = "clap", arg(long))]
     pub no_alt: bool,
 
+    /// Include only SNVs
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub only_snv: bool,
+
     /// List of phase sets / haplotypes to include per sample
     #[cfg_attr(feature = "clap", arg(long))]
     pub list: Option<PathBuf>,

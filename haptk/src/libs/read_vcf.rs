@@ -15,7 +15,7 @@ use rust_htslib::bcf::Read;
 
 use crate::{
     args::{Selection, StandardArgs},
-    error::HaptkError::{NormalizeError, SamplesNotFoundError},
+    error::HaptkError::{NormalizeError, OrderError, SamplesNotFoundError},
     io::{get_htslib_contig_len, read_multiple_sample_ids, read_sample_ht_list_file},
     structs::{Coord, PhasedMatrix, Ploidy, ReadMetadata},
 };
@@ -229,6 +229,7 @@ pub fn read_vcf_to_matrix(
         args.no_alt,
         &args.selection,
         is_genome_wide,
+        args.only_snv,
     )
 }
 
@@ -245,6 +246,7 @@ pub fn read_vcf_to_matrix_by_indexes(
     no_alt: bool,
     selection: &Selection,
     is_genome_wide: bool,
+    only_snv: bool,
 ) -> Result<PhasedMatrix> {
     tracing::info!("Input VCF: {:?}", file);
     tracing::info!("Reading phased genotypes from {contig} with target position at {variant_pos}.");
@@ -266,9 +268,9 @@ pub fn read_vcf_to_matrix_by_indexes(
     let (markers, coords) = match get_htslib_contig_len(file, contig).is_err() {
         true => {
             tracing::info!("No contig {contig} length in the VCF. Reading single-threaded.");
-            read_vcf_batch_to_matrix(file, contig, range, &indexes, &lookups, no_alt)?
+            read_vcf_batch_to_matrix(file, contig, range, &indexes, &lookups, no_alt, only_snv)?
         }
-        false => read_parallel(file, contig, range, &indexes, &lookups, no_alt)?,
+        false => read_parallel(file, contig, range, &indexes, &lookups, no_alt, only_snv)?,
     };
 
     let start = coords.first().unwrap();
@@ -283,6 +285,7 @@ pub fn read_vcf_to_matrix_by_indexes(
         contig_len: get_htslib_contig_len(file, contig).ok(),
         sharded: window.is_some(),
         remove_no_alt: no_alt,
+        only_snv,
         is_genome_wide,
     };
 
@@ -296,6 +299,7 @@ fn read_vcf_batch_to_matrix(
     sample_indexes: &[usize],
     lookups: &[[bool; 2]],
     remove_no_alt: bool,
+    only_snv: bool,
 ) -> Result<(Vec<u8>, BTreeSet<Coord>)> {
     let mut reader = get_reader(file_path, contig, range)?;
 
@@ -305,23 +309,47 @@ fn read_vcf_batch_to_matrix(
     let mut gt_buffer = rust_htslib::bcf::record::Buffer::new();
 
     let mut prev_pos = 0;
+
     for record in reader.records() {
         let record = record?;
 
         // HTSlib is 0-based so add 1
         let pos = (record.pos() + 1) as u64;
 
-        // Check for ordering
-        if prev_pos > pos {
-            return Err(eyre!(
-                "The file is not ordered because {} > {} at {}",
-                prev_pos,
-                pos,
-                construct_coord(&record, contig, pos)
-            ));
+        // Check that there are no multiallelics, else return NormalizeError
+        ensure!(record.alleles().len() == 2, NormalizeError(pos));
+
+        // Build the `Coord` struct
+        let alleles = record.alleles();
+        let reference = String::from_utf8_lossy(alleles.first().unwrap()).to_string();
+        let alt = String::from_utf8_lossy(alleles.get(1).unwrap()).to_string();
+
+        let coord = Coord {
+            contig: contig.to_string(),
+            reference,
+            alt,
+            pos,
+        };
+
+        // Check that the current is larger than or equals the previous position
+        // Else return OrderError
+        ensure!(
+            pos >= prev_pos,
+            OrderError(prev_pos, pos, coord.to_string())
+        );
+
+        if only_snv && (coord.alt.len() > 1 || coord.reference.len() > 1) {
+            tracing::warn!("Only SNVs wanted, disregarding: {coord}");
         }
 
-        // There is a weird bug where the IndexedReader fetches records outside of the range when multithreading
+        // Check that the current coordinate is not a duplicate
+        // If it is, disregard and continue to the next record
+        if !coords.insert(coord) {
+            tracing::warn!("Duplicate coord at {contig}:{pos}. Not adding the duplicate");
+            continue;
+        }
+
+        // FIX: There is a weird bug where the IndexedReader fetches records outside of the range when multithreading
         if let Some((start, stop)) = range {
             if let (Some(start), Some(stop)) = (start, stop) {
                 if pos < start || pos > stop {
@@ -329,8 +357,6 @@ fn read_vcf_batch_to_matrix(
                 }
             }
         }
-
-        ensure!(record.alleles().len() == 2, NormalizeError(pos));
 
         let gts = record.genotypes_shared_buffer(&mut gt_buffer)?;
 
@@ -373,16 +399,13 @@ fn read_vcf_batch_to_matrix(
             let mut iter = slice.iter();
             let first = iter.next().unwrap();
 
+            // If all alleles are the same, then skip this variant
             if iter.all(|gt| gt == first) {
                 let _ = markers.drain((markers.len() - diff)..);
                 continue;
             }
         }
 
-        if !coords.insert(construct_coord(&record, contig, pos)) {
-            tracing::warn!("Duplicate coord at {contig}:{pos}. Not adding the duplicate");
-            let _ = markers.drain((markers.len() - diff)..);
-        }
         prev_pos = pos;
     }
 
@@ -396,6 +419,7 @@ fn read_parallel(
     sample_indexes: &[usize],
     lookups: &[[bool; 2]],
     remove_no_alt: bool,
+    only_snv: bool,
 ) -> Result<(Vec<u8>, BTreeSet<Coord>)> {
     let (first_pos, last_pos) = match range {
         Some((Some(start), Some(end))) => (start, end),
@@ -431,6 +455,7 @@ fn read_parallel(
                 sample_indexes,
                 lookups,
                 remove_no_alt,
+                only_snv,
             )
         })
         .collect::<Result<Vec<(Vec<u8>, BTreeSet<Coord>)>>>()?;
@@ -510,18 +535,18 @@ fn construct_phased_matrix(
 //     }
 // }
 
-fn construct_coord(record: &rust_htslib::bcf::Record, contig: &str, pos: u64) -> Coord {
-    let alleles = record.alleles();
-    let reference = String::from_utf8_lossy(alleles.first().unwrap()).to_string();
-    let alt = String::from_utf8_lossy(alleles.get(1).unwrap()).to_string();
+// fn construct_coord(record: &rust_htslib::bcf::Record, contig: &str, pos: u64) -> Coord {
+//     let alleles = record.alleles();
+//     let reference = String::from_utf8_lossy(alleles.first().unwrap()).to_string();
+//     let alt = String::from_utf8_lossy(alleles.get(1).unwrap()).to_string();
 
-    Coord {
-        contig: contig.to_string(),
-        reference,
-        alt,
-        pos,
-    }
-}
+//     Coord {
+//         contig: contig.to_string(),
+//         reference,
+//         alt,
+//         pos,
+//     }
+// }
 
 pub fn read_shard_of_vcf(vcf: &mut PhasedMatrix, start: u64, stop: u64) -> Result<()> {
     let (indexes, lookups) = (&vcf.metadata.indexes, &vcf.metadata.lookups);
@@ -543,6 +568,7 @@ pub fn read_shard_of_vcf(vcf: &mut PhasedMatrix, start: u64, stop: u64) -> Resul
                 indexes,
                 lookups,
                 vcf.metadata.remove_no_alt,
+                vcf.metadata.only_snv,
             )?,
             false => read_parallel(
                 &vcf.metadata.file_path,
@@ -551,6 +577,7 @@ pub fn read_shard_of_vcf(vcf: &mut PhasedMatrix, start: u64, stop: u64) -> Resul
                 indexes,
                 lookups,
                 vcf.metadata.remove_no_alt,
+                vcf.metadata.only_snv,
             )?,
         };
 

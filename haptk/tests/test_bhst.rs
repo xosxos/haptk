@@ -73,6 +73,7 @@ mod test_bhst {
             prefix: Some("test_core".to_string()),
             no_alt: false,
             list: None,
+            only_snv: true,
         };
 
         let cmd = haptk::clap::SubCommand::Bhst {

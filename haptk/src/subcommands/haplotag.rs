@@ -5,7 +5,7 @@ use color_eyre::{eyre::ensure, Result};
 
 #[doc(hidden)]
 pub fn run(
-    args: StandardArgs,
+    mut args: StandardArgs,
     bam_file: PathBuf,
     ref_file: PathBuf,
     contigs: Vec<String>,
@@ -13,11 +13,16 @@ pub fn run(
 ) -> Result<()> {
     ensure!(
         args.selection == Selection::All,
-        "Running only with phased data and all chromsomes is supported."
+        "Only running with phased data and all chromosomes is supported."
     );
 
     let output = args.output.clone();
     let conf = tagger::Configuration { threads };
+
+    if !args.only_snv {
+        args.only_snv = true;
+        tracing::info!("Setting `only_snv` to true for haplotagging");
+    }
 
     tagger::run_haplotag(
         &args,
@@ -129,29 +134,22 @@ mod tagger {
                             .coords()
                             .iter()
                             .flat_map(|coord| {
-                                if coord.alt.len() > 1 || coord.reference.len() > 1 {
-                                    tracing::debug!("Skipping non SNV variant at {}", coord.pos);
-                                    None
-                                } else {
-                                    let variant = CigarVariant {
-                                        pos: coord.pos,
-                                        alt: coord.alt.chars().nth(0).unwrap(),
-                                    };
+                                let variant = CigarVariant {
+                                    pos: coord.pos,
+                                    alt: coord.alt.chars().nth(0).unwrap(),
+                                };
 
-                                    let gts: Vec<u8> = idxs
-                                        .iter()
-                                        .map(|sample_idx| {
-                                            vcf.matrix_point_coord(*sample_idx, coord)
-                                        })
-                                        .collect();
+                                let gts: Vec<u8> = idxs
+                                    .iter()
+                                    .map(|sample_idx| vcf.matrix_point_coord(*sample_idx, coord))
+                                    .collect();
 
-                                    // Allelles are homozygous, return
-                                    if gts.iter().all(|v| v == &gts[0]) {
-                                        return None;
-                                    }
-
-                                    Some((variant, gts))
+                                // Allelles are homozygous, return
+                                if gts.iter().all(|v| v == &gts[0]) {
+                                    return None;
                                 }
+
+                                Some((variant, gts))
                             })
                             .collect();
                         haplotypes.insert(sample_id.clone(), haps);
@@ -387,7 +385,6 @@ mod tagger {
             record.cigar().take().into(),
             record.pos() as u32,
             record.seq(),
-            sample_id,
         )
         .for_each(|cigar_item| match cigar_item {
             CigarIterType::Match((pos, seq)) => {
@@ -566,170 +563,170 @@ mod tagger {
     }
 }
 
-mod slider {
-    // MIT License
+// mod slider {
+//     // MIT License
 
-    // Copyright (c) 2021 Lianming Du
+//     // Copyright (c) 2021 Lianming Du
 
-    // Permission is hereby granted, free of charge, to any person obtaining a copy
-    // of this software and associated documentation files (the "Software"), to deal
-    // in the Software without restriction, including without limitation the rights
-    // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    // copies of the Software, and to permit persons to whom the Software is
-    // furnished to do so, subject to the following conditions:
+//     // Permission is hereby granted, free of charge, to any person obtaining a copy
+//     // of this software and associated documentation files (the "Software"), to deal
+//     // in the Software without restriction, including without limitation the rights
+//     // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//     // copies of the Software, and to permit persons to whom the Software is
+//     // furnished to do so, subject to the following conditions:
 
-    // The above copyright notice and this permission notice shall be included in all
-    // copies or substantial portions of the Software.
+//     // The above copyright notice and this permission notice shall be included in all
+//     // copies or substantial portions of the Software.
 
-    // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    // SOFTWARE.
+//     // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//     // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//     // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//     // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//     // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//     // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+//     // SOFTWARE.
 
-    // https://github.com/lmdu/pytrf/blob/master/src/str.c
-    //
+//     // https://github.com/lmdu/pytrf/blob/master/src/str.c
+//     //
 
-    use std::collections::HashMap;
+//     use std::collections::HashMap;
 
-    #[derive(Debug, Clone)]
-    pub struct Ssr {
-        pub motif_len: usize,
-        pub repeats: usize,
-        pub length: usize,
-        pub start: usize,
-        pub end: usize,
-        pub motif: String,
-    }
+//     #[derive(Debug, Clone)]
+//     pub struct Ssr {
+//         pub motif_len: usize,
+//         pub repeats: usize,
+//         pub length: usize,
+//         pub start: usize,
+//         pub end: usize,
+//         pub motif: String,
+//     }
 
-    #[derive(Debug, Clone)]
-    pub struct Slider {
-        next_start: usize,
-        size: usize,
-        seq: String,
-        boundary: HashMap<usize, usize>,
-        min_lens: HashMap<usize, usize>,
-        min_len: usize,
-    }
+//     #[derive(Debug, Clone)]
+//     pub struct Slider {
+//         next_start: usize,
+//         size: usize,
+//         seq: String,
+//         boundary: HashMap<usize, usize>,
+//         min_lens: HashMap<usize, usize>,
+//         min_len: usize,
+//     }
 
-    impl Slider {
-        pub fn new(seq: String, min_len: usize) -> Self {
-            let mono = 12;
-            let di = 7;
-            let tri = 5;
-            let tetra = 4;
-            let penta = 4;
-            let hexa = 4;
+//     impl Slider {
+//         pub fn new(seq: String, min_len: usize) -> Self {
+//             let mono = 12;
+//             let di = 7;
+//             let tri = 5;
+//             let tetra = 4;
+//             let penta = 4;
+//             let hexa = 4;
 
-            let size = seq.len();
+//             let size = seq.len();
 
-            let mut boundary = HashMap::new();
+//             let mut boundary = HashMap::new();
 
-            for i in 0..7 {
-                boundary.insert(i, size - i);
-            }
+//             for i in 0..7 {
+//                 boundary.insert(i, size - i);
+//             }
 
-            let mut min_lens = HashMap::new();
-            min_lens.insert(0, 0);
-            min_lens.insert(1, mono * 1);
-            min_lens.insert(2, di * 2);
-            min_lens.insert(3, tri * 3);
-            min_lens.insert(4, tetra * 4);
-            min_lens.insert(5, penta * 5);
-            min_lens.insert(6, hexa * 6);
+//             let mut min_lens = HashMap::new();
+//             min_lens.insert(0, 0);
+//             min_lens.insert(1, mono * 1);
+//             min_lens.insert(2, di * 2);
+//             min_lens.insert(3, tri * 3);
+//             min_lens.insert(4, tetra * 4);
+//             min_lens.insert(5, penta * 5);
+//             min_lens.insert(6, hexa * 6);
 
-            Self {
-                next_start: 0,
-                size,
-                seq,
-                boundary,
-                min_lens,
-                min_len,
-            }
-        }
-    }
+//             Self {
+//                 next_start: 0,
+//                 size,
+//                 seq,
+//                 boundary,
+//                 min_lens,
+//                 min_len,
+//             }
+//         }
+//     }
 
-    impl Iterator for Slider {
-        type Item = Ssr;
+//     impl Iterator for Slider {
+//         type Item = Ssr;
 
-        fn next(&mut self) -> Option<Self::Item> {
-            // current start position
-            let mut cs: usize;
+//         fn next(&mut self) -> Option<Self::Item> {
+//             // current start position
+//             let mut cs: usize;
 
-            // boundary position
-            let mut b: usize;
+//             // boundary position
+//             let mut b: usize;
 
-            // repeat length
-            let mut rl: usize;
+//             // repeat length
+//             let mut rl: usize;
 
-            // current slide position
-            for mut i in self.next_start..self.size {
-                //remove unkown base
-                // if (self.seq[i] == 78) {
-                // continue;
-                // }
+//             // current slide position
+//             for mut i in self.next_start..self.size {
+//                 //remove unkown base
+//                 // if (self.seq[i] == 78) {
+//                 // continue;
+//                 // }
 
-                cs = i;
+//                 cs = i;
 
-                for j in self.min_len..=6 {
-                    b = self.boundary[&j];
+//                 for j in self.min_len..=6 {
+//                     b = self.boundary[&j];
 
-                    while i < b && self.seq.chars().nth(i) == self.seq.chars().nth(i + j) {
-                        i = i + 1;
-                    }
+//                     while i < b && self.seq.chars().nth(i) == self.seq.chars().nth(i + j) {
+//                         i = i + 1;
+//                     }
 
-                    rl = i + j - cs;
+//                     rl = i + j - cs;
 
-                    if rl >= self.min_lens[&j] {
-                        let ssr = Ssr {
-                            motif_len: j,
-                            length: rl,
-                            repeats: rl / j,
-                            start: cs,
-                            end: cs + rl - 1,
-                            motif: self.seq[cs..cs + j].to_string(),
-                        };
+//                     if rl >= self.min_lens[&j] {
+//                         let ssr = Ssr {
+//                             motif_len: j,
+//                             length: rl,
+//                             repeats: rl / j,
+//                             start: cs,
+//                             end: cs + rl - 1,
+//                             motif: self.seq[cs..cs + j].to_string(),
+//                         };
 
-                        self.next_start = ssr.end;
-                        return Some(ssr);
-                    }
+//                         self.next_start = ssr.end;
+//                         return Some(ssr);
+//                     }
 
-                    i = cs;
-                }
-            }
+//                     i = cs;
+//                 }
+//             }
 
-            return None;
-        }
-    }
+//             return None;
+//         }
+//     }
 
-    #[cfg(test)]
-    mod tests {
-        use super::*;
+//     #[cfg(test)]
+//     mod tests {
+//         use super::*;
 
-        #[test]
-        fn slider() {
-            //
-            // Indexing
-            // 0 1 2 3........................29 30...
-            // T G C GAAGAAGAAGAAGAAGAAGAAGAAGAA CGTGAGGCGAGCTAGC
-            //
-            let mut slider = Slider::new(
-                "TGCGAAGAAGAAGAAGAAGAAGAAGAAGAACGTGAGGCGAGCTAGC".to_string(),
-                1,
-            );
+//         #[test]
+//         fn slider() {
+//             //
+//             // Indexing
+//             // 0 1 2 3........................29 30...
+//             // T G C GAAGAAGAAGAAGAAGAAGAAGAAGAA CGTGAGGCGAGCTAGC
+//             //
+//             let mut slider = Slider::new(
+//                 "TGCGAAGAAGAAGAAGAAGAAGAAGAAGAACGTGAGGCGAGCTAGC".to_string(),
+//                 1,
+//             );
 
-            let ssr = slider.next().unwrap();
+//             let ssr = slider.next().unwrap();
 
-            assert_eq!(ssr.motif, "GAA");
-            assert_eq!(ssr.motif_len, 3);
-            assert_eq!(ssr.repeats, 9);
-            assert_eq!(ssr.start, 3);
-            assert_eq!(ssr.end, 29);
-        }
-    }
-}
+//             assert_eq!(ssr.motif, "GAA");
+//             assert_eq!(ssr.motif_len, 3);
+//             assert_eq!(ssr.repeats, 9);
+//             assert_eq!(ssr.start, 3);
+//             assert_eq!(ssr.end, 29);
+//         }
+//     }
+// }
 
 mod utils {
     use std::fs::File;
@@ -969,50 +966,43 @@ mod cigar_iterator {
         Match((u32, String)),
     }
 
-    impl CigarIterType {
-        pub fn pos(&self) -> u32 {
-            match self {
-                CigarIterType::Diff((pos, _)) => *pos,
-                CigarIterType::Del((pos, _)) => *pos,
-                CigarIterType::Ins((pos, _)) => *pos,
-                CigarIterType::Equal(pos) => *pos,
-                CigarIterType::Match((pos, _)) => *pos,
-                CigarIterType::HardClip(pos) => *pos,
-                CigarIterType::LeadingSoftClip((pos, _)) => *pos,
-                CigarIterType::TrailingSoftClip((pos, _)) => *pos,
-            }
-        }
-    }
+    // impl CigarIterType {
+    //     pub fn pos(&self) -> u32 {
+    //         match self {
+    //             CigarIterType::Diff((pos, _)) => *pos,
+    //             CigarIterType::Del((pos, _)) => *pos,
+    //             CigarIterType::Ins((pos, _)) => *pos,
+    //             CigarIterType::Equal(pos) => *pos,
+    //             CigarIterType::Match((pos, _)) => *pos,
+    //             CigarIterType::HardClip(pos) => *pos,
+    //             CigarIterType::LeadingSoftClip((pos, _)) => *pos,
+    //             CigarIterType::TrailingSoftClip((pos, _)) => *pos,
+    //         }
+    //     }
+    // }
 
     #[derive(Debug, Clone)]
-    pub struct CigarIterator<'a> {
+    pub struct CigarIterator {
         read_start_pos: u32,
         current_pos: u32,
         cigar: IntoIter<Cigar>,
         seq: Vec<u8>,
         passed: usize,
-        sample_id: &'a str,
     }
 
-    impl<'a> CigarIterator<'a> {
-        pub fn new(
-            cigar: Vec<Cigar>,
-            read_start_pos: u32,
-            seq: Seq<'a>,
-            sample_id: &'a str,
-        ) -> Self {
+    impl CigarIterator {
+        pub fn new(cigar: Vec<Cigar>, read_start_pos: u32, seq: Seq<'_>) -> Self {
             Self {
                 read_start_pos,
                 current_pos: 0,
                 cigar: cigar.into_iter(),
                 seq: seq.as_bytes(),
                 passed: 0,
-                sample_id,
             }
         }
     }
 
-    impl<'a> Iterator for CigarIterator<'a> {
+    impl Iterator for CigarIterator {
         type Item = CigarIterType;
 
         fn next(&mut self) -> Option<Self::Item> {
@@ -1148,44 +1138,39 @@ mod io {
     use color_eyre::eyre::Context;
     use color_eyre::{eyre::eyre, Result};
     use crossbeam_channel::Receiver;
-    use noodles::sam;
-    use noodles::sam::alignment::io::Write;
-    use noodles::sam::alignment::RecordBuf;
-    use rust_htslib::bam::{
-        CompressionLevel, Format, Header, HeaderView, IndexedReader, Read, Writer,
-    };
-    use std::io::{self, BufWriter};
-    use std::path::{Path, PathBuf};
+    use rust_htslib::bam::{CompressionLevel, Format, Header, IndexedReader, Read, Writer};
+    use std::path::PathBuf;
     use std::thread::{self, JoinHandle};
 
     use crate::subcommands::haplotag::tagger::ChannelObj;
 
     // use crate::structs::Vcf;
 
-    pub fn get_output(filename: Option<PathBuf>) -> Result<Box<dyn io::Write>> {
-        let output: Box<dyn io::Write> = match filename {
-            Some(name) => match name.to_str() {
-                Some("-") => Box::new(io::stdout()),
-                Some(name) => Box::new(
-                    match std::fs::File::options()
-                        .create(true)
-                        .write(true)
-                        .truncate(true)
-                        .open(name)
-                    {
-                        Ok(x) => x,
-                        Err(err) => {
-                            let msg = format!("failed to open \"{}\": {err}", name);
-                            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, msg))?;
-                        }
-                    },
-                ),
-                None => return Err(eyre!("unknown error 1")),
-            },
-            None => Box::new(io::stdout()),
-        };
-        Ok(output)
-    }
+    // use std::io;
+    // pub fn get_output(filename: Option<PathBuf>) -> Result<Box<dyn io::Write>> {
+    //     let output: Box<dyn io::Write> = match filename {
+    //         Some(name) => match name.to_str() {
+    //             Some("-") => Box::new(io::stdout()),
+    //             Some(name) => Box::new(
+    //                 match std::fs::File::options()
+    //                     .create(true)
+    //                     .write(true)
+    //                     .truncate(true)
+    //                     .open(name)
+    //                 {
+    //                     Ok(x) => x,
+    //                     Err(err) => {
+    //                         let msg = format!("failed to open \"{}\": {err}", name);
+    //                         return Err(std::io::Error::new(std::io::ErrorKind::NotFound, msg))?;
+    //                     }
+    //                 },
+    //             ),
+    //             None => return Err(eyre!("unknown error 1")),
+    //         },
+    //         None => Box::new(io::stdout()),
+    //     };
+    //     Ok(output)
+    // }
 
     pub fn spawn_collector(
         rx: Receiver<ChannelObj>,

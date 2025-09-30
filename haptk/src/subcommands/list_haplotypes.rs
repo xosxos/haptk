@@ -62,6 +62,7 @@ pub fn run(args: StandardArgs, selection_variant: Option<String>, nucleotides: b
             args.no_alt,
             &Selection::Haploid,
             false,
+            args.only_snv,
         )?
     } else {
         read_vcf_to_matrix(&args, contig, pos, range, None, None, false)?

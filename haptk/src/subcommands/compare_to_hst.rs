@@ -82,6 +82,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
                 args.no_alt,
                 &Selection::Haploid,
                 false,
+                args.only_snv,
             )?
         }
         Selection::Unphased | Selection::List => unreachable!(),

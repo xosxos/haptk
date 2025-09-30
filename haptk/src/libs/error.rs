@@ -3,6 +3,7 @@ pub enum HaptkError {
     CoordsParseError(String),
     PosParseError((String, String)),
     NormalizeError(u64),
+    OrderError(u64, u64, String),
     PloidyError((u64, usize)),
     SamplesNotFoundError,
     VariantPosNotFoundError((u64, usize)),
@@ -25,6 +26,10 @@ impl std::fmt::Display for HaptkError {
             Self::NormalizeError(pos) => write!(
                 f,
                 "At pos {pos} allele count != 2. Normalize alleles using bcftools norm"
+            ),
+            Self::OrderError(prev_pos, pos, coord) => write!(
+                f,
+            "The file is not ordered: {prev_pos} > {pos} at {coord}",
             ),
             Self::PloidyError((pos, num)) => write!(
                 f,

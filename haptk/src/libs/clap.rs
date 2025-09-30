@@ -5,7 +5,6 @@ use color_eyre::{
     eyre::{ensure, eyre},
     Result,
 };
-use num_traits::ops::overflowing::OverflowingSub;
 
 use crate::args::{GraphArgs, SortOption, StandardArgs};
 use crate::subcommands::{
@@ -734,13 +733,14 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
 
     // Create output directory
     if let Some(output) = cmd.output() {
-        let clause = if cfg!(feature = "experimental") {
-            !matches!(cmd, SubCommand::Haplotag {..})
-        } else {
-            true
-        };
+        let mut create_output_dir = true;
 
-        if clause {
+        #[cfg(feature = "experimental")]
+        if matches!(cmd, SubCommand::Haplotag {..}) {
+            create_output_dir = false;
+        }
+
+        if create_output_dir  {
             if let Err(e) = std::fs::create_dir(output.clone()) {
                 match e.kind() {
                     std::io::ErrorKind::AlreadyExists => (),
