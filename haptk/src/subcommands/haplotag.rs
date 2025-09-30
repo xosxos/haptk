@@ -19,9 +19,9 @@ pub fn run(
     let output = args.output.clone();
     let conf = tagger::Configuration { threads };
 
-    if !args.only_snv {
-        args.only_snv = true;
-        tracing::info!("Setting `only_snv` to true for haplotagging");
+    if args.include_indels {
+        args.include_indels = false;
+        tracing::info!("Setting `include_indels` to false for haplotagging");
     }
 
     tagger::run_haplotag(

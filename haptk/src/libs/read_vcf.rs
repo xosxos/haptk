@@ -229,7 +229,7 @@ pub fn read_vcf_to_matrix(
         args.no_alt,
         &args.selection,
         is_genome_wide,
-        args.only_snv,
+        args.include_indels,
     )
 }
 
@@ -246,7 +246,7 @@ pub fn read_vcf_to_matrix_by_indexes(
     no_alt: bool,
     selection: &Selection,
     is_genome_wide: bool,
-    only_snv: bool,
+    include_indels: bool,
 ) -> Result<PhasedMatrix> {
     tracing::info!("Input VCF: {:?}", file);
     tracing::info!("Reading phased genotypes from {contig} with target position at {variant_pos}.");
@@ -268,9 +268,25 @@ pub fn read_vcf_to_matrix_by_indexes(
     let (markers, coords) = match get_htslib_contig_len(file, contig).is_err() {
         true => {
             tracing::info!("No contig {contig} length in the VCF. Reading single-threaded.");
-            read_vcf_batch_to_matrix(file, contig, range, &indexes, &lookups, no_alt, only_snv)?
+            read_vcf_batch_to_matrix(
+                file,
+                contig,
+                range,
+                &indexes,
+                &lookups,
+                no_alt,
+                include_indels,
+            )?
         }
-        false => read_parallel(file, contig, range, &indexes, &lookups, no_alt, only_snv)?,
+        false => read_parallel(
+            file,
+            contig,
+            range,
+            &indexes,
+            &lookups,
+            no_alt,
+            include_indels,
+        )?,
     };
 
     let start = coords.first().unwrap();
@@ -285,7 +301,7 @@ pub fn read_vcf_to_matrix_by_indexes(
         contig_len: get_htslib_contig_len(file, contig).ok(),
         sharded: window.is_some(),
         remove_no_alt: no_alt,
-        only_snv,
+        include_indels,
         is_genome_wide,
     };
 
@@ -299,7 +315,7 @@ fn read_vcf_batch_to_matrix(
     sample_indexes: &[usize],
     lookups: &[[bool; 2]],
     remove_no_alt: bool,
-    only_snv: bool,
+    include_indels: bool,
 ) -> Result<(Vec<u8>, BTreeSet<Coord>)> {
     let mut reader = get_reader(file_path, contig, range)?;
 
@@ -338,8 +354,9 @@ fn read_vcf_batch_to_matrix(
             OrderError(prev_pos, pos, coord.to_string())
         );
 
-        if only_snv && (coord.alt.len() > 1 || coord.reference.len() > 1) {
+        if !include_indels && (coord.alt.len() > 1 || coord.reference.len() > 1) {
             tracing::warn!("Only SNVs wanted, disregarding: {coord}");
+            continue;
         }
 
         // Check that the current coordinate is not a duplicate
@@ -419,7 +436,7 @@ fn read_parallel(
     sample_indexes: &[usize],
     lookups: &[[bool; 2]],
     remove_no_alt: bool,
-    only_snv: bool,
+    include_indels: bool,
 ) -> Result<(Vec<u8>, BTreeSet<Coord>)> {
     let (first_pos, last_pos) = match range {
         Some((Some(start), Some(end))) => (start, end),
@@ -455,7 +472,7 @@ fn read_parallel(
                 sample_indexes,
                 lookups,
                 remove_no_alt,
-                only_snv,
+                include_indels,
             )
         })
         .collect::<Result<Vec<(Vec<u8>, BTreeSet<Coord>)>>>()?;
@@ -568,7 +585,7 @@ pub fn read_shard_of_vcf(vcf: &mut PhasedMatrix, start: u64, stop: u64) -> Resul
                 indexes,
                 lookups,
                 vcf.metadata.remove_no_alt,
-                vcf.metadata.only_snv,
+                vcf.metadata.include_indels,
             )?,
             false => read_parallel(
                 &vcf.metadata.file_path,
@@ -577,7 +594,7 @@ pub fn read_shard_of_vcf(vcf: &mut PhasedMatrix, start: u64, stop: u64) -> Resul
                 indexes,
                 lookups,
                 vcf.metadata.remove_no_alt,
-                vcf.metadata.only_snv,
+                vcf.metadata.include_indels,
             )?,
         };
 

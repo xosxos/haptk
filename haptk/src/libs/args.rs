@@ -32,7 +32,7 @@ pub struct StandardArgs {
 
     /// Include only SNVs
     #[cfg_attr(feature = "clap", arg(long))]
-    pub only_snv: bool,
+    pub include_indels: bool,
 
     /// List of phase sets / haplotypes to include per sample
     #[cfg_attr(feature = "clap", arg(long))]

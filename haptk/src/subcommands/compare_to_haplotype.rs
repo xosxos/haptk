@@ -145,7 +145,7 @@ pub fn run(
                 args.no_alt,
                 &Selection::Haploid,
                 false,
-                args.only_snv,
+                args.include_indels,
             )?;
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
         }

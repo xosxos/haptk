@@ -85,7 +85,7 @@ pub fn run(
         samples: args.samples.clone(),
         no_alt: true,
         list: None,
-        only_snv: true,
+        include_indels: false,
     };
 
     let (tx, rx): (SyncSender<Row>, _) = sync_channel(2024);
@@ -137,7 +137,7 @@ pub fn run(
                     samples: args.samples.clone(),
                     no_alt: true,
                     list: None,
-                    only_snv: true,
+                    include_indels: false,
                 };
 
                 let vcf = read_vcf_to_matrix(&args, &contig, 0, None, None, None, true)?;

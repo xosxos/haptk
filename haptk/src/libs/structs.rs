@@ -247,7 +247,7 @@ pub struct ReadMetadata {
     pub contig_len: Option<u64>,
     pub sharded: bool,
     pub remove_no_alt: bool,
-    pub only_snv: bool,
+    pub include_indels: bool,
     pub is_genome_wide: bool,
 }
 
