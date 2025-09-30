@@ -47,8 +47,11 @@ pub enum Error {
     #[error("Make sure no headers are present and that the recombination file is in order chr,pos,rate,cm. If the issue is not fixed, you have an invalid field in the file.")]
     RecombinationDeserialization { path: PathBuf},
     
-    #[error( "VCF has less haplotypes than the required minimum node size ({n_haplotypes} < {min_size})" )]
+    #[error("VCF has less haplotypes than the required minimum node size ({n_haplotypes} < {min_size})" )]
     MinNodes { n_haplotypes: usize, min_size: usize },
+
+    #[error("The HST has less than 3 nodes, use other methods to study haplotype sharing")]
+    HstTooSmall,
 
     #[error("Missing genotypes at position: {pos}")]
     MissingGenotypes { pos: u64},

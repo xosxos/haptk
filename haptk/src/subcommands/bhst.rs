@@ -105,10 +105,8 @@ pub fn read_vcf_with_selections(args: &StandardArgs, window: Option<u64>) -> Res
 
     let (indexes, _) = get_sample_names(args, contig, None)?;
 
-    ensure!(
-        indexes.len() > 1,
-        "Cannot build a tree with less than 2 samples."
-    );
+    // Check that theres at least 3 samples
+    ensure!(indexes.len() > 2, Error::HstTooSmall);
 
     let mut vcf = read_vcf_to_matrix(args, contig, pos, None, None, window, false)?;
 
@@ -476,10 +474,8 @@ pub fn find_mbah(g: &Graph<Node, ()>, vcf: &PhasedMatrix) -> Result<Vec<HapVaria
     let start_idx = NodeIndex::new(0);
     let nodes = find_majority_nodes(g, start_idx);
 
-    ensure!(
-        nodes.len() > 2,
-        "The majority branch has less than 3 nodes."
-    );
+    // Check that theres at least 3 samples
+    ensure!(nodes.len() > 2, Error::HstTooSmall);
 
     let mut iter = nodes.iter().rev();
     let (last_node, _last_node_idx) = iter.next().unwrap();

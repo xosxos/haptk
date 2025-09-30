@@ -69,10 +69,8 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
             let start_idx = NodeIndex::new(0);
             let nodes = bhst::find_majority_nodes(&uhst, start_idx);
 
-            ensure!(
-                nodes.len() > 2,
-                "The majority branch has only less than 3 nodes."
-            );
+            // Check that theres at least 3 samples
+            ensure!(nodes.len() > 2, Error::HstTooSmall);
 
             let first_maj_node = nodes.get(1).unwrap().0.clone();
             let second_last_node = nodes.get(nodes.len() - 2).unwrap().0;
