@@ -334,7 +334,7 @@ impl PhasedMatrix {
         }
     }
 
-    pub fn matrix_column(&self, coord: &Coord) -> ArrayView1<u8> {
+    pub fn matrix_column(&self, coord: &'_ Coord) -> ArrayView1<'_, u8> {
         let (matrix, index) = self
             .indexer
             .get(coord)
@@ -793,7 +793,7 @@ impl PhasedMatrix {
         self.matrix = map;
     }
 
-    pub fn slice_cols<R: RangeBounds<usize>>(&self, col_range: R) -> ArrayView2<u8> {
+    pub fn slice_cols<R: RangeBounds<usize>>(&'_ self, col_range: R) -> ArrayView2<'_, u8> {
         let (col_first_idx, col_last_idx) = match (col_range.start_bound(), col_range.end_bound()) {
             (Bound::Included(first), Bound::Excluded(last)) => (*first, last.saturating_sub(1)),
             (Bound::Included(first), Bound::Included(last)) => (*first, *last),
@@ -817,16 +817,16 @@ pub trait CoordDataSlot {
     fn is_contradictory(&self, coord: &Coord, positions: &[usize]) -> bool;
 
     fn prev_contradictory(
-        &self,
+        &'_ self,
         coord: &Coord,
         sample_idxs: &[usize],
-    ) -> std::result::Result<Option<(&Coord, ArrayView1<u8>)>, HaptkError>;
+    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, HaptkError>;
 
     fn next_contradictory(
         &self,
         coord: &Coord,
         sample_idxs: &[usize],
-    ) -> std::result::Result<Option<(&Coord, ArrayView1<u8>)>, HaptkError>;
+    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, HaptkError>;
 
     fn is_file_end(&self, side: LocDirection) -> bool;
     fn read_more(&mut self, error: HaptkError) -> Result<()>;
@@ -847,10 +847,10 @@ impl CoordDataSlot for PhasedMatrix {
     }
 
     fn prev_contradictory(
-        &self,
+        &'_ self,
         coord: &Coord,
         positions: &[usize],
-    ) -> std::result::Result<Option<(&Coord, ArrayView1<u8>)>, HaptkError> {
+    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, HaptkError> {
         if positions.len() < 2 {
             return Ok(None);
         }
@@ -887,10 +887,10 @@ impl CoordDataSlot for PhasedMatrix {
     }
 
     fn next_contradictory(
-        &self,
+        &'_ self,
         coord: &Coord,
         positions: &[usize],
-    ) -> std::result::Result<Option<(&Coord, ArrayView1<u8>)>, HaptkError> {
+    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, HaptkError> {
         if positions.len() < 2 {
             return Ok(None);
         }
