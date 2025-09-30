@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use color_eyre::{
-    eyre::{ensure, eyre, OptionExt},
+    eyre::{ensure, eyre, Context, OptionExt},
     Result,
 };
 use ndarray::{Array2, ShapeBuilder};
@@ -15,7 +15,7 @@ use rust_htslib::bcf::Read;
 
 use crate::{
     args::{Selection, StandardArgs},
-    error::HaptkError::{NormalizeError, OrderError, SamplesNotFoundError},
+    error::Error,
     io::{get_htslib_contig_len, read_multiple_sample_ids, read_sample_ht_list_file},
     structs::{Coord, PhasedMatrix, Ploidy, ReadMetadata},
 };
@@ -25,7 +25,7 @@ pub fn get_reader(
     contig: &str,
     range: Option<(Option<u64>, Option<u64>)>,
 ) -> Result<IndexedReader> {
-    let mut reader = IndexedReader::from_path(path)?;
+    let mut reader = IndexedReader::from_path(path).wrap_err(Error::Io { path: path.clone() })?;
     let rid = reader.header().name2rid(contig.as_bytes())?;
 
     match range {
@@ -89,7 +89,7 @@ pub fn get_sample_names(
 
     let sample_indexes = filter_samples(&samples, wanted);
 
-    ensure!(!sample_indexes.is_empty(), SamplesNotFoundError);
+    ensure!(!sample_indexes.is_empty(), Error::SamplesNotFound);
 
     let samples: Vec<String> = sample_indexes
         .iter()
@@ -116,7 +116,10 @@ fn prune_by_gt(
     samples: Vec<String>,
     wanted_gt: u8,
 ) -> Result<(Vec<[bool; 2]>, Vec<String>)> {
-    let mut reader = IndexedReader::from_path(&args.file)?;
+    let mut reader = IndexedReader::from_path(&args.file).wrap_err(Error::Io {
+        path: args.file.clone(),
+    })?;
+
     let rid = reader.header().name2rid(contig.as_bytes())?;
 
     // Positions are 0 based in HTSLib
@@ -129,12 +132,14 @@ fn prune_by_gt(
     let mut gt_buffer = rust_htslib::bcf::record::Buffer::new();
 
     let record = reader.records().next();
-    let record = record
-        .ok_or_eyre("Zero variants were found at the given coordinate {contig}:{variant_pos}")??;
-    let gts = record.genotypes_shared_buffer(&mut gt_buffer)?;
 
-    // let pos = (record.pos() + 1) as u64;
-    // let coord = construct_coord(&record, contig, pos);
+    // Check whether the variant exists
+    let record = record.ok_or_eyre(Error::NonExistantVariant {
+        contig: contig.to_string(),
+        variant_pos,
+    })??;
+
+    let gts = record.genotypes_shared_buffer(&mut gt_buffer)?;
 
     let lookups: Vec<[bool; 2]> = indexes
         .iter()
@@ -332,8 +337,8 @@ fn read_vcf_batch_to_matrix(
         // HTSlib is 0-based so add 1
         let pos = (record.pos() + 1) as u64;
 
-        // Check that there are no multiallelics, else return NormalizeError
-        ensure!(record.alleles().len() == 2, NormalizeError(pos));
+        // Check that there are no multiallelics, else return error
+        ensure!(record.alleles().len() == 2, Error::Normalize { pos });
 
         // Build the `Coord` struct
         let alleles = record.alleles();
@@ -351,7 +356,11 @@ fn read_vcf_batch_to_matrix(
         // Else return OrderError
         ensure!(
             pos >= prev_pos,
-            OrderError(prev_pos, pos, coord.to_string())
+            Error::Order {
+                prev_pos,
+                pos,
+                coord: coord.to_string()
+            }
         );
 
         if !include_indels && (coord.alt.len() > 1 || coord.reference.len() > 1) {

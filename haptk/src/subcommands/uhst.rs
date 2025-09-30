@@ -10,7 +10,7 @@ use rayon::prelude::*;
 
 use crate::{
     args::{Selection, StandardArgs},
-    error::HaptkError,
+    error::Error,
     io::{open_csv_writer, push_to_output, write_haplotype},
     libs::structs::{CoordDataSlot, PhasedMatrix},
     structs::{Coord, HapVariant},
@@ -47,10 +47,13 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
 
     let mut vcf = bhst::read_vcf_with_selections(&args, Some(window))?;
 
+    // Less haplotypes available than the minimum requested node_size
     ensure!(
         vcf.nhaplotypes() >= min_size,
-        "VCF has less haplotypes than the required minimum node size ({} < {min_size})",
-        vcf.nhaplotypes()
+        Error::MinNodes {
+            n_haplotypes: vcf.nhaplotypes(),
+            min_size
+        }
     );
 
     let start = vcf.start_coord().clone();
@@ -213,7 +216,7 @@ pub fn insert_nodes_to_uhst(
     direction: &LocDirection,
     only_majority: bool,
     start_coord: &Coord,
-) -> std::result::Result<Vec<Vec<NodeIndex>>, HaptkError> {
+) -> std::result::Result<Vec<Vec<NodeIndex>>, Error> {
     let (tx, rx) = sync_channel(2024);
 
     // Loop all nodes of the HST
@@ -267,7 +270,7 @@ pub fn insert_nodes_to_uhst(
                 _ => Ok(vec![parent_idx]),
             }
         })
-        .collect::<std::result::Result<Vec<Vec<NodeIndex>>, HaptkError>>();
+        .collect::<std::result::Result<Vec<Vec<NodeIndex>>, Error>>();
 
     drop(tx);
 
@@ -287,15 +290,15 @@ pub fn find_contradictory_gt_uhst(
     start_coord: &Coord,
     node: &Node,
     direction: &LocDirection,
-) -> std::result::Result<Option<(Node, Node)>, HaptkError> {
+) -> std::result::Result<Option<(Node, Node)>, Error> {
     let next_contradictory_idx = match direction {
         LocDirection::Left => vcf.prev_contradictory(&node.start, &node.indexes),
         LocDirection::Right => vcf.next_contradictory(&node.start, &node.indexes),
     };
 
     let next_contradictory_idx = match (next_contradictory_idx, direction) {
-        (Err(_), LocDirection::Left) => return Err(HaptkError::HstLeftEndError),
-        (Err(_), LocDirection::Right) => return Err(HaptkError::HstRightEndError),
+        (Err(_), LocDirection::Left) => return Err(Error::HstLeftEnd),
+        (Err(_), LocDirection::Right) => return Err(Error::HstRightEnd),
         (Ok(idx), _) => idx,
     };
 

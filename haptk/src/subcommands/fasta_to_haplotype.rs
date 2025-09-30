@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use color_eyre::{
-    eyre::{ensure, eyre, Context},
+    eyre::{ensure, WrapErr},
     Result,
 };
 use rust_htslib::faidx::Reader;
 
-use crate::error::HaptkError::PosParseError;
+use crate::error::Error;
 use crate::io::open_csv_writer;
 
 pub fn parse_seq_name(coords: &str) -> Result<(&str, u64, u64, &str)> {
@@ -24,13 +24,15 @@ pub fn parse_seq_name(coords: &str) -> Result<(&str, u64, u64, &str)> {
 
     let (stop, ann) = rest.split_once('_').expect(&error_msg);
 
-    let start = start
-        .parse::<u64>()
-        .wrap_err(eyre!(PosParseError((coords.into(), start.into()))))?;
+    let start = start.parse::<u64>().wrap_err(Error::PosParse {
+        coord: coords.into(),
+        value: start.into(),
+    })?;
 
-    let stop = stop
-        .parse::<u64>()
-        .wrap_err(eyre!(PosParseError((coords.into(), stop.into()))))?;
+    let stop = stop.parse::<u64>().wrap_err(Error::PosParse {
+        coord: coords.into(),
+        value: stop.into(),
+    })?;
 
     Ok((contig, start, stop, ann))
 }
@@ -41,8 +43,7 @@ pub fn run(path: PathBuf, seq_names: Vec<String>, output: PathBuf) -> Result<()>
         "Please enter one or more sequence names from the fasta using the --seq-name parameter"
     );
 
-    let fasta_reader =
-        Reader::from_path(&path).wrap_err(eyre!("Could not read the path: {:?}", path))?;
+    let fasta_reader = Reader::from_path(&path).wrap_err(Error::Io { path })?;
 
     let mut fasta: Vec<Vec<String>> = vec![];
 

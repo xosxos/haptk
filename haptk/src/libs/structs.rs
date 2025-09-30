@@ -16,7 +16,7 @@ use petgraph::Graph;
 use serde::{Deserialize, Serialize};
 
 use crate::args::Selection;
-use crate::error::HaptkError;
+use crate::error::Error;
 use crate::read_vcf::read_shard_of_vcf;
 use crate::subcommands::bhst::{find_majority_nodes, Node};
 use crate::subcommands::immutable_hst;
@@ -820,16 +820,16 @@ pub trait CoordDataSlot {
         &'_ self,
         coord: &Coord,
         sample_idxs: &[usize],
-    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, HaptkError>;
+    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, Error>;
 
     fn next_contradictory(
         &self,
         coord: &Coord,
         sample_idxs: &[usize],
-    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, HaptkError>;
+    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, Error>;
 
     fn is_file_end(&self, side: LocDirection) -> bool;
-    fn read_more(&mut self, error: HaptkError) -> Result<()>;
+    fn read_more(&mut self, error: Error) -> Result<()>;
 }
 
 pub fn is_contradictory_by_idx(matrix: &Array2<u8>, positions: &[usize], index: usize) -> bool {
@@ -850,7 +850,7 @@ impl CoordDataSlot for PhasedMatrix {
         &'_ self,
         coord: &Coord,
         positions: &[usize],
-    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, HaptkError> {
+    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, Error> {
         if positions.len() < 2 {
             return Ok(None);
         }
@@ -882,7 +882,7 @@ impl CoordDataSlot for PhasedMatrix {
 
         match self.is_file_end(LocDirection::Left) {
             true => Ok(None),
-            false => Err(HaptkError::HstEndError),
+            false => Err(Error::HstEnd),
         }
     }
 
@@ -890,7 +890,7 @@ impl CoordDataSlot for PhasedMatrix {
         &'_ self,
         coord: &Coord,
         positions: &[usize],
-    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, HaptkError> {
+    ) -> std::result::Result<Option<(&'_ Coord, ArrayView1<'_, u8>)>, Error> {
         if positions.len() < 2 {
             return Ok(None);
         }
@@ -921,7 +921,7 @@ impl CoordDataSlot for PhasedMatrix {
 
         match self.is_file_end(LocDirection::Right) {
             true => Ok(None),
-            false => Err(HaptkError::HstEndError),
+            false => Err(Error::HstEnd),
         }
     }
 
@@ -941,18 +941,16 @@ impl CoordDataSlot for PhasedMatrix {
         }
     }
 
-    fn read_more(&mut self, error: HaptkError) -> Result<()> {
+    fn read_more(&mut self, error: Error) -> Result<()> {
         let start = self.coords.first().unwrap().clone();
         let stop = self.coords.last().unwrap().clone();
 
         match error {
-            HaptkError::HstLeftEndError => {
+            Error::HstLeftEnd => {
                 read_shard_of_vcf(self, start.pos.saturating_sub(1_000_000), start.pos - 1)?
             }
-            HaptkError::HstRightEndError => {
-                read_shard_of_vcf(self, stop.pos + 1, stop.pos + 1_000_000)?
-            }
-            HaptkError::HstBothEndError => {
+            Error::HstRightEnd => read_shard_of_vcf(self, stop.pos + 1, stop.pos + 1_000_000)?,
+            Error::HstBothEnd => {
                 read_shard_of_vcf(self, start.pos.saturating_sub(1_000_000), start.pos - 1)?;
                 read_shard_of_vcf(self, stop.pos + 1, stop.pos + 1_000_000)?
             }

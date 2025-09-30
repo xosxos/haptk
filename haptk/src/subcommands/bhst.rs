@@ -6,7 +6,7 @@ use std::{
 };
 
 use color_eyre::{
-    eyre::{ensure, eyre, Context},
+    eyre::{ensure, Context},
     Result,
 };
 use petgraph::prelude::NodeIndex;
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     args::{Selection, StandardArgs},
-    error::HaptkError,
+    error::Error,
     io::{get_output, open_csv_writer, push_to_output, write_haplotype},
     libs::{
         read_vcf::{get_sample_names, read_vcf_to_matrix},
@@ -260,7 +260,7 @@ pub fn insert_nodes_to_bhst(
     hst: &mut Graph<Node, ()>,
     blacklist_nodes: &[NodeIndex],
     min_size: usize,
-) -> std::result::Result<Vec<Vec<NodeIndex>>, HaptkError> {
+) -> std::result::Result<Vec<Vec<NodeIndex>>, Error> {
     let (tx, rx) = sync_channel(2024);
 
     let blacklist = hst
@@ -302,7 +302,7 @@ pub fn insert_nodes_to_bhst(
                 _ => Ok(vec![parent_idx]),
             },
         )
-        .collect::<std::result::Result<Vec<Vec<NodeIndex>>, HaptkError>>();
+        .collect::<std::result::Result<Vec<Vec<NodeIndex>>, Error>>();
 
     drop(tx);
 
@@ -320,7 +320,7 @@ pub fn insert_nodes_to_bhst(
 pub fn find_contradictory_gt_bhst(
     vcf: &PhasedMatrix,
     node: &Node,
-) -> std::result::Result<Option<Vec<Node>>, HaptkError> {
+) -> std::result::Result<Option<Vec<Node>>, Error> {
     let (left_coord, right_coord) = (&node.start, &node.stop);
 
     // NOTE: Remains to be seen what the overhead here would be
@@ -335,9 +335,9 @@ pub fn find_contradictory_gt_bhst(
     let next = vcf.next_contradictory(right_coord, &node.indexes);
 
     let (prev, next) = match (prev, next) {
-        (Err(_), Err(_)) => return Err(HaptkError::HstBothEndError),
-        (_, Err(_)) => return Err(HaptkError::HstRightEndError),
-        (Err(_), _) => return Err(HaptkError::HstLeftEndError),
+        (Err(_), Err(_)) => return Err(Error::HstBothEnd),
+        (_, Err(_)) => return Err(Error::HstRightEnd),
+        (Err(_), _) => return Err(Error::HstLeftEnd),
         (Ok(prev), Ok(next)) => (prev, next),
     };
 
@@ -696,7 +696,7 @@ pub fn write_hst_file(
 }
 
 pub fn read_hst_file(path: PathBuf) -> Result<Hst> {
-    let file = std::fs::File::open(path.clone()).wrap_err(eyre!("Error opening {path:?}"))?;
+    let file = std::fs::File::open(path.clone()).wrap_err(Error::Io { path })?;
     let reader = bgzip::BGZFReader::new(file)?;
     let hst: Hst = serde_json::from_reader(reader)?;
 

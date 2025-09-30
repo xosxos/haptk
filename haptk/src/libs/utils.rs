@@ -1,7 +1,7 @@
 use color_eyre::eyre::{eyre, OptionExt, WrapErr};
 use color_eyre::Result;
 
-use crate::error::HaptkError::{CoordsParseError, PosParseError};
+use crate::error::Error;
 
 // Round to n significant digits
 // https://stackoverflow.com/questions/28655362/how-does-one-round-a-floating-point-number-to-a-specified-number-of-digits
@@ -30,27 +30,31 @@ pub fn strip_prefix(prefix: Option<String>) -> Option<String> {
 }
 
 // Coords are in the format [contig]:[position]
-pub fn parse_snp_coord(coords: &str) -> Result<(&str, u64)> {
-    let mut coord_split = coords.split(':');
+pub fn parse_snp_coord(coord: &str) -> Result<(&str, u64)> {
+    let mut coord_split = coord.split(':');
 
     match (coord_split.next(), coord_split.next()) {
         (Some(contig), Some(value)) => {
-            let value = value
-                .parse::<u64>()
-                .wrap_err(eyre!(PosParseError((coords.into(), value.into()))))?;
+            let value = value.parse::<u64>().wrap_err(Error::PosParse {
+                coord: coord.to_string(),
+                value: value.to_string(),
+            })?;
+
             Ok((contig, value))
         }
-        _ => Err(eyre!(CoordsParseError(coords.into()))),
+        _ => Err(eyre!(Error::CoordParse {
+            coord: coord.to_string()
+        })),
     }
 }
 
 // Coords are in the format [contig] or [contig]:[start]-[stop]
-pub fn parse_coords(coords: &str) -> Result<(&str, Option<u64>, Option<u64>)> {
-    let mut coord_split = coords.split(':');
+pub fn parse_coords(coord: &str) -> Result<(&str, Option<u64>, Option<u64>)> {
+    let mut coord_split = coord.split(':');
 
-    let contig = coord_split
-        .next()
-        .ok_or_eyre(CoordsParseError(coords.into()))?;
+    let contig = coord_split.next().ok_or_eyre(Error::CoordParse {
+        coord: coord.to_string(),
+    })?;
 
     let positions = coord_split.next();
 
@@ -62,16 +66,21 @@ pub fn parse_coords(coords: &str) -> Result<(&str, Option<u64>, Option<u64>)> {
     let (start, stop) = (pos_split.next(), pos_split.next());
 
     if let (Some(start), Some(stop)) = (start, stop) {
-        let start = start
-            .parse::<u64>()
-            .wrap_err(eyre!(PosParseError((coords.into(), start.into()))))?;
-        let stop = stop
-            .parse::<u64>()
-            .wrap_err(eyre!(PosParseError((coords.into(), stop.into()))))?;
+        let start = start.parse::<u64>().wrap_err(Error::PosParse {
+            coord: coord.into(),
+            value: start.into(),
+        })?;
+
+        let stop = stop.parse::<u64>().wrap_err(Error::PosParse {
+            coord: coord.into(),
+            value: stop.into(),
+        })?;
 
         Ok((contig, Some(start), Some(stop)))
     } else {
-        Err(eyre!(CoordsParseError(coords.into())))
+        Err(eyre!(Error::CoordParse {
+            coord: coord.into()
+        }))
     }
 }
 

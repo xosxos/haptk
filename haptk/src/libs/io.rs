@@ -17,6 +17,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::args::{Selection, StandardArgs};
+use crate::error::Error;
 use crate::read_vcf::get_reader;
 use crate::structs::Coord;
 use crate::structs::HapVariant;
@@ -39,20 +40,20 @@ impl FileType {
         let extension: &str = Path::new(&path)
             .extension()
             .and_then(OsStr::to_str)
-            .ok_or_else(|| eyre!("No filetype in path"))?;
+            .ok_or_eyre(Error::NoFileType { path: path.clone() })?;
 
-        let extension = match extension {
+        let ext = match extension {
             "gz" | "bgz" => return_double_extension_filetype(path, extension)?,
             _ => extension.to_string(),
         };
 
-        Ok(match extension.as_str() {
+        Ok(match ext.as_str() {
             "vcf.gz" | "vcf" | "bcf" => Self::VCF,
             "hst.gz" | "hst" => Self::HST,
             "bed.gz" | "bed" => Self::BED,
             "csv" | "ids" => Self::CSV,
             "tsv" => Self::TSV,
-            _ => return Err(eyre!("File extension: {extension} is not supported")),
+            _ => return Err(eyre!(Error::FileNotSupported { ext })),
         })
     }
 }
@@ -61,11 +62,17 @@ pub fn return_double_extension_filetype(path: &Path, e1: &str) -> Result<String>
     let stem = path
         .file_stem()
         .and_then(OsStr::to_str)
-        .ok_or_else(|| eyre!("file has no stem"))?;
+        .ok_or_eyre(Error::NoFileType {
+            path: path.to_path_buf(),
+        })?;
+
     let e2 = Path::new(&stem)
         .extension()
         .and_then(OsStr::to_str)
-        .ok_or_else(|| eyre!("file has no other filetype"))?;
+        .ok_or_eyre(Error::FileNotSupported {
+            ext: format!("{path:?}"),
+        })?;
+
     Ok(format!("{e2}.{e1}"))
 }
 
@@ -82,7 +89,11 @@ pub fn read_sample_ht_list_file(path: &PathBuf) -> Result<HashMap<String, [bool;
         FileType::CSV => get_csv_reader(input, false),
         FileType::TSV => get_tsv_reader(input, false),
         FileType::BED => get_tsv_reader(input, false),
-        _ => return Err(eyre!("Filetype from {path:?} is not supported")),
+        _ => {
+            return Err(eyre!(Error::FileNotSupported {
+                ext: format!("{path:?}")
+            }))
+        }
     };
 
     let mut variants = HashMap::new();
@@ -126,7 +137,11 @@ pub fn read_coords_file(path: &PathBuf) -> Result<Vec<Coord>> {
         FileType::CSV => get_csv_reader(input, false),
         FileType::TSV => get_tsv_reader(input, false),
         FileType::BED => get_tsv_reader(input, false),
-        _ => return Err(eyre!("Filetype from {path:?} is not supported")),
+        _ => {
+            return Err(eyre!(Error::FileNotSupported {
+                ext: format!("{path:?}")
+            }))
+        }
     };
 
     let mut variants: Vec<Coord> = vec![];
@@ -148,7 +163,11 @@ pub fn read_coords_sample_file(path: &PathBuf) -> Result<Vec<CoordSamples>> {
         FileType::CSV => get_csv_reader(input, false),
         FileType::TSV => get_tsv_reader(input, false),
         FileType::BED => get_tsv_reader(input, false),
-        _ => return Err(eyre!("Filetype from {path:?} is not supported")),
+        _ => {
+            return Err(eyre!(Error::FileNotSupported {
+                ext: format!("{path:?}")
+            }))
+        }
     };
 
     let mut variants: Vec<CoordSamples> = vec![];
@@ -197,39 +216,52 @@ struct RecombinationRow<'a> {
 }
 
 pub fn check_recombination_file_matches_contig(path: PathBuf, contig: &str) -> Result<bool> {
-    let mut rdr = get_tsv_reader(get_input(Some(path))?, false);
+    let mut rdr = get_tsv_reader(get_input(Some(path.clone()))?, false);
     let mut lines = rdr.records();
 
-    let line = lines
+    let record = lines
         .next()
-        .ok_or_eyre("Recombination rates file {path} contains 0 rows.")?;
+        .ok_or_eyre(Error::EmptyFile { path: path.clone() })??;
 
-    let record = line?;
-    let row: RecombinationRow = record.deserialize(None).
-            wrap_err(eyre!("Make sure no headers are present and that the recombination file is in order chr,pos,rate,cm. If the issue is not fixed, you have an invalid field in the file."))?;
+    let row: RecombinationRow = record
+        .deserialize(None)
+        .wrap_err(Error::RecombinationDeserialization { path })?;
+
     Ok(row.chr == contig)
 }
 
 pub fn read_recombination_file(path: PathBuf) -> Result<BTreeMap<u64, f32>> {
-    let mut rdr = get_tsv_reader(get_input(Some(path))?, false);
+    let mut rdr = get_tsv_reader(get_input(Some(path.clone()))?, false);
     let mut rates = BTreeMap::new();
 
     let mut last_cm = 0.0;
     let mut last_pos = 0;
+
     for line in rdr.records() {
         let record = line?;
-        let row: RecombinationRow = record.deserialize(None).
-            wrap_err(eyre!("Make sure no headers are present and that the recombination file is in order chr,pos,rate,cm. If the issue is not fixed, you have an invalid field in the file."))?;
+
+        let row: RecombinationRow = record
+            .deserialize(None)
+            .wrap_err(Error::RecombinationDeserialization { path: path.clone() })?;
+
+        // Check cm sorting
         if last_cm > row.cm {
-            return Err(eyre!(
-                "Recombination rates file is not sorted for centimorgans"
-            ));
+            return Err(eyre!(Error::Sort {
+                prev_pos: last_cm,
+                pos: row.cm,
+                path,
+            }));
         }
+
+        // Check position sorting
         if last_pos > row.pos {
-            return Err(eyre!(
-                "Recombination rates file is not sorted for positions"
-            ));
+            return Err(eyre!(Error::Sort {
+                prev_pos: last_pos as f32,
+                pos: row.pos as f32,
+                path,
+            }));
         }
+
         last_cm = row.cm;
         last_pos = row.pos;
         rates.insert(row.pos, row.cm);
@@ -239,7 +271,7 @@ pub fn read_recombination_file(path: PathBuf) -> Result<BTreeMap<u64, f32>> {
 }
 
 pub fn read_haplotype_file(ht_path: PathBuf) -> Result<Vec<HapVariant>> {
-    let input = get_input(Some(ht_path))?;
+    let input = get_input(Some(ht_path.clone()))?;
     let mut rdr = get_csv_reader(input, true);
 
     let mut variants: Vec<HapVariant> = vec![];
@@ -247,13 +279,15 @@ pub fn read_haplotype_file(ht_path: PathBuf) -> Result<Vec<HapVariant>> {
     for line in rdr.records() {
         let record = line?;
         let variant: HapVariant = record.deserialize(None)?;
+
         if let Some(latest) = variants.last() {
+            // Check sorting
             if latest.pos > variant.pos {
-                return Err(eyre!(
-                    "The haplotype file is not sorted by position. {} is larger than {}",
-                    latest,
-                    variant
-                ));
+                return Err(eyre!(Error::Sort {
+                    prev_pos: latest.pos as f32,
+                    pos: variant.pos as f32,
+                    path: ht_path,
+                }));
             }
         }
         variants.push(variant);
@@ -264,17 +298,12 @@ pub fn read_haplotype_file(ht_path: PathBuf) -> Result<Vec<HapVariant>> {
 
 pub fn read_lines<P>(filename: P) -> Result<io::Lines<io::BufReader<File>>>
 where
-    P: AsRef<Path>,
+    P: AsRef<Path> + Into<PathBuf>,
 {
-    // let file = File::open(filename)?;
-    let name = filename.as_ref().display();
-    let file = match File::open(&filename) {
-        Ok(x) => x,
-        Err(err) => {
-            let msg = format!("failed to open {name}: {err}");
-            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, msg))?;
-        }
-    };
+    let file = File::open(&filename).wrap_err(Error::Io {
+        path: filename.into(),
+    })?;
+
     Ok(io::BufReader::new(file).lines())
 }
 
@@ -344,21 +373,31 @@ pub fn get_htslib_contig_len(path: &PathBuf, contig: &str) -> Result<u64> {
             HeaderRecord::Contig { values, .. } => {
                 if let Some(id) = values.get("ID") {
                     if id == contig {
+                        // Return contig length, if found
                         return Ok(values
                             .get("length")
-                            .ok_or_else(|| eyre!("VCF header has no contig length for {id}"))?
+                            .ok_or_eyre(Error::NoContigLength {
+                                contig: id.to_string(),
+                            })?
                             .parse::<u64>()?);
                     }
                 }
             }
             _ => {
-                panic!("Header contig filtering failed for some reason. Create an issue at Github")
+                unreachable!(
+                    "
+                    VCF header contig filtering failed for some reason.
+                    Create an issue at Github: https://github.com/xosxos/haptk
+                    "
+                )
             }
         }
     }
-    Err(eyre!(
-        "Cannot get length for contig {contig}. Check the vcf header."
-    ))
+
+    // Requested contig was not present in the header
+    Err(eyre!(Error::NoContig {
+        contig: contig.to_string()
+    }))
 }
 
 pub fn get_htslib_bcf_contigs(path: &PathBuf) -> Result<Vec<(String, i64)>> {
@@ -372,16 +411,24 @@ pub fn get_htslib_bcf_contigs(path: &PathBuf) -> Result<Vec<(String, i64)>> {
                 let id = values
                     .get("ID")
                     .ok_or_eyre("The input VCF has no ID for some contig record in the header")?;
+
                 Ok((
                     id.clone(),
                     values
                         .get("length")
-                        .ok_or_eyre("VCF header has no contig length for {id}")?
+                        .ok_or_eyre(Error::NoContigLength {
+                            contig: id.to_string(),
+                        })?
                         .parse::<i64>()?,
                 ))
             }
             _ => {
-                panic!("Header contig filtering failed for some reason. Create an issue at Github")
+                unreachable!(
+                    "
+                    VCF header contig filtering failed for some reason.
+                    Create an issue at Github: https://github.com/xosxos/haptk
+                    "
+                )
             }
         })
         .collect()
@@ -454,18 +501,17 @@ pub fn get_output(filename: Option<PathBuf>) -> Result<Box<dyn io::Write>> {
     let output: Box<dyn io::Write> = match filename {
         Some(name) => match name.to_str() {
             Some("-") => Box::new(io::stdout()),
-            Some(name) => Box::new(
-                match std::fs::File::options()
+            Some(path) => Box::new(
+                std::fs::File::options()
                     .create(true)
                     .write(true)
                     .truncate(true)
-                    .open(name)
-                {
-                    Ok(x) => x,
-                    Err(err) => return Err(eyre!("failed to open \"{name}\": {err}"))?,
-                },
+                    .open(path)
+                    .wrap_err(Error::Io {
+                        path: PathBuf::from(path),
+                    })?,
             ),
-            None => return Err(eyre!("Unknown I/O error")),
+            None => unreachable!(),
         },
         None => Box::new(io::stdout()),
     };
@@ -525,13 +571,8 @@ pub fn append_ext(ext: impl AsRef<OsStr>, path: &PathBuf) -> PathBuf {
 
 pub fn read_tabix(path: &PathBuf) -> Result<HashMap<String, (u64, usize)>> {
     let path = append_ext("tbi", path);
-    let mut file = match std::fs::File::open(&path) {
-        Ok(x) => x,
-        Err(err) => {
-            let msg = format!("failed to open \"{}\": {err}", path.display());
-            return Err(eyre!(msg))?;
-        }
-    };
+    let mut file = std::fs::File::open(&path).wrap_err(Error::Io { path: path.clone() })?;
+
     let tabix = Tabix::from_reader(&mut file)?;
 
     let mut contigs: HashMap<String, (u64, usize)> = HashMap::new();
