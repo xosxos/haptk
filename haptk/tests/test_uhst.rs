@@ -10,6 +10,20 @@ mod test_uhst {
     use super::*;
     use haptk::{args::Selection, subcommands::bhst::read_hst_file};
 
+    fn run_uhst(selection: Selection) -> Result<()> {
+        let args = common::clap_standard_args(selection);
+
+        let cmd = haptk::clap::SubCommand::Hst {
+            args,
+            log_and_verbosity: crate::common::silent_verbosity(),
+            threads: 8,
+            min_size: 1,
+            publish: false,
+            window: 20_000,
+        };
+        haptk::clap::run_cmd(cmd)
+    }
+
     #[test]
     fn uhst_all() -> Result<()> {
         run_uhst(Selection::All)?;
@@ -59,20 +73,6 @@ mod test_uhst {
         let res = std::fs::read_to_string("tests/results/core_haplotype_only_longest.csv").unwrap();
         insta::assert_yaml_snapshot!(res);
         Ok(())
-    }
-
-    fn run_uhst(selection: Selection) -> Result<()> {
-        let args = common::clap_standard_args(selection);
-
-        let cmd = haptk::clap::SubCommand::Hst {
-            args,
-            log_and_verbosity: crate::common::silent_verbosity(),
-            threads: 8,
-            min_size: 1,
-            publish: false,
-            window: 20_000,
-        };
-        haptk::clap::run_cmd(cmd)
     }
 
     #[test]

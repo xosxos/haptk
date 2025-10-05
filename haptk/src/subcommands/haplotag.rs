@@ -40,16 +40,11 @@ mod tagger {
     use std::collections::{BTreeMap, HashMap};
     use std::ops::Range;
     use std::path::{Path, PathBuf};
-    // use std::sync::LazyLock;
     use std::thread;
 
-    use color_eyre::{
-        // eyre::{eyre, WrapErr},
-        Result,
-    };
+    use color_eyre::Result;
     use crossbeam_channel::{unbounded, Sender};
     use rayon::prelude::*;
-    // use regex::Regex;
     use rust_htslib::bam::{Read, Record};
 
     use crate::args::StandardArgs;
@@ -58,7 +53,6 @@ mod tagger {
     use crate::subcommands::haplotag::cigar_iterator::{CigarIterType, CigarIterator};
     use crate::subcommands::haplotag::io::spawn_collector;
     use crate::subcommands::haplotag::utils::get_bam_header;
-    // use crate::subcommands::haplotag::slider::{Slider, Ssr};
 
     use super::utils::{filter_contigs_by_bam, get_sample_name_and_bam_paths, RangeDivisions};
 
@@ -301,19 +295,9 @@ mod tagger {
         haplotypes: &HashMap<String, BTreeMap<CigarVariant, Vec<u8>>>,
         ploidy: usize,
     ) -> Result<()> {
-        // tracing::info!(
-        //     "entering loop with {:?} {:?} {:?} {:?}",
-        //     record.seq(),
-        //     record.tid(),
-        //     record.pos(),
-        //     record.cigar(),
-        // );
-        //
-        //
         let seq_len = record.seq().len();
 
         if seq_len == 0 {
-            // tracing::info!("warning: a line without seq at pos: {}", record.pos());
             return Ok(());
         }
 
@@ -322,65 +306,6 @@ mod tagger {
         let mut haplotype_score = vec![0; ploidy];
         let mut positions_debug = vec![];
 
-        // if seq_len < 20_000 {
-        //     // tracing::info!("warning: a line without seq at pos: {}", record.pos());
-        //     return Ok(());
-        // }
-
-        // let pos = record.pos();
-        // let target = 101377636;
-        // let margin = 5000;
-
-        // let requirement = pos < target && pos + seq_len as i64 > target;
-        // if !requirement {
-        //     return Ok(());
-        // }
-
-        // let seq = String::from_utf8(record.seq().as_bytes())?;
-
-        // let mut repeats: Vec<Ssr> = Slider::new(seq.clone(), 3)
-        //     .filter(|v| ["GAA", "AGA", "AAG"].contains(&&v.motif.as_str()))
-        //     .filter(|v| {
-        //         let position = record.pos() + v.start as i64;
-        //         position > target - margin && position < target + margin
-        //     })
-        //     .collect();
-
-        // if repeats.len() < 1 {
-        //     return Ok(());
-        // }
-        //
-        // let cigar_vec: Vec<CigarIterType> = CigarIterator::new(
-        //     record.cigar().take().into(),
-        //     record.pos() as u32,
-        //     record.seq(),
-        //     sample_id,
-        // )
-        // .collect();
-
-        // // Try to get the proper placement of the repeat motifs in relation to the reference genome
-        // repeats.iter_mut().for_each(|ssr| {
-        //     let position = record.pos() + ssr.start as i64;
-        //     let mut new_position = position;
-
-        //     cigar_vec.iter().for_each(|v| {
-        //         if (v.pos() as i64) < position {
-        //             match v {
-        //                 CigarIterType::Del((_, bp_len)) => {
-        //                     new_position = new_position + *bp_len as i64
-        //                 }
-        //                 CigarIterType::Ins((_, seq)) => {
-        //                     new_position = new_position - seq.len() as i64
-        //                 }
-        //                 _ => (),
-        //             }
-        //         }
-        //     });
-        //     ssr.start = new_position as usize;
-        //     ssr.end = new_position as usize + ssr.length;
-        // });
-
-        // cigar_vec.iter().for_each(|cigar_item| match cigar_item {
         CigarIterator::new(
             record.cigar().take().into(),
             record.pos() as u32,
@@ -389,6 +314,7 @@ mod tagger {
         .for_each(|cigar_item| match cigar_item {
             CigarIterType::Match((pos, seq)) => {
                 // Position returned is the last pos before start of the match, so add 1
+                // Or maybe this is 0 indexed positions from HTSLib
                 let pos = pos + 1;
 
                 // println!("match: {} {}", pos, seq);
@@ -422,311 +348,107 @@ mod tagger {
             _ => (),
         });
 
-        let find_best_match = |haplotype_score: &Vec<u32>| -> Option<usize> {
+        fn fold_func<S: ToString>(acc: String, cur: S) -> String {
+            match acc.is_empty() {
+                true => cur.to_string(),
+                false => format!("{acc},{}", cur.to_string()),
+            }
+        }
+
+        let aux: Vec<String> = record
+            .aux_iter()
+            .map(|v| v.unwrap())
+            .map(|(tag, v)| {
+                let tag = String::from_utf8(tag.to_vec()).unwrap();
+                match v {
+                    rust_htslib::bam::record::Aux::Char(i) => i.to_string(),
+                    rust_htslib::bam::record::Aux::I8(i) => format!("{tag}:i:{i}"),
+                    rust_htslib::bam::record::Aux::U8(i) => format!("{tag}:i:{i}"),
+                    rust_htslib::bam::record::Aux::I16(i) => format!("{tag}:i:{i}"),
+                    rust_htslib::bam::record::Aux::U16(i) => format!("{tag}:i:{i}"),
+                    rust_htslib::bam::record::Aux::I32(i) => format!("{tag}:i:{i}"),
+                    rust_htslib::bam::record::Aux::U32(i) => format!("{tag}:i:{i}"),
+                    rust_htslib::bam::record::Aux::Float(i) => format!("{tag}:f:{i}"),
+                    rust_htslib::bam::record::Aux::Double(i) => format!("{tag}:f:{i}"),
+                    rust_htslib::bam::record::Aux::String(i) => format!("{tag}:Z:{i}"),
+                    rust_htslib::bam::record::Aux::HexByteArray(i) => format!("{tag}:H:{i}"),
+                    rust_htslib::bam::record::Aux::ArrayI8(i) => {
+                        format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
+                    }
+                    rust_htslib::bam::record::Aux::ArrayU8(i) => {
+                        format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
+                    }
+                    rust_htslib::bam::record::Aux::ArrayI16(i) => {
+                        format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
+                    }
+                    rust_htslib::bam::record::Aux::ArrayU16(i) => {
+                        format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
+                    }
+                    rust_htslib::bam::record::Aux::ArrayI32(i) => {
+                        format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
+                    }
+                    rust_htslib::bam::record::Aux::ArrayU32(i) => {
+                        format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
+                    }
+                    rust_htslib::bam::record::Aux::ArrayFloat(i) => {
+                        format!("{tag}:B:f,{}", i.iter().fold(String::new(), fold_func))
+                    }
+                }
+            })
+            .collect();
+
+        let seq = String::from_utf8(record.seq().as_bytes()).unwrap();
+
+        let mut row: Vec<String> = vec![
+            String::from_utf8(record.qname().to_vec()).unwrap(),
+            record.flags().to_string(),
+            contig.to_string(),
+            // Convert back to 1-based positions
+            (record.pos() + 1).to_string(),
+            record.mapq().to_string(),
+            record.cigar().to_string(),
+            // record.mtid().to_string(),
+            "*".to_string(),
+            // record.mpos().to_string(),
+            "0".to_string(),
+            // seq.len().to_string(),
+            "0".to_string(),
+            seq,
+            "*".to_string(),
+            // String::from_utf8(record.qual().to_vec()).unwrap(),
+        ];
+
+        row.extend(aux);
+
+        let find_best_match = |haplotype_score: &Vec<u32>| -> Option<&str> {
             let margin = 3;
 
             if haplotype_score[0] >= haplotype_score[1] + margin {
-                return Some(0);
+                return Some("0");
             }
 
             if haplotype_score[0] + margin <= haplotype_score[1] {
-                return Some(1);
+                return Some("1");
             }
 
             return None;
         };
 
-        if let Some(best_match_idx) = find_best_match(&haplotype_score) {
-            // for repeat in repeats {
-            //     let row = vec![
-            //         contig.to_string(),
-            //         (record.pos() + 1).to_string(),
-            //         repeat.start.to_string(),
-            //         repeat.motif.to_string(),
-            //         // repeat.motif_len.to_string(),
-            //         repeat.repeats.to_string(),
-            //         // repeat.length.to_string(),
-            //         best_match_idx.to_string(),
-            //         haplotype_score[0].to_string(),
-            //         haplotype_score[1].to_string(),
-            //         seq_len.to_string(),
-            //         format!("\"{positions_debug:?}\"")
-            //             .replace(", ", ";")
-            //             .replace("[", "")
-            //             .replace("]", ""),
-            //     ];
-            //     collector_tx.send(row)?;
-            // }
-            //
-            //
+        row.push(format!(
+            "ht:Z:{}",
+            find_best_match(&haplotype_score).unwrap_or(&"NA")
+        ));
 
-            let seq = String::from_utf8(record.seq().as_bytes()).unwrap();
+        row.push(format!(
+            "sc:B:i,{},{}",
+            haplotype_score[0], haplotype_score[1],
+        ));
 
-            fn fold_func<S: ToString>(acc: String, cur: S) -> String {
-                match acc.is_empty() {
-                    true => cur.to_string(),
-                    false => format!("{acc},{}", cur.to_string()),
-                }
-            }
-
-            let aux: Vec<String> = record
-                .aux_iter()
-                .map(|v| v.unwrap())
-                .map(|(tag, v)| {
-                    let tag = String::from_utf8(tag.to_vec()).unwrap();
-                    match v {
-                        rust_htslib::bam::record::Aux::Char(i) => i.to_string(),
-                        rust_htslib::bam::record::Aux::I8(i) => format!("{tag}:i:{i}"),
-                        rust_htslib::bam::record::Aux::U8(i) => format!("{tag}:i:{i}"),
-                        rust_htslib::bam::record::Aux::I16(i) => format!("{tag}:i:{i}"),
-                        rust_htslib::bam::record::Aux::U16(i) => format!("{tag}:i:{i}"),
-                        rust_htslib::bam::record::Aux::I32(i) => format!("{tag}:i:{i}"),
-                        rust_htslib::bam::record::Aux::U32(i) => format!("{tag}:i:{i}"),
-                        rust_htslib::bam::record::Aux::Float(i) => format!("{tag}:f:{i}"),
-                        rust_htslib::bam::record::Aux::Double(i) => format!("{tag}:f:{i}"),
-                        rust_htslib::bam::record::Aux::String(i) => format!("{tag}:Z:{i}"),
-                        rust_htslib::bam::record::Aux::HexByteArray(i) => format!("{tag}:H:{i}"),
-                        rust_htslib::bam::record::Aux::ArrayI8(i) => {
-                            format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
-                        }
-                        rust_htslib::bam::record::Aux::ArrayU8(i) => {
-                            format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
-                        }
-                        rust_htslib::bam::record::Aux::ArrayI16(i) => {
-                            format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
-                        }
-                        rust_htslib::bam::record::Aux::ArrayU16(i) => {
-                            format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
-                        }
-                        rust_htslib::bam::record::Aux::ArrayI32(i) => {
-                            format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
-                        }
-                        rust_htslib::bam::record::Aux::ArrayU32(i) => {
-                            format!("{tag}:B:i,{}", i.iter().fold(String::new(), fold_func))
-                        }
-                        rust_htslib::bam::record::Aux::ArrayFloat(i) => {
-                            format!("{tag}:B:f,{}", i.iter().fold(String::new(), fold_func))
-                        }
-                    }
-                })
-                .collect();
-
-            let mut row: Vec<String> = vec![
-                String::from_utf8(record.qname().to_vec()).unwrap(),
-                record.flags().to_string(),
-                contig.to_string(),
-                record.pos().to_string(),
-                record.mapq().to_string(),
-                record.cigar().to_string(),
-                // record.mtid().to_string(),
-                "*".to_string(),
-                // record.mpos().to_string(),
-                "0".to_string(),
-                // seq.len().to_string(),
-                "0".to_string(),
-                seq,
-                "*".to_string(),
-                // String::from_utf8(record.qual().to_vec()).unwrap(),
-            ];
-
-            row.extend(aux);
-
-            row.push(format!("ht:i:{}", best_match_idx,));
-            row.push(format!(
-                "sc:B:i,{},{}",
-                haplotype_score[0], haplotype_score[1],
-            ));
-
-            // let row = vec![
-            //     contig.to_string(),
-            //     (record.pos() + 1).to_string(),
-            //     best_match_idx.to_string(),
-            //     haplotype_score[0].to_string(),
-            //     haplotype_score[1].to_string(),
-            //     seq_len.to_string(),
-            //     format!("\"{positions_debug:?}\"")
-            //         .replace(", ", ";")
-            //         .replace("[", "")
-            //         .replace("]", ""),
-            // ];
-            collector_tx.send(row)?;
-            // println!(
-            //     "{:?} {:?} {:?} {:?}",
-            //     record.pos(),
-            //     best_match_idx,
-            //     haplotype_score,
-            //     seq_len,
-            // );
-        }
+        collector_tx.send(row)?;
 
         Ok(())
     }
 }
-
-// mod slider {
-//     // MIT License
-
-//     // Copyright (c) 2021 Lianming Du
-
-//     // Permission is hereby granted, free of charge, to any person obtaining a copy
-//     // of this software and associated documentation files (the "Software"), to deal
-//     // in the Software without restriction, including without limitation the rights
-//     // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-//     // copies of the Software, and to permit persons to whom the Software is
-//     // furnished to do so, subject to the following conditions:
-
-//     // The above copyright notice and this permission notice shall be included in all
-//     // copies or substantial portions of the Software.
-
-//     // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-//     // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-//     // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-//     // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-//     // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-//     // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-//     // SOFTWARE.
-
-//     // https://github.com/lmdu/pytrf/blob/master/src/str.c
-//     //
-
-//     use std::collections::HashMap;
-
-//     #[derive(Debug, Clone)]
-//     pub struct Ssr {
-//         pub motif_len: usize,
-//         pub repeats: usize,
-//         pub length: usize,
-//         pub start: usize,
-//         pub end: usize,
-//         pub motif: String,
-//     }
-
-//     #[derive(Debug, Clone)]
-//     pub struct Slider {
-//         next_start: usize,
-//         size: usize,
-//         seq: String,
-//         boundary: HashMap<usize, usize>,
-//         min_lens: HashMap<usize, usize>,
-//         min_len: usize,
-//     }
-
-//     impl Slider {
-//         pub fn new(seq: String, min_len: usize) -> Self {
-//             let mono = 12;
-//             let di = 7;
-//             let tri = 5;
-//             let tetra = 4;
-//             let penta = 4;
-//             let hexa = 4;
-
-//             let size = seq.len();
-
-//             let mut boundary = HashMap::new();
-
-//             for i in 0..7 {
-//                 boundary.insert(i, size - i);
-//             }
-
-//             let mut min_lens = HashMap::new();
-//             min_lens.insert(0, 0);
-//             min_lens.insert(1, mono * 1);
-//             min_lens.insert(2, di * 2);
-//             min_lens.insert(3, tri * 3);
-//             min_lens.insert(4, tetra * 4);
-//             min_lens.insert(5, penta * 5);
-//             min_lens.insert(6, hexa * 6);
-
-//             Self {
-//                 next_start: 0,
-//                 size,
-//                 seq,
-//                 boundary,
-//                 min_lens,
-//                 min_len,
-//             }
-//         }
-//     }
-
-//     impl Iterator for Slider {
-//         type Item = Ssr;
-
-//         fn next(&mut self) -> Option<Self::Item> {
-//             // current start position
-//             let mut cs: usize;
-
-//             // boundary position
-//             let mut b: usize;
-
-//             // repeat length
-//             let mut rl: usize;
-
-//             // current slide position
-//             for mut i in self.next_start..self.size {
-//                 //remove unkown base
-//                 // if (self.seq[i] == 78) {
-//                 // continue;
-//                 // }
-
-//                 cs = i;
-
-//                 for j in self.min_len..=6 {
-//                     b = self.boundary[&j];
-
-//                     while i < b && self.seq.chars().nth(i) == self.seq.chars().nth(i + j) {
-//                         i = i + 1;
-//                     }
-
-//                     rl = i + j - cs;
-
-//                     if rl >= self.min_lens[&j] {
-//                         let ssr = Ssr {
-//                             motif_len: j,
-//                             length: rl,
-//                             repeats: rl / j,
-//                             start: cs,
-//                             end: cs + rl - 1,
-//                             motif: self.seq[cs..cs + j].to_string(),
-//                         };
-
-//                         self.next_start = ssr.end;
-//                         return Some(ssr);
-//                     }
-
-//                     i = cs;
-//                 }
-//             }
-
-//             return None;
-//         }
-//     }
-
-//     #[cfg(test)]
-//     mod tests {
-//         use super::*;
-
-//         #[test]
-//         fn slider() {
-//             //
-//             // Indexing
-//             // 0 1 2 3........................29 30...
-//             // T G C GAAGAAGAAGAAGAAGAAGAAGAAGAA CGTGAGGCGAGCTAGC
-//             //
-//             let mut slider = Slider::new(
-//                 "TGCGAAGAAGAAGAAGAAGAAGAAGAAGAACGTGAGGCGAGCTAGC".to_string(),
-//                 1,
-//             );
-
-//             let ssr = slider.next().unwrap();
-
-//             assert_eq!(ssr.motif, "GAA");
-//             assert_eq!(ssr.motif_len, 3);
-//             assert_eq!(ssr.repeats, 9);
-//             assert_eq!(ssr.start, 3);
-//             assert_eq!(ssr.end, 29);
-//         }
-//     }
-// }
 
 mod utils {
     use std::fs::File;
@@ -742,6 +464,8 @@ mod utils {
 
     use gxhash::GxBuildHasher;
     use indexmap::IndexMap;
+
+    use crate::error::Error;
 
     /// A `HashMap` using a (DOS-resistant) [`GxBuildHasher`].
     pub type HashMap<K, V> = IndexMap<K, V, GxBuildHasher>;
@@ -774,8 +498,8 @@ mod utils {
             .unwrap();
 
         let header: noodles::sam::Header = match extension {
-            "cram" => File::open(path) .map(noodles::cram::io::Reader::new)?.read_header()?,
-            "bam" => File::open(path) .map(noodles::bam::io::Reader::new)?.read_header()?,
+            "cram" => File::open(path).map(noodles::cram::io::Reader::new).wrap_err(Error::Io { path: path.clone()})?.read_header()?,
+            "bam" => File::open(path).map(noodles::bam::io::Reader::new).wrap_err(Error::Io {path: path.clone()})?.read_header()?,
             e => return Err(eyre!("unknown file extension {e} for {path:?}")),
         };
 

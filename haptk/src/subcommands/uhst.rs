@@ -4,6 +4,8 @@ use color_eyre::{
     eyre::{ensure, eyre},
     Result,
 };
+use crossbeam_channel::unbounded;
+use indexmap::IndexMap;
 use petgraph::Graph;
 use petgraph::{graph::NodeIndex, Direction};
 use rayon::prelude::*;
@@ -61,8 +63,11 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
     let first_and_mbah_nodes = vec
         // .par_iter()
         .iter()
-        .map(|direction| -> Result<(Node, Node)> {
+        .map(|direction| -> Result<(Node, Node, PairWiseMatrix)> {
             let uhst = construct_uhst(&mut vcf, direction, &start, min_size, false)?;
+
+            // Calulate pair-wise sharing matrix
+            let pair_wise: PairWiseMatrix = calculate_pair_wise(&vcf, &uhst);
 
             // Find first, second last and last nodes on the majority branch
             // for downstream analyses
@@ -99,9 +104,9 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
 
             bhst::write_hst_file(uhst, &vcf, hst_output, publish, args.clone(), hst_type)?;
 
-            Ok((first_maj_node, last_node))
+            Ok((first_maj_node, last_node, pair_wise))
         })
-        .collect::<Result<Vec<(Node, Node)>>>()?;
+        .collect::<Result<Vec<(Node, Node, PairWiseMatrix)>>>()?;
 
     tracing::debug!("Finished constructing unilateral HSTs");
 
@@ -136,6 +141,47 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
     write_haplotype(ancestral_haplotype.clone(), writer)?;
     tracing::debug!("Finished writing majority based ancestral haplotype");
 
+    // Pair-wise matrix
+    let pairwise_left = first_and_mbah_nodes[0].2.clone();
+    let pairwise_right = first_and_mbah_nodes[1].2.clone();
+
+    let mut header = vec!["id".to_string()];
+
+    header.extend(
+        pairwise_left
+            .iter()
+            .map(|(id, _v)| vcf.get_sample_name(*id)),
+    );
+
+    let mut rows = vec![header];
+    for ((id, left), (_, right)) in pairwise_left.iter().zip(pairwise_right.iter()) {
+        let name = vcf.get_sample_name(*id);
+        let mut sum = vec![name];
+
+        for ((_, (start, _, v1)), (_, (_, stop, v2))) in left.iter().zip(right.iter()) {
+            let value = if start == stop && *v1 && *v2 {
+                1
+            } else if start == stop {
+                0
+            } else {
+                stop.saturating_sub(*start) + 1
+            };
+
+            sum.push(value.to_string());
+        }
+
+        rows.push(sum);
+    }
+    let mut sh_output = args.output.clone();
+    push_to_output(&args, &mut sh_output, "pair-wise", "csv");
+    let mut writer = open_csv_writer(sh_output)?;
+
+    for row in rows {
+        writer.write_record(row)?;
+    }
+
+    // Shared haplotype ranges
+    //
     // Vec into Map for speed up
     let ht: HashMap<Coord, HapVariant> = ancestral_haplotype
         .into_iter()
@@ -159,9 +205,146 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
         range_length_avg(&shared_ranges),
         range_length_median(&shared_ranges)
     );
+
     tracing::debug!("Finished writing ancestral segment lengths");
 
     Ok(())
+}
+
+pub type PairWiseMatrix = Vec<(usize, IndexMap<usize, (u64, u64, bool)>)>;
+
+// Length is 1 SNP too much to both directions
+pub fn calculate_pair_wise(vcf: &PhasedMatrix, hst: &Graph<Node, ()>) -> PairWiseMatrix {
+    //
+    let (tx, rx) = unbounded();
+
+    // Iterate all leaf nodes
+    hst.node_indices()
+        // .par_bridge()
+        .filter(|n| hst.edges_directed(*n, Direction::Outgoing).count() == 0)
+        .for_each(|leaf| {
+            let data = hst.node_weight(leaf).unwrap();
+
+            // Get parent node
+            let parent_node = hst
+                .neighbors_directed(leaf, Direction::Incoming)
+                .next()
+                .unwrap();
+
+            let parent_data = hst.node_weight(parent_node).unwrap();
+
+            // Collect all leaf node idxs
+            for leaf_sample_idx in &data.indexes {
+                let mut row = IndexMap::new();
+
+                // Iterate leaf node indexes
+                for other_sample_idx in &parent_data.indexes {
+                    // Insert the length if the pair does not already have a length
+
+                    if data.stop == data.start {
+                        let ht_other = vcf.find_u8_haplotype_for_sample(
+                            &data.start..=&data.stop,
+                            *other_sample_idx,
+                        );
+                        let ht_this = vcf.find_u8_haplotype_for_sample(
+                            &data.start..=&data.stop,
+                            *leaf_sample_idx,
+                        );
+                        row.entry(*other_sample_idx).or_insert((
+                            data.start.pos,
+                            data.stop.pos,
+                            ht_this == ht_other,
+                        ));
+                    }
+
+                    let stop = vcf.coords().range(..&data.stop).next_back().unwrap();
+                    let start = vcf
+                        .coords()
+                        .range(&data.start..)
+                        .nth(1)
+                        .unwrap_or(vcf.coords().range(&data.start..).nth(0).unwrap());
+
+                    row.entry(*other_sample_idx)
+                        .or_insert((start.pos, stop.pos, false));
+                }
+
+                // Start recursion up the branch
+                recurse_branch(vcf, hst, parent_node, *leaf_sample_idx, &mut row);
+
+                row.sort_by_key(|id, _length| *id);
+
+                let _ = tx.send((*leaf_sample_idx, row));
+            }
+        });
+
+    drop(tx);
+
+    let mut rows: PairWiseMatrix = vec![];
+
+    while let Ok(row) = rx.recv() {
+        rows.push(row);
+    }
+
+    rows.sort_by_key(|(id, _row)| *id);
+
+    rows
+}
+
+fn recurse_branch(
+    vcf: &PhasedMatrix,
+    hst: &Graph<Node, ()>,
+    node: NodeIndex,
+    leaf_idx: usize,
+    row: &mut IndexMap<usize, (u64, u64, bool)>,
+) {
+    let data = hst.node_weight(node).unwrap();
+
+    let stop = vcf.coords().range(..&data.stop).next_back().unwrap();
+    let start = vcf
+        .coords()
+        .range(&data.start..)
+        .nth(1)
+        .unwrap_or(vcf.coords().range(&data.start..).nth(0).unwrap());
+
+    if let Some(parent_node) = hst.neighbors_directed(node, Direction::Incoming).next() {
+        let parent_data = hst.node_weight(parent_node).unwrap();
+
+        for other_sample_idx in &parent_data.indexes {
+            if data.stop == data.start {
+                let ht_other =
+                    vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, *other_sample_idx);
+                let ht_this = vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, leaf_idx);
+
+                row.entry(*other_sample_idx).or_insert((
+                    data.start.pos,
+                    data.stop.pos,
+                    ht_other == ht_this,
+                ));
+            } else {
+                row.entry(*other_sample_idx)
+                    .or_insert((start.pos, stop.pos, false));
+            }
+        }
+
+        recurse_branch(vcf, hst, parent_node, leaf_idx, row);
+    } else {
+        for other_sample_idx in &data.indexes {
+            let ht_other =
+                vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, *other_sample_idx);
+            let ht_this = vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, leaf_idx);
+
+            if data.stop == data.start {
+                row.entry(*other_sample_idx).or_insert((
+                    data.start.pos,
+                    data.stop.pos,
+                    ht_other == ht_this,
+                ));
+            } else {
+                row.entry(*other_sample_idx)
+                    .or_insert((start.pos, stop.pos, false));
+            }
+        }
+    }
 }
 
 #[doc(hidden)]
