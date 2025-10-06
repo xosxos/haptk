@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::path::PathBuf;
 
 use color_eyre::Result;
-use ndarray::{Array2, ArrayView1, Axis};
+use ndarray::ArrayView1;
 use serde::{Deserialize, Serialize};
 
 use crate::args::Selection;
@@ -10,7 +10,7 @@ use crate::error::Error;
 use crate::read_vcf::read_shard_of_vcf;
 use crate::subcommands::uhst::LocDirection;
 
-use super::phased_matrix::PhasedMatrix;
+use super::phased_matrix::{Matrix, PhasedMatrix};
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Coord {
@@ -265,10 +265,10 @@ pub trait CoordDataSlot {
     fn read_more(&mut self, error: Error) -> Result<()>;
 }
 
-pub fn is_contradictory_by_idx(matrix: &Array2<u8>, positions: &[usize], index: usize) -> bool {
-    let slot = matrix.index_axis(Axis(1), index);
+pub fn is_contradictory_by_idx(matrix: &Matrix, positions: &[usize], variant_idx: usize) -> bool {
+    let genotypes = matrix.genotypes(variant_idx);
     let first = positions[0];
-    slot.len() > 1 && positions.iter().any(|x| slot[*x] != slot[first])
+    genotypes.len() > 1 && positions.iter().any(|x| genotypes[*x] != genotypes[first])
 }
 
 impl CoordDataSlot for PhasedMatrix {
@@ -288,26 +288,28 @@ impl CoordDataSlot for PhasedMatrix {
             return Ok(None);
         }
 
-        let (matrix_key, index) = &self.indexer[coord];
+        let (matrix_key, variant_idx) = &self.indexer[coord];
 
-        let (mut travel, mut index, mut past_first) = (0, *index as isize, false);
+        let (mut travel, mut variant_idx, mut past_first) = (0, *variant_idx as isize, false);
 
         for (_key, prev_matrix) in self.matrix.range(..=matrix_key.clone()).rev() {
             match past_first {
-                true => index = prev_matrix.ncols() as isize - 1,
-                false => index -= 1,
+                true => variant_idx = prev_matrix.ncols() as isize - 1,
+                false => variant_idx -= 1,
             }
 
-            while index >= 0 {
-                match is_contradictory_by_idx(prev_matrix, positions, index as usize) {
+            while variant_idx >= 0 {
+                match is_contradictory_by_idx(prev_matrix, positions, variant_idx as usize) {
                     true => {
                         let new_coord = self.coords().range(..coord).rev().nth(travel).unwrap();
-                        let view = prev_matrix.index_axis(Axis(1), index as usize);
-                        return Ok(Some((new_coord, view)));
+
+                        let genotypes = prev_matrix.genotypes(variant_idx as usize);
+
+                        return Ok(Some((new_coord, genotypes)));
                     }
                     false => travel += 1,
                 }
-                index -= 1;
+                variant_idx -= 1;
             }
 
             past_first = true;
@@ -327,26 +329,28 @@ impl CoordDataSlot for PhasedMatrix {
         if positions.len() < 2 {
             return Ok(None);
         }
-        let (matrix_key, index) = &self.indexer[coord];
+        let (matrix_key, variant_idx) = &self.indexer[coord];
 
-        let (mut travel, mut index, mut past_first) = (0, *index, false);
+        let (mut travel, mut variant_idx, mut past_first) = (0, *variant_idx, false);
 
         for (_key, next_matrix) in self.matrix.range(matrix_key.clone()..) {
             match past_first {
-                true => index = 0,
-                false => index += 1,
+                true => variant_idx = 0,
+                false => variant_idx += 1,
             }
 
-            while index < next_matrix.ncols() {
-                match is_contradictory_by_idx(next_matrix, positions, index) {
+            while variant_idx < next_matrix.ncols() {
+                match is_contradictory_by_idx(next_matrix, positions, variant_idx) {
                     true => {
                         let new_coord = self.coords().range(coord..).skip(1).nth(travel).unwrap();
-                        let view = next_matrix.index_axis(Axis(1), index);
-                        return Ok(Some((new_coord, view)));
+
+                        let genotypes = next_matrix.genotypes(variant_idx);
+
+                        return Ok(Some((new_coord, genotypes)));
                     }
                     false => travel += 1,
                 };
-                index += 1;
+                variant_idx += 1;
             }
 
             past_first = true;

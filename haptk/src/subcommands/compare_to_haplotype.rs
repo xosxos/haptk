@@ -186,7 +186,7 @@ pub fn run(
     if want_npy {
         let mut npy_output = args.output.clone();
         push_to_output(&args, &mut npy_output, "ht_comparison", "npy");
-        ndarray_npy::write_npy(npy_output, vcf.matrix())?;
+        vcf.write_npy(&npy_output)?;
     }
 
     let index_order = sort_indexes_for_diff_graph(
@@ -221,6 +221,7 @@ pub fn run(
         mark_shorter_alleles,
         only_longest.as_ref(),
     );
+
     dg.draw_graph(&index_order);
     svg::save(img_output, &dg.document)?;
     tracing::debug!("Finished drawing graph");

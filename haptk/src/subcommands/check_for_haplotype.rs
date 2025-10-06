@@ -90,14 +90,14 @@ pub fn identical_haplotype_count(vcf: &PhasedMatrix, ht: &[HapVariant]) -> Vec<u
 
     if indexes.is_empty() {
         return vec![];
-    }
+    }    
 
     (0..vcf.nhaplotypes()).filter(|sample_idx| {
         let mut no_mismatch = true;
         for ((key_coord, var_idx), ht_idx) in &indexes {
             let matrix = vcf.matrix.get(key_coord).unwrap();
 
-              if matrix[[*sample_idx, *var_idx]] != ht[*ht_idx].gt {
+            if matrix.genotype(*sample_idx, *var_idx) != ht[*ht_idx].gt {
                 no_mismatch = false;
                 break;
             }

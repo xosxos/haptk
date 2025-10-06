@@ -1,5 +1,3 @@
-use ndarray::s;
-// use color_eyre::Result;
 use svg::node::element::path::Data;
 use svg::node::element::Element;
 use svg::node::element::Path;
@@ -100,21 +98,21 @@ impl<'a> MatrixGraph<'a> {
         self.marker_width = self.s.width / ncols as f32;
         self.row_height = (self.s.height - (self.s.height) * 0.015) / nrows as f32;
 
-        for (y, row_idx) in order.iter().enumerate() {
-            let row = self
-                .vcf
-                .matrix
-                .values()
-                .flat_map(|matrix| matrix.slice(s![*row_idx, 0..matrix.ncols()]).into_iter());
+        for (y, sample_idx) in order.iter().enumerate() {
+            let rows = self.vcf.matrix.values().flat_map(|matrix| {
+                matrix
+                    .haplotype(*sample_idx, 0..=(matrix.nvariants().saturating_sub(1)))
+                    .into_iter()
+            });
 
-            for (x, gt) in row.enumerate() {
+            for (x, gt) in rows.enumerate() {
                 self.create_box(
                     Point {
-                        gt: *gt,
+                        gt,
                         x: x as f32,
                         y: y as f32,
                     },
-                    *row_idx,
+                    *sample_idx,
                     x,
                 );
             }

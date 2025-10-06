@@ -3,6 +3,8 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::ops::Bound;
 use std::ops::RangeBounds;
+use std::ops::RangeInclusive;
+use std::path::Path;
 use std::sync::Arc;
 
 use color_eyre::{eyre::ensure, Result};
@@ -25,10 +27,52 @@ use super::structs::Ploidy;
 use super::structs::ReadMetadata;
 
 #[derive(Debug, Default, Clone)]
+pub struct Matrix {
+    pub data: Array2<u8>,
+}
+
+impl Matrix {
+    fn new(data: Array2<u8>) -> Self {
+        Self { data }
+    }
+
+    pub fn haplotype(&self, sample_idx: usize, range: RangeInclusive<usize>) -> Vec<u8> {
+        self.data.slice(s![sample_idx, range]).to_vec()
+    }
+
+    pub fn genotype(&self, sample_idx: usize, var_idx: usize) -> u8 {
+        self.data[[sample_idx, var_idx]]
+    }
+
+    pub fn genotypes(
+        &self,
+        variant_idx: usize,
+    ) -> ndarray::ArrayBase<ndarray::ViewRepr<&u8>, ndarray::Dim<[usize; 1]>> {
+        self.data.index_axis(Axis(1), variant_idx)
+    }
+
+    pub fn nrows(&self) -> usize {
+        self.data.nrows()
+    }
+
+    pub fn ncols(&self) -> usize {
+        self.data.ncols()
+    }
+
+    pub fn nhaplotypes(&self) -> usize {
+        self.data.nrows()
+    }
+
+    pub fn nvariants(&self) -> usize {
+        self.data.ncols()
+    }
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct PhasedMatrix {
     pub start_coord: Coord,
     pub variant_idx: usize,
-    pub matrix: BTreeMap<Arc<Coord>, Array2<u8>>,
+    pub matrix: BTreeMap<Arc<Coord>, Matrix>,
     samples: Vec<String>,
     coords: BTreeSet<Coord>,
     pub indexer: HashMap<Coord, (Arc<Coord>, usize)>,
@@ -55,7 +99,7 @@ impl PhasedMatrix {
             .collect();
 
         let mut map = BTreeMap::new();
-        map.insert(start.clone(), matrix);
+        map.insert(start.clone(), Matrix::new(matrix));
 
         Self {
             variant_idx,
@@ -89,7 +133,7 @@ impl PhasedMatrix {
         match self.indexer.get(coord) {
             Some((matrix_key, index)) => {
                 let matrix = self.matrix.get(matrix_key).unwrap();
-                matrix[[x, *index]]
+                matrix.data[[x, *index]]
             }
             None => {
                 let nearest_coord = self.get_nearest_coord_by_pos(coord.pos);
@@ -100,7 +144,7 @@ impl PhasedMatrix {
                 );
                 let (matrix_key, index) = self.indexer.get(nearest_coord).unwrap();
                 let matrix = self.matrix.get(matrix_key).unwrap();
-                matrix[[x, *index]]
+                matrix.data[[x, *index]]
             }
         }
     }
@@ -113,11 +157,12 @@ impl PhasedMatrix {
 
         let matrix = self.matrix.get(matrix).unwrap();
 
-        matrix.index_axis(Axis(1), *index)
+        matrix.genotypes(*index)
     }
 
     pub fn insert_matrix(&mut self, start_coord: Coord, matrix: Array2<u8>) {
-        self.matrix.insert(Arc::new(start_coord), matrix);
+        self.matrix
+            .insert(Arc::new(start_coord), Matrix::new(matrix));
     }
 
     // Sort inside select_rows to avoid bugs down the line
@@ -134,7 +179,7 @@ impl PhasedMatrix {
     pub fn matrix_select(&mut self, axis: usize, to_keep: &[usize]) {
         if axis == 0 {
             for (_, matrix) in self.matrix.iter_mut() {
-                *matrix = matrix.select(Axis(0), to_keep)
+                *matrix = Matrix::new(matrix.data.select(Axis(0), to_keep))
             }
         } else {
             unreachable!("matrix select on columns is not yet implemented")
@@ -543,9 +588,7 @@ impl PhasedMatrix {
 
         if matrix_key_first == matrix_key_last {
             let matrix = self.matrix.get(matrix_key_first).unwrap();
-            return matrix
-                .slice(s![sample, *index_first..=*index_last])
-                .to_vec();
+            return matrix.haplotype(sample, *index_first..=*index_last);
         }
 
         self.matrix
@@ -561,9 +604,7 @@ impl PhasedMatrix {
                     false => 0,
                 };
 
-                next_matrix
-                    .slice(s![sample, index_start..=index_stop])
-                    .to_vec()
+                next_matrix.haplotype(sample, index_start..=index_stop)
             })
             .collect()
     }
@@ -571,13 +612,13 @@ impl PhasedMatrix {
     // NOTE: Legacy compare-to-haplotype methods, will be deprecated when index based access to matrices is completely removed
     pub fn matrix_axis_iter(&self, axis: usize) -> AxisIter<'_, u8, ndarray::Dim<[usize; 1]>> {
         let (_, matrix) = self.matrix.iter().nth(0).unwrap();
-        matrix.axis_iter(Axis(axis))
+        matrix.data.axis_iter(Axis(axis))
     }
 
     pub fn set_matrix(&mut self, start_coord: Coord, matrix: Array2<u8>) {
         let mut map = BTreeMap::new();
 
-        map.insert(Arc::new(start_coord), matrix);
+        map.insert(Arc::new(start_coord), Matrix::new(matrix));
         self.matrix = map;
     }
 
@@ -592,11 +633,12 @@ impl PhasedMatrix {
 
         let (_, matrix) = self.matrix.iter().nth(0).unwrap();
 
-        matrix.slice(s![.., col_first_idx..=col_last_idx])
+        matrix.data.slice(s![.., col_first_idx..=col_last_idx])
     }
 
-    pub fn matrix(&self) -> &Array2<u8> {
+    pub fn write_npy(&self, path: &Path) -> Result<()> {
         let (_, matrix) = self.matrix.iter().nth(0).unwrap();
-        matrix
+        ndarray_npy::write_npy(path, &matrix.data)?;
+        Ok(())
     }
 }
