@@ -1,4 +1,6 @@
-use color_eyre::eyre::{eyre, OptionExt, WrapErr};
+use color_eyre::eyre::eyre;
+use color_eyre::eyre::OptionExt;
+use color_eyre::eyre::WrapErr;
 use color_eyre::Result;
 
 use crate::error::Error;
@@ -116,10 +118,76 @@ pub fn centromeres_hg38(chr: &str) -> (u64, u64) {
     }
 }
 
+pub use range_division::RangeDivisions;
+
+//
+// The MIT License (c) 2018
+// https://github.com/millardjn/divide_range
+// https://docs.rs/divide_range/0.1.1/divide_range/trait.RangeDivisions.html
+//
+mod range_division {
+    use num_traits::FromPrimitive;
+    use num_traits::Num;
+
+    use std::ops::Range;
+
+    /// Split range into an iterator of smaller ranges
+    pub trait RangeDivisions<T: Num + FromPrimitive + PartialOrd + Copy> {
+        fn divide_evenly_into(self, divisions: usize) -> Even<T>;
+    }
+
+    impl<T: Num + FromPrimitive + PartialOrd + Copy> RangeDivisions<T> for Range<T> {
+        fn divide_evenly_into(self, divisions: usize) -> Even<T> {
+            Even {
+                next_start: self.start,
+                next_end: self.start,
+                end: self.end,
+                div_remaining: divisions,
+            }
+        }
+    }
+
+    pub struct Even<T: Num + FromPrimitive + PartialOrd + Copy> {
+        next_start: T,
+        next_end: T,
+        end: T,
+        div_remaining: usize,
+    }
+
+    impl<T: Num + FromPrimitive + PartialOrd + Copy> Iterator for Even<T> {
+        type Item = Range<T>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.div_remaining > 0 {
+                self.next_start = self.next_end;
+                if self.next_start < self.end {
+                    self.next_end = self.next_start
+                        + (self.end - self.next_start)
+                            / T::from_usize(self.div_remaining)
+                                .expect("divisions usize cannot be converted to range type");
+                } else {
+                    self.next_end = self.next_start
+                        - (self.next_start - self.end)
+                            / T::from_usize(self.div_remaining)
+                                .expect("divisions usize cannot be converted to range type");
+                }
+
+                self.div_remaining -= 1;
+
+                Some(self.next_start..self.next_end)
+            } else {
+                None
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[rustfmt::skip]
 mod tests {
     use super::*;
+
+	use super::RangeDivisions;
 
 
     #[test]
@@ -147,6 +215,19 @@ mod tests {
         let result = parse_coords("chr9:1920--2500");
         assert!(result.is_err())
     }
+	
+	#[test]
+	fn even_forward() {
+		let range = 1..18;
+		let mut iter = range.divide_evenly_into(5);
+
+		assert_eq!(Some(1..4), iter.next());
+		assert_eq!(Some(4..7), iter.next());
+		assert_eq!(Some(7..10), iter.next());
+		assert_eq!(Some(10..14), iter.next());
+		assert_eq!(Some(14..18), iter.next());
+		assert_eq!(None, iter.next());
+	}
 
     #[test]
     #[ignore]

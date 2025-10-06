@@ -24,7 +24,8 @@
     clippy::default_trait_access,
     clippy::struct_field_names,
     clippy::unused_self,
-    clippy::iter_nth_zero
+    clippy::iter_nth_zero,
+    clippy::needless_return
 )]
 
 // HATK - Haplotype analysis toolkit

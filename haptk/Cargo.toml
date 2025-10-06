@@ -35,7 +35,7 @@ default      = ["clap"]
 no-clap      = []
 clap         = ["dep:clap", "dep:anstyle"]
 enum_methods = ["dep:strum"]
-haplotag = ["dep:num-traits", "dep:gxhash", "dep:regex", "dep:noodles", "dep:crossbeam-channel"]
+haplotag = ["dep:gxhash", "dep:regex", "dep:noodles", "dep:crossbeam-channel"]
 experimental = ["clap", "dep:fishers_exact", "dep:polars", "dep:serde_with", "haplotag"]
 
 [dependencies]
@@ -66,6 +66,7 @@ image = { version = "0.25", default-features = false, features = ['png'] }
 statrs = { version = "0.16", default-features = false }
 chrono = { version = "0.4.38" }
 
+num-traits = {version = "0.2"}
 
 # Cli
 clap = { version = "=4.4.18", optional = true, features = ["derive"] }
@@ -80,7 +81,6 @@ serde_with = { version = "3.11", optional = true }
 strum = { version = "0.26.3", features = ["derive"], optional = true } 
 
 # Haplotag
-num-traits = {version = "0.2", optional = true }
 gxhash = { version = "3.4.1", optional = true }
 regex = { version = "1.11", optional = true }
 crossbeam-channel = { version = "0.5.13", optional = true }

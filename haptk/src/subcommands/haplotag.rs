@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ops::Range;
-use std::path::Path;
 use std::path::PathBuf;
 use std::thread;
 use std::thread::JoinHandle;
@@ -14,13 +13,11 @@ use rayon::prelude::*;
 use crate::args::Selection;
 use crate::args::StandardArgs;
 use crate::core::bam;
-use crate::core::bam::Writer;
 use crate::core::cigar_iterator::CigarIterType;
 use crate::core::cigar_iterator::CigarIterator;
+use crate::core::utils::RangeDivisions;
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::CigarVariant;
-
-use utils::RangeDivisions;
 
 #[doc(hidden)]
 pub fn run(
@@ -35,28 +32,27 @@ pub fn run(
         "Only running with phased data and all chromosomes is supported."
     );
 
-    let output = args.output.clone();
-    let conf = Configuration { threads };
+    let conf = Configuration {
+        threads,
+        ref_path: ref_file,
+        output: Some(args.output.clone()),
+    };
 
     if args.include_indels {
         args.include_indels = false;
         tracing::info!("Setting `include_indels` to false for haplotagging");
     }
 
-    run_haplotag(
-        &args,
-        vec![bam_file],
-        &ref_file,
-        Some(output),
-        contigs,
-        conf,
-    )?;
+    run_haplotag(&args, vec![bam_file], contigs, conf)?;
 
     Ok(())
 }
 
+#[derive(Debug, Clone)]
 pub struct Configuration {
     pub threads: usize,
+    pub output: Option<PathBuf>,
+    pub ref_path: PathBuf,
 }
 
 pub type ChannelObj = Vec<String>;
@@ -64,8 +60,6 @@ pub type ChannelObj = Vec<String>;
 pub fn run_haplotag(
     args: &StandardArgs,
     paths: Vec<PathBuf>,
-    ref_path: &Path,
-    output: Option<PathBuf>,
     contigs: Vec<String>,
     conf: Configuration,
 ) -> Result<()> {
@@ -81,7 +75,7 @@ pub fn run_haplotag(
 
     let (collector_tx, collector_rx) = unbounded();
 
-    let collector_handle = spawn_collector(collector_rx, output, file_path, ref_path.to_path_buf());
+    let collector_handle = spawn_collector(collector_rx, file_path, conf.clone());
 
     // Find insertions for all samples in each contig,
     thread::scope(|_s| -> Result<()> {
@@ -173,7 +167,7 @@ pub fn run_haplotag(
                             .try_for_each(|range| -> Result<()> {
                                 iterate_region(
                                     &sample_id_and_bam_paths,
-                                    ref_path,
+                                    &conf,
                                     &contig,
                                     range,
                                     &collector_tx,
@@ -197,7 +191,7 @@ pub fn run_haplotag(
                                 tracing::info!("checking range {:?}", range);
                                 iterate_region(
                                     &sample_id_and_bam_paths,
-                                    ref_path,
+                                    &conf,
                                     &contig,
                                     range,
                                     &collector_tx,
@@ -217,6 +211,189 @@ pub fn run_haplotag(
     collector_handle.join().unwrap()?;
 
     Ok(())
+}
+
+pub fn iterate_region(
+    sample_id_and_bam_paths: &[(String, PathBuf)],
+    conf: &Configuration,
+    contig: &str,
+    range: Range<u32>,
+    collector_tx: &Sender<ChannelObj>,
+    haplotypes: &HashMap<String, BTreeMap<CigarVariant, Vec<u8>>>,
+    ploidy: usize,
+) -> Result<()> {
+    // Individual level merges and process
+    sample_id_and_bam_paths
+        .iter()
+        .enumerate()
+        // .par_bridge()
+        .try_for_each(|(_sample_idx, (sample_id, bam_path))| -> Result<()> {
+            tracing::info!("Searching insertions from {contig} for {sample_id}");
+
+            let mut rdr =
+                bam::Reader::from_path(bam_path, &conf.ref_path, contig, &range, sample_id)?;
+
+            rdr.records().try_for_each(|record| {
+                match_cigar_to_haplotype(
+                    record,
+                    contig,
+                    sample_id,
+                    collector_tx,
+                    haplotypes,
+                    ploidy,
+                )
+            })?;
+
+            tracing::info!("Unloading reads");
+            Ok(())
+        })?;
+
+    Ok(())
+}
+
+fn match_cigar_to_haplotype<'a>(
+    record: bam::Record,
+    contig: &'a str,
+    sample_id: &'a str,
+    collector_tx: &Sender<ChannelObj>,
+    haplotypes: &HashMap<String, BTreeMap<CigarVariant, Vec<u8>>>,
+    ploidy: usize,
+) -> Result<()> {
+    let seq_len = record.seq().len();
+
+    if seq_len == 0 {
+        return Ok(());
+    }
+
+    let haplotype_map = haplotypes.get(sample_id).unwrap();
+
+    let mut haplotype_score = vec![0; ploidy];
+    // let mut positions_debug = vec![];
+
+    let seq = record.seq();
+
+    CigarIterator::new(
+        record.cigar(),
+        record.pos(),
+        &seq,
+        sample_id,
+        false,
+        u64::MAX,
+    )
+    .for_each(|cigar_item| {
+        if let CigarIterType::Match(ref_pos, _, seq) = cigar_item {
+            // 0-based positions from HTSLib, change to 1-based positions
+            let ref_pos = ref_pos + 1;
+
+            // println!("match: {} {}", pos, seq);
+            let start = CigarVariant {
+                pos: ref_pos,
+                alt: 'A',
+            };
+
+            let stop = CigarVariant {
+                pos: (ref_pos + (seq.len() - 1) as u64),
+                alt: 'X',
+            };
+
+            for (variant, gts) in haplotype_map.range(start..=stop) {
+                // Because the sequence in a Cigar::Match is identical to the reference sequence,
+                // we can use ref_pos based indexes to index the Match sequence
+                let query_pos = variant.pos - ref_pos;
+
+                let allele = seq.chars().nth(query_pos as usize).unwrap();
+
+                for (i, gt) in gts.iter().enumerate() {
+                    if gt == &1 && variant.alt == allele {
+                        haplotype_score[i] += 1;
+
+                        // positions_debug.push(variant.pos);
+                    }
+                }
+            }
+        }
+    });
+
+    let seq = String::from_utf8(seq).unwrap();
+
+    let mut row: Vec<String> = vec![
+        record.qname(),
+        record.flags().to_string(),
+        contig.to_string(),
+        // Convert back to 1-based positions
+        (record.pos() + 1).to_string(),
+        record.mapq().to_string(),
+        record.cigar_string().to_string(),
+        // record.mtid().to_string(),
+        "*".to_string(),
+        // record.mpos().to_string(),
+        "0".to_string(),
+        // seq.len().to_string(),
+        "0".to_string(),
+        seq,
+        "*".to_string(),
+        // String::from_utf8(record.qual().to_vec()).unwrap(),
+    ];
+
+    row.extend(record.aux());
+
+    let find_best_match = |haplotype_score: &Vec<u32>| -> Option<&str> {
+        let margin = 3;
+
+        if haplotype_score[0] >= haplotype_score[1] + margin {
+            return Some("0");
+        }
+
+        if haplotype_score[0] + margin <= haplotype_score[1] {
+            return Some("1");
+        }
+
+        return None;
+    };
+
+    row.push(format!(
+        "ht:Z:{}",
+        find_best_match(&haplotype_score).unwrap_or("NA")
+    ));
+
+    row.push(format!(
+        "sc:B:i,{},{}",
+        haplotype_score[0], haplotype_score[1],
+    ));
+
+    collector_tx.send(row)?;
+
+    Ok(())
+}
+
+pub fn spawn_collector(
+    rx: Receiver<ChannelObj>,
+    input_path: PathBuf,
+    conf: Configuration,
+) -> JoinHandle<Result<()>> {
+    thread::spawn(move || -> Result<()> {
+        let mut cram_writer =
+            bam::Writer::from_path(&conf.output.unwrap(), &input_path, &conf.ref_path)?;
+
+        while let Ok(record) = rx.recv() {
+            let record = record
+                .into_iter()
+                .enumerate()
+                .fold(String::new(), |acc, (i, cur)| {
+                    if i == 0 {
+                        cur
+                    } else {
+                        format!("{acc}\t{cur}")
+                    }
+                });
+
+            if let Err(e) = cram_writer.write(record) {
+                panic!("Collector thread panics due to writer error: {e:?}")
+            }
+        }
+
+        Ok(())
+    })
 }
 
 pub fn get_sample_name_and_bam_paths(paths: Vec<PathBuf>) -> Result<Vec<(String, PathBuf)>> {
@@ -263,242 +440,4 @@ pub fn get_sample_name_and_bam_paths(paths: Vec<PathBuf>) -> Result<Vec<(String,
     });
 
     Ok(names_and_paths)
-}
-
-pub fn iterate_region(
-    sample_id_and_bam_paths: &[(String, PathBuf)],
-    ref_path: &Path,
-    contig: &str,
-    range: Range<u32>,
-    collector_tx: &Sender<ChannelObj>,
-    haplotypes: &HashMap<String, BTreeMap<CigarVariant, Vec<u8>>>,
-    ploidy: usize,
-) -> Result<()> {
-    // Individual level merges and process
-    sample_id_and_bam_paths
-        .iter()
-        .enumerate()
-        // .par_bridge()
-        .try_for_each(|(_sample_idx, (sample_id, bam_path))| -> Result<()> {
-            tracing::info!("Searching insertions from {contig} for {sample_id}");
-
-            let mut rdr = bam::Reader::from_path(bam_path, ref_path, contig, &range, sample_id)?;
-
-            rdr.records().try_for_each(|record| {
-                match_cigar_to_haplotype(
-                    record,
-                    contig,
-                    sample_id,
-                    collector_tx,
-                    haplotypes,
-                    ploidy,
-                )
-            })?;
-
-            tracing::info!("Unloading reads");
-            Ok(())
-        })?;
-
-    Ok(())
-}
-
-fn match_cigar_to_haplotype<'a>(
-    record: bam::Record,
-    contig: &'a str,
-    sample_id: &'a str,
-    collector_tx: &Sender<ChannelObj>,
-    haplotypes: &HashMap<String, BTreeMap<CigarVariant, Vec<u8>>>,
-    ploidy: usize,
-) -> Result<()> {
-    let seq_len = record.seq().len();
-
-    if seq_len == 0 {
-        return Ok(());
-    }
-
-    let haplotype_map = haplotypes.get(sample_id).unwrap();
-
-    let mut haplotype_score = vec![0; ploidy];
-    let mut positions_debug = vec![];
-    let seq = record.seq();
-
-    CigarIterator::new(
-        record.cigar(),
-        record.pos(),
-        &seq,
-        sample_id,
-        false,
-        u64::MAX,
-    )
-    .for_each(|cigar_item| {
-        if let CigarIterType::Match(pos, _, seq) = cigar_item {
-            // 0-based positions from HTSLib, change to 1-based indexes
-            let pos = pos + 1;
-
-            // println!("match: {} {}", pos, seq);
-            let start = CigarVariant { pos, alt: 'A' };
-
-            let stop = CigarVariant {
-                pos: (pos + (seq.len() - 1) as u64),
-                alt: 'X',
-            };
-
-            for (variant, gts) in haplotype_map.range(start..=stop) {
-                // +1 cause indexing starts from 0
-                // println!("{}-{} vs {}", variant.pos, variant.alt, pos);
-
-                let query_pos = variant.pos - pos;
-                // println!("query pos {}", query_pos);
-
-                let allele = seq.chars().nth(query_pos as usize).unwrap();
-
-                for (i, gt) in gts.iter().enumerate() {
-                    if gt == &1 && variant.alt == allele {
-                        positions_debug.push(variant.pos);
-                        haplotype_score[i] += 1;
-                    }
-                }
-            }
-        }
-    });
-
-    let aux: Vec<String> = record.aux();
-
-    let seq = String::from_utf8(seq).unwrap();
-
-    let mut row: Vec<String> = vec![
-        record.qname(),
-        record.flags().to_string(),
-        contig.to_string(),
-        // Convert back to 1-based positions
-        (record.pos() + 1).to_string(),
-        record.mapq().to_string(),
-        record.cigar_string().to_string(),
-        // record.mtid().to_string(),
-        "*".to_string(),
-        // record.mpos().to_string(),
-        "0".to_string(),
-        // seq.len().to_string(),
-        "0".to_string(),
-        seq,
-        "*".to_string(),
-        // String::from_utf8(record.qual().to_vec()).unwrap(),
-    ];
-
-    row.extend(aux);
-
-    let find_best_match = |haplotype_score: &Vec<u32>| -> Option<&str> {
-        let margin = 3;
-
-        if haplotype_score[0] >= haplotype_score[1] + margin {
-            return Some("0");
-        }
-
-        if haplotype_score[0] + margin <= haplotype_score[1] {
-            return Some("1");
-        }
-
-        #[allow(clippy::needless_return)]
-        return None;
-    };
-
-    row.push(format!(
-        "ht:Z:{}",
-        find_best_match(&haplotype_score).unwrap_or("NA")
-    ));
-
-    row.push(format!(
-        "sc:B:i,{},{}",
-        haplotype_score[0], haplotype_score[1],
-    ));
-
-    collector_tx.send(row)?;
-
-    Ok(())
-}
-
-pub fn spawn_collector(
-    rx: Receiver<ChannelObj>,
-    output: Option<PathBuf>,
-    input_path: PathBuf,
-    ref_path: PathBuf,
-) -> JoinHandle<Result<()>> {
-    thread::spawn(move || -> Result<()> {
-        let mut cram_writer = Writer::from_path(&output.unwrap(), &input_path, &ref_path)?;
-
-        while let Ok(record) = rx.recv() {
-            let record = record
-                .into_iter()
-                .enumerate()
-                .fold(String::new(), |acc, (i, cur)| {
-                    if i == 0 {
-                        cur
-                    } else {
-                        format!("{acc}\t{cur}")
-                    }
-                });
-
-            if let Err(e) = cram_writer.write(record) {
-                panic!("Collector thread panics due to writer error: {e:?}")
-            }
-        }
-
-        Ok(())
-    })
-}
-
-mod utils {
-    use std::ops::Range;
-
-    use num_traits::{FromPrimitive, Num};
-
-    /// Split range into an iterator of smaller ranges
-    pub trait RangeDivisions<T: Num + FromPrimitive + PartialOrd + Copy> {
-        fn divide_evenly_into(self, divisions: usize) -> Even<T>;
-    }
-
-    impl<T: Num + FromPrimitive + PartialOrd + Copy> RangeDivisions<T> for Range<T> {
-        fn divide_evenly_into(self, divisions: usize) -> Even<T> {
-            Even {
-                next_start: self.start,
-                next_end: self.start,
-                end: self.end,
-                div_remaining: divisions,
-            }
-        }
-    }
-
-    pub struct Even<T: Num + FromPrimitive + PartialOrd + Copy> {
-        next_start: T,
-        next_end: T,
-        end: T,
-        div_remaining: usize,
-    }
-
-    impl<T: Num + FromPrimitive + PartialOrd + Copy> Iterator for Even<T> {
-        type Item = Range<T>;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.div_remaining > 0 {
-                self.next_start = self.next_end;
-                if self.next_start < self.end {
-                    self.next_end = self.next_start
-                        + (self.end - self.next_start)
-                            / T::from_usize(self.div_remaining)
-                                .expect("divisions usize cannot be converted to range type");
-                } else {
-                    self.next_end = self.next_start
-                        - (self.next_start - self.end)
-                            / T::from_usize(self.div_remaining)
-                                .expect("divisions usize cannot be converted to range type");
-                }
-
-                self.div_remaining -= 1;
-
-                Some(self.next_start..self.next_end)
-            } else {
-                None
-            }
-        }
-    }
 }
