@@ -4,13 +4,10 @@ use std::path::PathBuf;
 
 use color_eyre::Result;
 
-use haptk::{
-    args::Selection,
-    subcommands::{
-        list_markers::read_hst_coords,
-        list_samples::{self, get_sample_names},
-    },
-};
+use haptk::args::Selection;
+use haptk::subcommands::list_markers::read_hst_coords;
+use haptk::subcommands::list_samples;
+use haptk::subcommands::list_samples::get_sample_names;
 
 use crate::common::TEST_VCF;
 

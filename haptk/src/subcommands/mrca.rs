@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::eyre::eyre;
+use color_eyre::Result;
 use statrs::distribution::ContinuousCDF;
 use statrs::distribution::Gamma;
 use statrs::statistics::Statistics;

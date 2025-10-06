@@ -1,19 +1,21 @@
 use std::collections::btree_map::Entry;
-
-use std::collections::{BTreeMap, HashSet};
-use std::io::{self};
+use std::collections::BTreeMap;
+use std::collections::HashSet;
+use std::io;
 use std::path::PathBuf;
 
-use color_eyre::{
-    eyre::{ensure, eyre},
-    Result,
-};
-use csv::{Reader, ReaderBuilder};
+use color_eyre::eyre::ensure;
+use color_eyre::eyre::eyre;
+use color_eyre::Result;
+use csv::Reader;
+use csv::ReaderBuilder;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use termion::color;
 
-use crate::io::{get_csv_writer, get_input, open_csv_writer};
+use crate::io::get_csv_writer;
+use crate::io::get_input;
+use crate::io::open_csv_writer;
 use crate::structs::Coord;
 use crate::utils::strip_prefix;
 

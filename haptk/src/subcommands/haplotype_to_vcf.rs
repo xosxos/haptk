@@ -3,10 +3,11 @@ use std::path::PathBuf;
 use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    io::{get_output, get_vcf_writer, read_haplotype_file},
-    structs::{HapVariant, Ploidy},
-};
+use crate::io::get_output;
+use crate::io::get_vcf_writer;
+use crate::io::read_haplotype_file;
+use crate::structs::HapVariant;
+use crate::structs::Ploidy;
 
 pub fn run(path: PathBuf, sample_name: String, output: PathBuf) -> Result<()> {
     let ht = read_haplotype_file(path)?;

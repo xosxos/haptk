@@ -1,15 +1,26 @@
 use std::path::PathBuf;
 
-#[allow(unused_imports)]
-use color_eyre::{
-    eyre::{ensure, eyre},
-    Result,
-};
+use color_eyre::Result;
+use color_eyre::eyre::eyre;
+use color_eyre::eyre::ensure;
 
-use crate::args::{GraphArgs, SortOption, StandardArgs};
+use crate::args::StandardArgs;
+use crate::args::SortOption;
+use crate::args::GraphArgs;
+
 use crate::subcommands::{
-    bhst, check_for_haplotype, compare_haplotypes, compare_to_haplotype, compare_to_hst,
-    fasta_to_haplotype, haplotype_to_vcf, list_haplotypes, list_markers, list_samples, mrca, uhst,
+    bhst,
+    check_for_haplotype,
+    compare_haplotypes,
+    compare_to_haplotype,
+    compare_to_hst,
+    fasta_to_haplotype,
+    haplotype_to_vcf,
+    list_haplotypes,
+    list_markers,
+    list_samples,
+    mrca,
+    uhst,
 };
 
 // Genome-wide methods
@@ -19,9 +30,13 @@ use crate::{
     subcommands::{
         mrca_scan,
         haplotag,
-        scan::{
-            hst_scan, scan_branch_mrca, scan_nodes, scan_quantitative, scan_segregate, scan_sum_hsts, scan_annotate,
-        }
+        scan::scan_branch_mrca,
+        scan::scan_nodes,
+        scan::scan_quantitative,
+        scan::scan_segregate,
+        scan::scan_sum_hsts,
+        scan::hst_scan,
+        scan::scan_annotate,
     }
 };
 

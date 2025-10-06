@@ -5,6 +5,8 @@ use common::{create_test_matrix, standard_args};
 #[cfg(feature = "clap")]
 mod test_check_for_haplotype {
     use super::*;
+    use common::clap_standard_args;
+
     use std::fs::read_to_string;
     use std::path::PathBuf;
     use std::thread::sleep;
@@ -12,10 +14,10 @@ mod test_check_for_haplotype {
 
     use color_eyre::Result;
 
-    use common::clap_standard_args;
-
-    use haptk::{args::Selection, subcommands::uhst};
-    use haptk::{structs::HapVariant, subcommands::check_for_haplotype};
+    use haptk::args::Selection;
+    use haptk::structs::HapVariant;
+    use haptk::subcommands::check_for_haplotype;
+    use haptk::subcommands::uhst;
 
     #[rustfmt::skip]
     #[test]

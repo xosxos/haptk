@@ -1,13 +1,14 @@
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use color_eyre::{
-    eyre::{eyre, WrapErr},
-    Result,
-};
+use color_eyre::eyre::eyre;
+use color_eyre::eyre::WrapErr;
+use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::io::{read_lines, return_double_extension_filetype};
+use crate::io::read_lines;
+use crate::io::return_double_extension_filetype;
 use crate::subcommands::hst::Metadata;
 
 use super::list_markers::HstMetadata;
