@@ -223,62 +223,6 @@ impl<'a> MatrixGraph<'a> {
     }
 }
 
-// pub fn matrix_graph_png(
-//     vcf: &mut PhasedMatrix,
-//     s: GraphArgs,
-//     mark_shorter_alleles: bool,
-//     decoy_samples: Option<Vec<String>>,
-//     order: &[usize],
-// ) -> Result<image::RgbaImage> {
-//     let longest_alleles: Option<Vec<usize>> = match mark_shorter_alleles {
-//         true => Some(vcf.only_longest_indexes()),
-//         false => None,
-//     };
-
-//     let width = vcf.matrix_ncols() * 5;
-//     let height = vcf.matrix_nrows() * 7;
-
-//     let mut imgbuf: image::RgbaImage = image::ImageBuffer::new(width as u32, height as u32);
-
-//     // for y in 0..vcf.matrix.nrows() {
-//     for (y, row_idx) in order.iter().enumerate() {
-//         let row = vcf.matrix_slice(MatrixSlice::Point(*row_idx), MatrixSlice::All);
-
-//         for (x, gt) in row.iter().enumerate() {
-//             let ny = y * 7;
-//             let nx = x * 5;
-//             for yy in ny..ny + 7 {
-//                 for xx in nx..nx + 5 {
-//                     let pixel = imgbuf.get_pixel_mut(xx as u32, yy as u32);
-//                     if (yy == ny || yy == ny + 7) || (xx == nx || xx == nx + 5) {
-//                         *pixel = image::Rgba([255, 255, 255, 255]);
-//                     } else {
-//                         match gt {
-//                             0 => *pixel = image::Rgba([255, 0, 135, 255]),
-//                             1 => {
-//                                 *pixel = determine_line_color(
-//                                     vcf,
-//                                     &decoy_samples,
-//                                     &longest_alleles,
-//                                     y,
-//                                     x,
-//                                 )
-//                             }
-//                             _ => panic!(),
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//     Ok(image::imageops::resize(
-//         &imgbuf,
-//         s.width as u32,
-//         s.height as u32,
-//         image::imageops::FilterType::CatmullRom,
-//     ))
-// }
-
 #[cfg(test)]
 #[rustfmt::skip]
 mod tests {
