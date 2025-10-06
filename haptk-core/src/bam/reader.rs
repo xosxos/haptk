@@ -2,13 +2,10 @@ use std::ops::Range;
 use std::path::Path;
 
 use rust_htslib::bam::{IndexedReader, Read};
+use std::result::Result;
 
-use color_eyre::eyre::WrapErr;
-use color_eyre::Result;
-
-use crate::error::Error;
-
-use crate::core::bam::Record;
+use crate::bam;
+use crate::error;
 
 pub struct Reader {
     rdr: IndexedReader,
@@ -23,11 +20,10 @@ impl Reader {
         contig: &str,
         range: &Range<u64>,
         sample_id: &str,
-    ) -> Result<Self> {
+    ) -> Result<Self, error::Error> {
         // Fetch reads in a given contig from the bam
-        let mut rdr = IndexedReader::from_path(bam_path).wrap_err(Error::Io {
-            path: bam_path.to_path_buf(),
-        })?;
+        let mut rdr = IndexedReader::from_path(bam_path)?;
+
         rdr.set_reference(ref_path)?;
 
         rdr.fetch((&contig, range.start, range.end))?;
@@ -40,9 +36,9 @@ impl Reader {
         })
     }
 
-    pub fn records(&mut self) -> impl Iterator<Item = Record> + '_ {
+    pub fn records(&mut self) -> impl Iterator<Item = bam::Record> + '_ {
         self.rdr.records().filter_map(|v| match v {
-            Ok(record) => Some(Record::new(record)),
+            Ok(record) => Some(bam::Record::new(record)),
             Err(_) => {
                 tracing::warn!(
                     "Invalid record found for {} {}",

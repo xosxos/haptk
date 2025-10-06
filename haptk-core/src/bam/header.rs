@@ -1,18 +1,15 @@
 use std::collections::HashMap;
 use std::{fs::File, path::PathBuf};
 
-use color_eyre::eyre::eyre;
-use color_eyre::eyre::WrapErr;
-use color_eyre::Result;
 use noodles::sam::header;
 
-use crate::error::Error;
+use crate::error;
 use crate::utils;
 
 pub struct Header(header::Header);
 
 impl Header {
-    pub fn try_get(path: &PathBuf) -> Result<Self> {
+    pub fn try_get(path: &PathBuf) -> Result<Self, error::Error> {
         let extension = path
             .extension()
             .unwrap_or_else(|| panic!("bam file {path:?} does not have a proper extension"))
@@ -21,20 +18,20 @@ impl Header {
 
         let header: header::Header = match extension {
             "cram" => File::open(path)
-                .map(noodles::cram::io::Reader::new)
-                .wrap_err(Error::Io { path: path.clone() })?
+                .map_err(|e| error::Error::Io(path.clone(), e))
+                .map(noodles::cram::io::Reader::new)?
                 .read_header()?,
             "bam" => File::open(path)
-                .map(noodles::bam::io::Reader::new)
-                .wrap_err(Error::Io { path: path.clone() })?
+                .map_err(|e| error::Error::Io(path.clone(), e))
+                .map(noodles::bam::io::Reader::new)?
                 .read_header()?,
-            e => return Err(eyre!("unknown file extension {e} for {path:?}")),
+            _ => return Err(error::Error::UnknownExtension(path.clone())),
         };
 
         Ok(Self(header))
     }
 
-    pub fn read_group_samples(&self) -> Result<Vec<String>> {
+    pub fn read_group_samples(&self) -> Result<Vec<String>, error::Error> {
         self.0
             .read_groups()
             .iter()
@@ -60,10 +57,13 @@ impl Header {
     pub fn filter_contigs(
         &self,
         contigs: Vec<String>,
-    ) -> Result<(
-        Vec<(String, Option<u64>, Option<u64>)>,
-        HashMap<String, u64>,
-    )> {
+    ) -> Result<
+        (
+            Vec<(String, Option<u64>, Option<u64>)>,
+            HashMap<String, u64>,
+        ),
+        error::Error,
+    > {
         // println!("{contigs:?}");
 
         let mut bam_contigs_and_lengths: HashMap<String, u64> = HashMap::new();

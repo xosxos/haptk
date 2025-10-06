@@ -48,7 +48,7 @@ pub fn run(
             .iter()
             .map(|s| s.as_str())
             .map(parse_coords)
-            .collect::<Result<Vec<(String, Option<u64>, Option<u64>)>>>()?,
+            .collect::<Result<Vec<(String, Option<u64>, Option<u64>)>, haptk_core::Error>>()?,
         None => {
             vec![parse_coords(&args.coords)?]
         }

@@ -34,12 +34,15 @@ pub mod stats;
 pub mod structs;
 
 /// Utils
-pub mod utils;
-
+// pub mod utils;
 pub mod clap;
 
-#[cfg(feature = "haplotag")]
-pub mod bam;
+pub use haptk_core::bam;
+
+pub use haptk_core::utils;
+
+// #[cfg(feature = "bam")]
+// pub mod bam;
 
 pub mod phased_matrix;
 

@@ -1,0 +1,11 @@
+[package]
+name = "haptk-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+noodles = { path = "../../noodles/noodles", features = ["cram", "sam", "bam", "fasta", "core"]}
+rust-htslib = { version = "0.44", default-features = false, features = ['bzip2'] }
+thiserror = "2.0.17"
+tracing = "0.1"
+num-traits = {version = "0.2"}

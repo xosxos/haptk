@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use color_eyre::Result;
 use color_eyre::eyre::eyre;
-use color_eyre::eyre::ensure;
 
 use crate::args::StandardArgs;
 use crate::args::SortOption;
@@ -39,6 +38,9 @@ use crate::{
         scan::scan_annotate,
     }
 };
+
+#[cfg(feature = "experimental")]
+use color_eyre::eyre::ensure;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]

@@ -53,6 +53,8 @@ pub use core::io;
 pub use core::read_vcf;
 pub use core::stats;
 pub use core::structs;
+
+pub use core::bam;
 pub use core::utils;
 
 // #[cfg(feature = "clap")]

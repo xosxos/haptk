@@ -157,9 +157,8 @@ pub fn run_haplotag(
                     true => {
                         tracing::info!("Chunk len > max_chunk_len, skipping par_iter");
                         let chunks = stop.saturating_sub(start) / max_chunk_len;
-                        let coordinate_ranges: Vec<Range<u32>> = (start as u32..stop as u32)
-                            .divide_evenly_into(chunks as usize)
-                            .collect();
+                        let coordinate_ranges: Vec<Range<u64>> =
+                            (start..stop).divide_evenly_into(chunks as usize).collect();
 
                         coordinate_ranges
                             .into_par_iter()
@@ -179,7 +178,7 @@ pub fn run_haplotag(
                     // Multi thread
                     false => {
                         let chunks = stop.saturating_sub(start) / (chunk_len).max(min_chunk_len);
-                        let coordinate_ranges: Vec<Range<u32>> = (start as u32..stop as u32)
+                        let coordinate_ranges: Vec<Range<u64>> = (start..stop)
                             .divide_evenly_into(chunks.max(1) as usize)
                             .collect();
                         tracing::info!("false chunks {}", chunks.max(1));
@@ -217,7 +216,7 @@ pub fn iterate_region(
     sample_id_and_bam_paths: &[(String, PathBuf)],
     conf: &Configuration,
     contig: &str,
-    range: Range<u32>,
+    range: Range<u64>,
     collector_tx: &Sender<ChannelObj>,
     haplotypes: &HashMap<String, BTreeMap<CigarVariant, Vec<u8>>>,
     ploidy: usize,

@@ -35,8 +35,9 @@ default      = ["clap"]
 no-clap      = []
 clap         = ["dep:clap", "dep:anstyle"]
 enum_methods = ["dep:strum"]
-haplotag = ["dep:gxhash", "dep:regex", "dep:noodles", "dep:crossbeam-channel"]
+haplotag = ["bam", "dep:gxhash", "dep:regex", "dep:noodles", "dep:crossbeam-channel"]
 experimental = ["clap", "dep:fishers_exact", "dep:polars", "dep:serde_with", "haplotag"]
+bam = ["dep:noodles"]
 
 [dependencies]
 alphanumeric-sort = "1.5"
@@ -67,6 +68,8 @@ statrs = { version = "0.16", default-features = false }
 chrono = { version = "0.4.38" }
 
 num-traits = {version = "0.2"}
+
+haptk-core = { path = "../haptk-core" }
 
 # Cli
 clap = { version = "=4.4.18", optional = true, features = ["derive"] }
