@@ -1,12 +1,13 @@
-use std::{collections::BTreeSet, path::PathBuf};
+use std::collections::BTreeSet;
+use std::path::PathBuf;
 
-use color_eyre::{
-    eyre::{eyre, WrapErr},
-    Result,
-};
+use color_eyre::eyre::eyre;
+use color_eyre::eyre::WrapErr;
+use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::{structs::Coord, subcommands::bhst::Metadata};
+use crate::structs::Coord;
+use crate::subcommands::hst::Metadata;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HstMetadata {

@@ -8,7 +8,8 @@ mod test_uhst {
     use color_eyre::Result;
 
     use super::*;
-    use haptk::{args::Selection, subcommands::bhst::read_hst_file};
+    use haptk::args::Selection;
+    use haptk::subcommands::hst::Hst;
 
     fn run_uhst(selection: Selection) -> Result<()> {
         let args = common::clap_standard_args(selection);
@@ -107,8 +108,10 @@ mod test_uhst {
         };
         haptk::clap::run_cmd(cmd)?;
 
-        let hst1 = read_hst_file(PathBuf::from("tests/results/sharded_multi_run_left.hst.gz"))?;
-        let hst2 = read_hst_file(PathBuf::from("tests/results/sharded_one_run_left.hst.gz"))?;
+        let hst1 = Hst::from_file(&PathBuf::from(
+            "tests/results/sharded_multi_run_left.hst.gz",
+        ))?;
+        let hst2 = Hst::from_file(&PathBuf::from("tests/results/sharded_one_run_left.hst.gz"))?;
 
         assert_eq!(hst1.hst.node_count(), hst2.hst.node_count());
         assert_eq!(hst1.hst.edge_count(), hst2.hst.edge_count());

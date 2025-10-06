@@ -8,7 +8,7 @@ use color_eyre::{
 use serde::{Deserialize, Serialize};
 
 use crate::io::{read_lines, return_double_extension_filetype};
-use crate::subcommands::bhst::Metadata;
+use crate::subcommands::hst::Metadata;
 
 use super::list_markers::HstMetadata;
 

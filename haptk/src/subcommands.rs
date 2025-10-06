@@ -16,14 +16,16 @@ pub mod list_haplotypes;
 /// Output marker lists for HSTs
 pub mod list_markers;
 
+pub mod hst;
+
 /// Bidirectional haplotype sharing tree algorithm
-pub mod bhst;
+pub use hst::bhst;
 
 /// Unidirectional haplotype sharing tree algorithm
-pub mod uhst;
+pub use hst::uhst;
 
 /// Immutable HST algorithm
-pub mod immutable_hst;
+pub use hst::immutable_hst;
 
 /// Haplotype to VCF
 pub mod haplotype_to_vcf;

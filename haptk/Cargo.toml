@@ -35,7 +35,7 @@ default      = ["clap"]
 no-clap      = []
 clap         = ["dep:clap", "dep:anstyle"]
 enum_methods = ["dep:strum"]
-haplotag = ["dep:num-traits", "dep:gxhash", "dep:crossbeam-channel", "dep:regex"]
+haplotag = ["dep:num-traits", "dep:gxhash", "dep:regex", "dep:noodles", "dep:crossbeam-channel"]
 experimental = ["clap", "dep:fishers_exact", "dep:polars", "dep:serde_with", "haplotag"]
 
 [dependencies]
@@ -57,7 +57,7 @@ serde_json = "1.0"
 tracing = "0.1"
 tracing-appender = "0.2"
 thiserror = "2.0.17"
-indexmap = {version = "2.6", features = ["serde"]}
+indexmap = {version = "2.11", features = ["serde"]}
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "time", "ansi"] }
 time = { version = "0.3", default-features = false, features = ["local-offset"] }
 petgraph = { version = "0.6", default-features = false, features = ["serde-1"] }
@@ -65,6 +65,7 @@ rust-htslib = { version = "0.44", default-features = false, features = ['bzip2']
 image = { version = "0.25", default-features = false, features = ['png'] }
 statrs = { version = "0.16", default-features = false }
 chrono = { version = "0.4.38" }
+
 
 # Cli
 clap = { version = "=4.4.18", optional = true, features = ["derive"] }
@@ -81,8 +82,8 @@ strum = { version = "0.26.3", features = ["derive"], optional = true }
 # Haplotag
 num-traits = {version = "0.2", optional = true }
 gxhash = { version = "3.4.1", optional = true }
-crossbeam-channel = { version = "0.5.13", optional = true }
 regex = { version = "1.11", optional = true }
+crossbeam-channel = { version = "0.5.13", optional = true }
 noodles = { path = "../../noodles/noodles", features = ["cram", "sam", "bam", "fasta", "core"], optional = true}
 
 [dev-dependencies]

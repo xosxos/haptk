@@ -1,29 +1,33 @@
 #![allow(clippy::comparison_chain)]
-use std::{
-    collections::{BTreeSet, HashMap},
-    path::PathBuf,
-};
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::path::PathBuf;
 
-use color_eyre::{
-    eyre::{eyre, WrapErr},
-    Result,
-};
+use color_eyre::eyre::eyre;
+use color_eyre::eyre::WrapErr;
+use color_eyre::Result;
 use ndarray::parallel::prelude::*;
-use ndarray::{s, Axis};
-use ndarray::{Array2, ShapeBuilder};
+use ndarray::s;
+use ndarray::Array2;
+use ndarray::Axis;
+use ndarray::ShapeBuilder;
 
-use crate::{
-    args::{GraphArgs, Selection, SortOption, StandardArgs},
-    graphs::MatrixGraph,
-    io::{
-        get_htslib_contig_len, open_csv_writer, push_to_output, read_haplotype_file,
-        read_sample_ids,
-    },
-    read_vcf::{read_vcf_to_matrix, read_vcf_to_matrix_by_indexes},
-    structs::{Coord, HapVariant, PhasedMatrix},
-    utils::parse_snp_coord,
-};
-// use crate::graphs::matrix_graph::matrix_graph_png;
+use crate::args::GraphArgs;
+use crate::args::Selection;
+use crate::args::SortOption;
+use crate::args::StandardArgs;
+use crate::core::PhasedMatrix;
+use crate::io::contig_len_from_vcf;
+use crate::io::open_csv_writer;
+use crate::io::push_to_output;
+use crate::io::read_haplotype_file;
+use crate::io::read_sample_ids;
+use crate::matrix_graph::MatrixGraph;
+use crate::read_vcf::read_vcf_to_matrix;
+use crate::read_vcf::read_vcf_to_matrix_by_indexes;
+use crate::structs::Coord;
+use crate::structs::HapVariant;
+use crate::utils::parse_snp_coord;
 
 #[doc(hidden)]
 #[allow(clippy::too_many_arguments)]
@@ -115,7 +119,7 @@ pub fn run(
             transform_gt_matrix_to_match_matrix(vcf, &ht, variant_pos)?
         }
         Selection::OnlyLongest => {
-            let (only_longest_lookups, vcf) = if get_htslib_contig_len(&args.file, contig).is_ok() {
+            let (only_longest_lookups, vcf) = if contig_len_from_vcf(&args.file, contig).is_ok() {
                 let mut vcf = read_vcf_to_matrix(
                     &args,
                     contig,
@@ -475,20 +479,19 @@ pub fn write_ranges_to_csv(
             true => (stop - start + 1).to_string(),
         };
 
-        let sample = format!("{}", vcf.get_sample_name(*idx));
+        let sample = vcf.get_sample_name(*idx).to_string();
         // let idxs = vcf.get_idxs_for_samples(&[sample.clone()])?;
 
         let lookups: Vec<(usize, bool)> = vcf
             .metadata
             .lookups
             .iter()
-            .map(|v| {
+            .flat_map(|v| {
                 v.iter()
                     .copied()
                     .enumerate()
                     .collect::<Vec<(usize, bool)>>()
             })
-            .flatten()
             .filter(|(_i, is_included)| *is_included)
             // .copied()
             .collect();

@@ -1,0 +1,359 @@
+use std::vec::IntoIter;
+
+use rust_htslib::bam::record::Cigar;
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum CigarIterType {
+    Diff(u64, u64, String),
+    Del(u64, u64, u64),
+    Ins(u64, u64, String),
+    LeadingSoftClip(u64, u64, String),
+    TrailingSoftClip(u64, u64, String),
+    HardClip(u64),
+    Equal(u64, u64),
+    Match(u64, u64, String),
+    Unmapped(u64, String),
+}
+
+impl CigarIterType {
+    pub fn ref_pos(&self) -> u64 {
+        match self {
+            CigarIterType::Diff(pos, _, _) => *pos,
+            CigarIterType::Del(pos, _, _) => *pos,
+            CigarIterType::Ins(pos, _, _) => *pos,
+            CigarIterType::Equal(pos, _) => *pos,
+            CigarIterType::Match(pos, _, _) => *pos,
+            CigarIterType::HardClip(pos) => *pos,
+            CigarIterType::LeadingSoftClip(pos, _, _) => *pos,
+            CigarIterType::TrailingSoftClip(pos, _, _) => *pos,
+            CigarIterType::Unmapped(pos, _) => *pos,
+        }
+    }
+
+    pub fn read_pos(&self) -> u64 {
+        match self {
+            CigarIterType::Diff(_, pos, _) => *pos,
+            CigarIterType::Del(_, pos, _) => *pos,
+            CigarIterType::Ins(_, pos, _) => *pos,
+            CigarIterType::Equal(_, pos) => *pos,
+            CigarIterType::Match(_, pos, _) => *pos,
+            CigarIterType::HardClip(pos) => *pos,
+            CigarIterType::LeadingSoftClip(_, pos, _) => *pos,
+            CigarIterType::TrailingSoftClip(_, pos, _) => *pos,
+            CigarIterType::Unmapped(pos, _) => *pos,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CigarIterator<'a> {
+    current_ref_pos: u64,
+    current_read_pos: u64,
+    cigar: IntoIter<Cigar>,
+    seq: &'a [u8],
+    passed: usize,
+    sample_id: &'a str,
+    unmapped_as_insertion: bool,
+    min_ins_len: u64,
+}
+
+impl<'a> CigarIterator<'a> {
+    pub fn new(
+        cigar: Vec<Cigar>,
+        read_start_pos: u64,
+        seq: &'a [u8],
+        sample_id: &'a str,
+        unmapped_as_insertion: bool,
+        min_ins_len: u64,
+    ) -> Self {
+        tracing::info!("read_start_pos: {read_start_pos}",);
+        Self {
+            current_ref_pos: read_start_pos,
+            current_read_pos: 0,
+            cigar: cigar.into_iter(),
+            seq,
+            passed: 0,
+            sample_id,
+            unmapped_as_insertion,
+            min_ins_len,
+        }
+    }
+}
+
+impl<'a> Iterator for CigarIterator<'a> {
+    type Item = CigarIterType;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(cigar) = self.cigar.next() {
+            let start = self.current_read_pos as usize;
+            println!(
+                "ref_pos: {}, read_pos: {}, passed {} len {} variant {:?}",
+                self.current_ref_pos,
+                self.current_read_pos,
+                self.passed,
+                self.seq.len(),
+                cigar,
+            );
+
+            let variant = match cigar {
+                Cigar::RefSkip(_) => panic!("Refskip N present in Cigar strings"),
+                Cigar::Pad(_) => panic!("Padding P present in Cigar strings"),
+                Cigar::Match(bp_len) => {
+                    let bp_len = bp_len as u64;
+
+                    self.current_ref_pos += bp_len;
+                    self.current_read_pos += bp_len;
+
+                    CigarIterType::Match(
+                        self.current_ref_pos - bp_len,
+                        self.current_read_pos - bp_len,
+                        to_string_seq(&self.seq[start..self.current_read_pos as usize]),
+                    )
+                }
+                Cigar::Equal(bp_len) => {
+                    let bp_len = bp_len as u64;
+
+                    self.current_ref_pos += bp_len;
+                    self.current_read_pos += bp_len;
+
+                    CigarIterType::Equal(
+                        self.current_ref_pos - bp_len,
+                        self.current_read_pos - bp_len,
+                    )
+                }
+                Cigar::Diff(bp_len) => {
+                    let bp_len = bp_len as u64;
+
+                    self.current_read_pos += bp_len;
+                    self.current_ref_pos += bp_len;
+
+                    CigarIterType::Diff(
+                        self.current_ref_pos - bp_len,
+                        self.current_read_pos - bp_len,
+                        to_string_seq(&self.seq[start..self.current_read_pos as usize]),
+                    )
+                }
+                // For deletions, dont add to current_read_pos because the read pos is not moving in deletions
+                Cigar::Del(bp_len) => {
+                    let bp_len = bp_len as u64;
+
+                    self.current_ref_pos += bp_len;
+
+                    CigarIterType::Del(self.current_ref_pos - bp_len, self.current_read_pos, bp_len)
+                }
+                // For insertions, dont add to current_ref_pos because the ref is not moving during read insertion
+                Cigar::Ins(bp_len) => {
+                    let bp_len = bp_len as u64;
+
+                    self.current_read_pos += bp_len;
+
+                    let ref_pos = self.current_ref_pos;
+                    let read_pos = self.current_read_pos;
+                    let seq = to_string_seq(&self.seq[start..self.current_read_pos as usize]);
+
+                    // If bp_len is under the minimum insertion length, ignore the insertion and return it as a match
+                    match self.min_ins_len > bp_len {
+                        true => CigarIterType::Match(ref_pos, read_pos, seq),
+                        false => CigarIterType::Ins(ref_pos, read_pos, seq),
+                    }
+                }
+                // Dont increment current_ref_pos for softclips as they do not affect the ref position
+                Cigar::SoftClip(bp_len) => {
+                    self.current_read_pos += bp_len as u64;
+
+                    let ref_pos = self.current_ref_pos;
+                    let read_pos = self.current_read_pos;
+                    let seq = to_string_seq(&self.seq[start..self.current_read_pos as usize]);
+
+                    match self.current_read_pos == 0 {
+                        true => CigarIterType::LeadingSoftClip(ref_pos, read_pos, seq),
+                        false => CigarIterType::TrailingSoftClip(ref_pos, read_pos, seq),
+                    }
+                }
+
+                Cigar::HardClip(_bp_len) => CigarIterType::HardClip(self.current_ref_pos),
+            };
+
+            self.passed += 1;
+
+            Some(variant)
+        } else {
+            if self.passed == 0 && self.current_read_pos as usize != self.seq.len() {
+                if self.unmapped_as_insertion {
+                    self.unmapped_as_insertion = false;
+                    if !self.seq.contains(&"N".as_bytes()[0]) {
+                        return Some(CigarIterType::Unmapped(
+                            self.current_ref_pos,
+                            // self.seq,
+                            to_string_seq(self.seq),
+                        ));
+                    }
+                }
+
+                unsafe {
+                    let snapshot = String::from_utf8_unchecked(self.seq.to_vec())
+                        .chars()
+                        .take(70)
+                        .collect::<String>();
+
+                    let last_chars = String::from_utf8_unchecked(self.seq.to_vec())
+                        .chars()
+                        .rev()
+                        .take(10)
+                        .collect::<String>();
+
+                    tracing::debug!(
+                        "Unmapped read for {} pos: {} sequence: {}..{}..{}",
+                        self.sample_id,
+                        self.current_ref_pos,
+                        snapshot,
+                        self.seq
+                            .len()
+                            .saturating_sub(snapshot.len())
+                            .saturating_sub(last_chars.len()),
+                        last_chars,
+                    );
+                }
+            } else if self.passed > 0 {
+                assert_eq!(
+                    self.current_read_pos as usize,
+                    self.seq.len(),
+                    "Incorrect cigar string: cigar: {:?}, iterated nucletotides {:?}, total sequence: {:?}",
+                    self.cigar,
+                    self.passed,
+                    to_string_seq(self.seq),
+                );
+            }
+            None
+        }
+    }
+}
+
+pub fn to_string_seq(bytes: &[u8]) -> String {
+    unsafe { String::from_utf8_unchecked(bytes.to_vec()) }
+}
+
+// static DECODE_BASE: &[u8] = b"=ACMGRSVTWYHKDBN";
+
+// #[inline]
+// fn encoded_base(encoded_seq: &[u8], i: usize) -> u8 {
+//     (encoded_seq[i / 2] >> ((!i & 1) << 2)) & 0b1111
+// }
+
+// #[inline]
+// fn decode_base_unchecked(base: u8) -> &'static u8 {
+//     unsafe { DECODE_BASE.get_unchecked(base as usize) }
+// }
+
+// fn decode_index(seq: &[u8], index: usize) -> u8 {
+//     *decode_base_unchecked(encoded_base(seq, index))
+// }
+
+// pub fn to_string_seq(seq: &[u8]) -> String {
+//     unsafe {
+//         let bytes = (0..seq.len()).map(|i| decode_index(seq, i)).collect();
+//         String::from_utf8_unchecked(bytes)
+//     }
+// }
+
+#[cfg(test)]
+mod tests {
+    // use crate::structs::VariantType;
+
+    // use super::*;
+    use rust_htslib::bam::record::{Cigar, CigarString};
+
+    use super::CigarIterator;
+
+    #[test]
+    fn cigar_string_test() {
+        let cigar = CigarString(vec![Cigar::Match(100), Cigar::SoftClip(10)]);
+        let mut cigar = cigar.iter();
+        let a = cigar.next().unwrap();
+        let b = cigar.next().unwrap();
+        assert_eq!(a, &Cigar::Match(100));
+        assert_eq!(b, &Cigar::SoftClip(10));
+    }
+
+    #[test]
+    fn cigar_iterator_test() {
+        let cigar_string = CigarString(vec![
+            Cigar::SoftClip(9138),
+            Cigar::Equal(6),
+            Cigar::Diff(1),
+            Cigar::Equal(1),
+            Cigar::Diff(1),
+            Cigar::Equal(1),
+            Cigar::Diff(1),
+            Cigar::Equal(6),
+            Cigar::Diff(1),
+            Cigar::Equal(6),
+            Cigar::Diff(1),
+            Cigar::Equal(3),
+            Cigar::Ins(1),
+            Cigar::Equal(6),
+            Cigar::Diff(1),
+            Cigar::Equal(2),
+            Cigar::Diff(1),
+            Cigar::Equal(1),
+            Cigar::Ins(1),
+            Cigar::Equal(43),
+            Cigar::Del(1),
+            Cigar::Equal(139),
+            Cigar::Ins(1),
+            Cigar::Equal(1051),
+            Cigar::Del(1),
+            Cigar::Equal(251),
+            Cigar::Diff(1),
+            Cigar::Equal(202),
+        ]);
+
+        let pos = 1500;
+        let seq = return_seq();
+
+        let _vf = CigarIterator::new(cigar_string.into(), pos, seq, "test", false, 100);
+    }
+
+    // #[test]
+    // fn cigar_iterator_test() {
+    //     let cigar_string = CigarString(vec![
+    //         Cigar::SoftClip(9138),
+    //         Cigar::Equal(6),
+    //         Cigar::Diff(1),
+    //         Cigar::Equal(1),
+    //         Cigar::Diff(1),
+    //         Cigar::Equal(1),
+    //         Cigar::Diff(1),
+    //         Cigar::Equal(6),
+    //         Cigar::Diff(1),
+    //         Cigar::Equal(6),
+    //         Cigar::Diff(1),
+    //         Cigar::Equal(3),
+    //         Cigar::Ins(1),
+    //         Cigar::Equal(6),
+    //         Cigar::Diff(1),
+    //         Cigar::Equal(2),
+    //         Cigar::Diff(1),
+    //         Cigar::Equal(1),
+    //         Cigar::Ins(1),
+    //         Cigar::Equal(43),
+    //         Cigar::Del(1),
+    //         Cigar::Equal(139),
+    //         Cigar::Ins(1),
+    //         Cigar::Equal(1051),
+    //         Cigar::Del(1),
+    //         Cigar::Equal(251),
+    //         Cigar::Diff(1),
+    //         Cigar::Equal(202),
+    //     ]);
+
+    //     let pos = 1500;
+    //     let seq = return_seq();
+
+    //     let _vf = CigarIterator::new(cigar_string.into(), pos, seq, "test", false, 100);
+    // }
+
+    fn return_seq<'a>() -> &'a [u8] {
+        b"GCCACCCCTCCTGGGAAAGTGCAGGACCTCCCTCCTGTTTCTGAATACAAAGCCTGGTGGTGTTCAACGCGGCCAGATAGACCCAATGAGCACACGGACATGTAATCTGTGCACTTCTTTAGACAACTGATTACCATCAGTCAAGTGATGCCCAAGTCACAATAGTCACTTCCTTTAAGCAAGTCTGTGTCATCTCGGAGCTGTGAAGCAACCAGGTCATGTCCCACAGAATGGGGAGCACACCGACTTGCATTGCTGCCCTCATATGCAAGTCATCACCACTCTCTAGAAGCTTGGGCTGAAATTGTGCAGGCGTCTCCACACCCCCATCTCATCCCGCATGATCTCCTCGCCGGCAGGGACCGTCTCGGGTTCCTAGCGAACCCCGACTTGGTCCCGCAGAAGCCGCGCGCCGCCCACCCTCCGGCCTTCCCCCAGGCGAGGCCTCTCAGTACCCGAGGCTCCCTTTTCTCGAGCCCGCAGCGGCAGCGCTCCCAGCGGGTCCCCGGGAAGGAGACAGCTCGGGTACTGAGGGCGGGAAAGCAAGGAAGAGGCCAGATCCCCATCCCTTGTCCCTGCGCCGCCGCCGCCGCCGCCGCCGCCGGGAAGCCCGGGGCCCGGATGCAGGCAATTCCACCAGTCGCTAGAGGCGAAAGCCCGACACCCAGCTTCGGTCAGAGAAATGAGAGGGAAAGTAAAAATGCGTCGAGCTCTGAGGAGAGCCCCCGCTTCTACCCGCGCCTCTTCCCGGCAGCCGAACCCCAAACAGCCACCCGCCAGGATGCCGCCTCCTCACTCACCCACTCGCCACCGCCTGCGCCTCCGCCGCCGCGGGCGCAGGCACCGCAACCGCAGCCCCGCCCCGGGCCCGCCCCCGGGCCCGCCCCCGGGCCCGCCCCGACCACGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCGCCGGCCCGCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCGGCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCGGCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGCCCCGGCCCCGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGGCCCCGGCCCCGGCCCCGGCCCGGCCCGGCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCGCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCCGGCCCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCACGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCGCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCTGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCCGGCCCCGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGCCCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGGCCCCCGGCCCCGGCCCCGCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCCGCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGCCCCGGCCCCGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGCCCCGGCCCCGGCCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCCCGGCCCCGGCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCCGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGCCCCGGCCCCGGCCTCCGGCCCCGGCCCCGGCCCCGGCCCCGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGCCGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCACCGGCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCCGGCCCGGCCCCTAGCGCGCGACTCCTGAGTTCCAGAGCTTGCTACAGGCTGCGGTTGTTTCCCTCCTTGTTTTCTTCTGGTTAATCTTTATCAGGTCTTTTCTTGTTCACCCTCAGCGAGTACTGTGAGAGCAAGTAGTGGCGGAGAGAGGGTGGGAAAAACAAAAACACACACCTCCTAAACCCACACCTGCTCTTGCTAGACCCCGCCCCCAAAAGAGAAGCAACCGGGCAGCAGGGACGGCTGACACACCAAGCGTCATCTTTTACGTGGGCGGAACTTGTCGCTGTTTGACGCACCTCTCTTTCCTAGCGGGACACCGTAGGTTACGTCTGTCTGTTTTCTATGTGCGATGACGTTTTCTCACGAGGCTAGCGAAATGGGGCGGGGCAACTTGTCCTGTTCTTTTATCTTAAGACCCGCTCTGGAGGAGCGTTGGCGCAATAGCGTGTGCGAACCTTAATAGGGGAGGCTGCTGGATCCGGAGAAAGTGAAGACGATTTCGTGGTTTTGAATGGTTTTGTTTGTGCTTGGTAGGCAGTGGGCGCTCAACAAATAATTGGTGGATGAAATTTTGTTTTTACCGTAAGACACTGTTAAGTGCATTCAAAACTCCACTGCAAACCCTGGTAGGGGACAGCTCCGGCACTGCGGGCGGGAATCCCACGGTCCCCTGCAAAGTCATCGCAATTTTGCCTTTACATGTAAGAATTCTCTCAAGCATGATTTTCACACTGGGGAATGTCATTTTTGCTAGTTGCAATATGTGGATGAGTTGTTTTTTTTTAACTTTTGAAAAACGTACCATTCTGTTTGATGTGTAAAAAACACAAAGATTTTTGAAACCTTGCGTCTTTTGGTCTGCAGGTGTATAGATTCCACTTACTACAGATGAGTAGCATTTACACCACTCAGATGTGTAAAAAAACAAAGGTTTTTTAAACTGTGTGCCTTTTGATCTGCAAGTGTGAGATGGCACTTATTACAGTGAGTAGCATTTAATCTTTTTCATCACTAAAAATCACACAGAACGTTTTAATCATTCACCGAGGAAGAAAGGGAGGAATAAATACACAAAATGGCTCTCAACGTCTACACCTTCTGCAGAAACAGACCCTTTTCCTACTGTTCTATGCTTTGTGAAAGTTGATCATACAAATTGGGTCATTCTTTTTATACCCAACTAAAATAGTGGGGTAGGGGGTAGAAAAGCACTTAGGACAAATGACACTGCTCCCACAGTGTAATTCTCTCCAAGTCCAGCTGCTGCAACTGCCCGTTGTGACCTGAGACCAGTTTTATCTAATAGTTGCTAAAATGACCTGCTGCAGCTCTAATTTTATCTACCACCATCACTCACCAGTTGAAACTCACCAGCTCCTCAGATCCTTAATAGTGCCAATGAATTTTCTCAAAGAGCACTATGTAACATTTCTCTTTTTTAGCAAAACCTCCCCCTTTTCTTTGTTGTGTGGATATACCGAAGACCATCTGATCTACATGTATGCCCTAATTGCAATTCTTTCTTCCCAAATAAATCACTTAATTTAGAGATTCATCTCTGTATTTTTATTTTGACTGACAGCTTATAACAAGTAGCTAGCATTTACCAAGTTTCTACACTGAGTTGTACTTCACTTATACGTG"
+    }
+}

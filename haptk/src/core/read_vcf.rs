@@ -2,23 +2,28 @@ use std::collections::BTreeSet;
 #[doc(inline)]
 use std::path::PathBuf;
 
-use color_eyre::{
-    eyre::{ensure, eyre, Context, OptionExt},
-    Result,
-};
+use color_eyre::eyre::ensure;
+use color_eyre::eyre::eyre;
+use color_eyre::eyre::Context;
+use color_eyre::{eyre::OptionExt, Result};
 use ndarray::{Array2, ShapeBuilder};
 use rayon::prelude::*;
+
 use rust_htslib::bcf::header::HeaderView;
 use rust_htslib::bcf::record::GenotypeAllele;
 use rust_htslib::bcf::IndexedReader;
 use rust_htslib::bcf::Read;
 
-use crate::{
-    args::{Selection, StandardArgs},
-    error::Error,
-    io::{get_htslib_contig_len, read_multiple_sample_ids, read_sample_ht_list_file},
-    structs::{Coord, PhasedMatrix, Ploidy, ReadMetadata},
-};
+use crate::args::Selection;
+use crate::args::StandardArgs;
+use crate::core::phased_matrix::PhasedMatrix;
+use crate::error::Error;
+use crate::io::contig_len_from_vcf;
+use crate::io::read_multiple_sample_ids;
+use crate::io::read_sample_ht_list_file;
+use crate::structs::Coord;
+use crate::structs::Ploidy;
+use crate::structs::ReadMetadata;
 
 pub fn get_reader(
     path: &PathBuf,
@@ -191,7 +196,7 @@ pub fn read_vcf_to_matrix(
             indexes = samples
                 .iter()
                 .zip(indexes.iter())
-                .filter(|(v, _i)| lookups.get(*v).is_some())
+                .filter(|(v, _i)| lookups.contains_key(*v))
                 .map(|(_, i)| i)
                 .cloned()
                 .collect();
@@ -200,7 +205,7 @@ pub fn read_vcf_to_matrix(
                 samples
                     .iter()
                     .flat_map(|v| {
-                        if lookups.get(v).is_none() {
+                        if !lookups.contains_key(v) {
                             tracing::warn!("wanted sample {} was not in the list file", v);
                         }
                         lookups.get(v)
@@ -209,7 +214,7 @@ pub fn read_vcf_to_matrix(
                     .collect(),
                 samples
                     .iter()
-                    .filter(|&v| lookups.get(v).is_some())
+                    .filter(|&v| lookups.contains_key(v))
                     .map(|v| (v, lookups.get(v).unwrap()))
                     .flat_map(|(s, lookup)| match (lookup[0], lookup[1]) {
                         (true, true) => vec![s.clone(), s.clone()],
@@ -270,7 +275,7 @@ pub fn read_vcf_to_matrix_by_indexes(
         );
     }
 
-    let (markers, coords) = match get_htslib_contig_len(file, contig).is_err() {
+    let (markers, coords) = match contig_len_from_vcf(file, contig).is_err() {
         true => {
             tracing::info!("No contig {contig} length in the VCF. Reading single-threaded.");
             read_vcf_batch_to_matrix(
@@ -303,7 +308,7 @@ pub fn read_vcf_to_matrix_by_indexes(
         lookups,
         file_path: file.clone(),
         fetch_range,
-        contig_len: get_htslib_contig_len(file, contig).ok(),
+        contig_len: contig_len_from_vcf(file, contig).ok(),
         sharded: window.is_some(),
         remove_no_alt: no_alt,
         include_indels,
@@ -449,7 +454,7 @@ fn read_parallel(
 ) -> Result<(Vec<u8>, BTreeSet<Coord>)> {
     let (first_pos, last_pos) = match range {
         Some((Some(start), Some(end))) => (start, end),
-        _ => (0, get_htslib_contig_len(file_path, contig)?),
+        _ => (0, contig_len_from_vcf(file_path, contig)?),
     };
     let mut batches = vec![];
 
@@ -586,7 +591,7 @@ pub fn read_shard_of_vcf(vcf: &mut PhasedMatrix, start: u64, stop: u64) -> Resul
     );
 
     let (markers, coords) =
-        match get_htslib_contig_len(&vcf.metadata.file_path, &vcf.start_coord.contig).is_err() {
+        match contig_len_from_vcf(&vcf.metadata.file_path, &vcf.start_coord.contig).is_err() {
             true => read_vcf_batch_to_matrix(
                 &vcf.metadata.file_path,
                 &vcf.start_coord.contig,

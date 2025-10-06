@@ -23,7 +23,8 @@
     clippy::needless_pass_by_value,
     clippy::default_trait_access,
     clippy::struct_field_names,
-    clippy::unused_self
+    clippy::unused_self,
+    clippy::iter_nth_zero
 )]
 
 // HATK - Haplotype analysis toolkit
@@ -43,15 +44,21 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-pub mod libs;
-pub use libs::{args, error, io, read_vcf, stats, structs, utils};
+pub mod core;
+
+pub use core::args;
+pub use core::error;
+pub use core::io;
+pub use core::read_vcf;
+pub use core::stats;
+pub use core::structs;
+pub use core::utils;
 
 // #[cfg(feature = "clap")]
-pub use libs::clap;
-pub use libs::clap::run_cmd;
+pub use core::clap;
 
 /// Graphs implemented in Rust, HST graph will be replaced by the Python implementation
-pub mod graphs;
+pub mod matrix_graph;
 
 /// HAPTK commands
 pub mod subcommands;

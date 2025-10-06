@@ -1,6 +1,8 @@
-use std::sync::mpsc::{sync_channel, SyncSender};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::SyncSender;
 use std::thread;
-use std::{collections::BTreeMap, path::PathBuf};
 
 use color_eyre::eyre::ensure;
 use color_eyre::Result;
@@ -10,9 +12,10 @@ use rayon::prelude::*;
 
 use super::Hst;
 use crate::args::{ConciseArgs, Selection, StandardArgs};
-use crate::io::{
-    open_csv_writer, push_to_output, read_multiple_sample_ids, read_recombination_file,
-};
+use crate::io::open_csv_writer;
+use crate::io::push_to_output;
+use crate::io::read_multiple_sample_ids;
+use crate::io::read_recombination_file;
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::Coord;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
@@ -74,7 +77,7 @@ pub fn run(
             ensure!( coords.is_some(), "If run ad hoc, please give the contig (with --coords) and the wanted selection (--alleles all/longest-haplotype)");
 
             let (contig, start, stop) = parse_coords(&args.coords)?;
-            let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
+            let vcf = read_vcf_to_matrix(&args, &contig, 0, Some((start, stop)), None, None, true)?;
 
             let seg_samples = read_multiple_sample_ids(&seg_samples)?;
             let seg_samples = seg_samples.unwrap_or(vcf.samples().clone());

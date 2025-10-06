@@ -1,19 +1,24 @@
 #![allow(clippy::unwrap_or_default)]
 
-use color_eyre::{
-    eyre::{ensure, eyre},
-    Result,
-};
-use indexmap::{IndexMap, IndexSet};
+use color_eyre::eyre::ensure;
+use color_eyre::eyre::eyre;
+use color_eyre::Result;
+use indexmap::IndexMap;
+use indexmap::IndexSet;
 
-use crate::{
-    args::{Selection, StandardArgs},
-    io::{get_htslib_contig_len, open_csv_writer, push_to_output},
-    read_vcf::{read_vcf_to_matrix, read_vcf_to_matrix_by_indexes},
-    structs::{HapVariant, PhasedMatrix},
-    subcommands::check_for_haplotype::identical_haplotype_count,
-    utils::{parse_coords, parse_snp_coord, precision_f64},
-};
+use crate::args::Selection;
+use crate::args::StandardArgs;
+use crate::core::PhasedMatrix;
+use crate::io::contig_len_from_vcf;
+use crate::io::open_csv_writer;
+use crate::io::push_to_output;
+use crate::read_vcf::read_vcf_to_matrix;
+use crate::read_vcf::read_vcf_to_matrix_by_indexes;
+use crate::structs::HapVariant;
+use crate::subcommands::check_for_haplotype::identical_haplotype_count;
+use crate::utils::parse_coords;
+use crate::utils::parse_snp_coord;
+use crate::utils::precision_f64;
 
 type HaplotypeMap = IndexMap<(Vec<HapVariant>, usize), Vec<String>>;
 
@@ -39,13 +44,13 @@ pub fn run(args: StandardArgs, selection_variant: Option<String>, nucleotides: b
     };
 
     let vcf = if args.selection == Selection::OnlyLongest {
-        let (only_longest_lookups, vcf) = if get_htslib_contig_len(&args.file, contig).is_ok() {
+        let (only_longest_lookups, vcf) = if contig_len_from_vcf(&args.file, &contig).is_ok() {
             let mut vcf =
-                read_vcf_to_matrix(&args, contig, pos, None, None, Some(5_000_000), false)?;
+                read_vcf_to_matrix(&args, &contig, pos, None, None, Some(5_000_000), false)?;
             let lookups = vcf.get_only_longest_lookups()?;
             (lookups, vcf)
         } else {
-            let vcf = read_vcf_to_matrix(&args, contig, pos, None, None, None, false)?;
+            let vcf = read_vcf_to_matrix(&args, &contig, pos, None, None, None, false)?;
             let lookups = vcf.get_only_longest_lookups_no_shard()?;
             (lookups, vcf)
         };
@@ -53,7 +58,7 @@ pub fn run(args: StandardArgs, selection_variant: Option<String>, nucleotides: b
         read_vcf_to_matrix_by_indexes(
             &args.file,
             pos,
-            contig,
+            &contig,
             range,
             vcf.samples().clone(),
             vcf.metadata.indexes,
@@ -65,7 +70,7 @@ pub fn run(args: StandardArgs, selection_variant: Option<String>, nucleotides: b
             args.include_indels,
         )?
     } else {
-        read_vcf_to_matrix(&args, contig, pos, range, None, None, false)?
+        read_vcf_to_matrix(&args, &contig, pos, range, None, None, false)?
     };
 
     ensure!(!vcf.samples().is_empty(), "No samples found in VCF");

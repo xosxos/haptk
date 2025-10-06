@@ -2,19 +2,22 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use color_eyre::eyre::ensure;
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::eyre::eyre;
+use color_eyre::Result;
 use rayon::prelude::*;
 
-use super::bhst::Node;
+use super::hst::Node;
 use super::mrca::mrca_independent;
 use crate::args::{Selection, StandardArgs};
-use crate::io::{
-    check_recombination_file_matches_contig, open_csv_writer, push_to_output,
-    read_recombination_file,
-};
+use crate::core::PhasedMatrix;
+use crate::io::check_recombination_file_matches_contig;
+use crate::io::open_csv_writer;
+use crate::io::push_to_output;
+use crate::io::read_recombination_file;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::{Coord, PhasedMatrix};
-use crate::utils::{self, centromeres_hg38, parse_coords};
+use crate::structs::Coord;
+use crate::utils::centromeres_hg38;
+use crate::utils::parse_coords;
 
 const HEADER: [&str; 6] = ["contig", "pos", "ref", "alt", "mrca", "centromere"];
 
@@ -44,8 +47,8 @@ pub fn run(
         Some(vec) => vec
             .iter()
             .map(|s| s.as_str())
-            .map(utils::parse_coords)
-            .collect::<Result<Vec<(&str, Option<u64>, Option<u64>)>>>()?,
+            .map(parse_coords)
+            .collect::<Result<Vec<(String, Option<u64>, Option<u64>)>>>()?,
         None => {
             vec![parse_coords(&args.coords)?]
         }
@@ -54,10 +57,10 @@ pub fn run(
     let mut ages = vec![];
     for ((contig, start, stop), rec_rates) in contigs_vec.into_iter().zip(all_rec_rates.into_iter())
     {
-        let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
+        let vcf = read_vcf_to_matrix(&args, &contig, 0, Some((start, stop)), None, None, true)?;
 
         ensure!(
-            check_recombination_file_matches_contig(rec_rates.clone(), contig)?,
+            check_recombination_file_matches_contig(rec_rates.clone(), &contig)?,
             "The recombination rate files and the contigs are not in the same order.
             {contig} does not match the file {rec_rates:?}"
         );

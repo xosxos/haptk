@@ -1,29 +1,40 @@
-use std::{cmp::Ordering, collections::HashMap, sync::mpsc::sync_channel};
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::sync::mpsc::sync_channel;
 
-use color_eyre::{
-    eyre::{ensure, eyre},
-    Result,
-};
-use crossbeam_channel::unbounded;
-use indexmap::IndexMap;
+use color_eyre::eyre::ensure;
+use color_eyre::eyre::eyre;
+use color_eyre::Result;
+use petgraph::graph::NodeIndex;
+use petgraph::Direction;
 use petgraph::Graph;
-use petgraph::{graph::NodeIndex, Direction};
 use rayon::prelude::*;
 
-use crate::{
-    args::{Selection, StandardArgs},
-    error::Error,
-    io::{open_csv_writer, push_to_output, write_haplotype},
-    libs::structs::{CoordDataSlot, PhasedMatrix},
-    structs::{Coord, HapVariant},
-    subcommands::{
-        bhst::{self, HstType, Node},
-        compare_to_haplotype::{
-            find_shared_haplotype_ranges, range_length_avg, range_length_median,
-            transform_gt_matrix_to_match_matrix, write_ranges_to_csv,
-        },
-    },
-};
+use crate::subcommands::hst::find_majority_nodes;
+use crate::subcommands::hst::pair_wise::calculate_pair_wise;
+use crate::subcommands::hst::pair_wise::PairWiseMatrix;
+use crate::subcommands::hst::read_vcf_with_selections;
+use crate::subcommands::hst::HstType;
+use crate::subcommands::hst::Node;
+
+use crate::args::Selection;
+use crate::args::StandardArgs;
+use crate::core::structs::Coord;
+use crate::core::structs::CoordDataSlot;
+use crate::core::structs::HapVariant;
+use crate::core::PhasedMatrix;
+use crate::error::Error;
+use crate::io::open_csv_writer;
+use crate::io::push_to_output;
+use crate::io::write_haplotype;
+
+use crate::subcommands::compare_to_haplotype::find_shared_haplotype_ranges;
+use crate::subcommands::compare_to_haplotype::range_length_avg;
+use crate::subcommands::compare_to_haplotype::range_length_median;
+use crate::subcommands::compare_to_haplotype::transform_gt_matrix_to_match_matrix;
+use crate::subcommands::compare_to_haplotype::write_ranges_to_csv;
+
+use super::Hst;
 
 #[doc(hidden)]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -47,7 +58,7 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
         return Err(eyre!("Running with unphased data is not supported."));
     }
 
-    let mut vcf = bhst::read_vcf_with_selections(&args, Some(window))?;
+    let mut vcf = read_vcf_with_selections(&args, Some(window))?;
 
     // Less haplotypes available than the minimum requested node_size
     ensure!(
@@ -64,7 +75,14 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
         // .par_iter()
         .iter()
         .map(|direction| -> Result<(Node, Node, PairWiseMatrix)> {
-            let uhst = construct_uhst(&mut vcf, direction, &start, min_size, false)?;
+            let hst_type = match direction {
+                LocDirection::Left => HstType::HstLeft,
+                LocDirection::Right => HstType::HstRight,
+            };
+
+            let mut uhst = Hst::new(&vcf, &args, hst_type);
+
+            populate_uhst(&mut vcf, &mut uhst.hst, direction, &start, min_size, false)?;
 
             // Calulate pair-wise sharing matrix
             let pair_wise: PairWiseMatrix = calculate_pair_wise(&vcf, &uhst);
@@ -72,7 +90,7 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
             // Find first, second last and last nodes on the majority branch
             // for downstream analyses
             let start_idx = NodeIndex::new(0);
-            let nodes = bhst::find_majority_nodes(&uhst, start_idx);
+            let nodes = find_majority_nodes(&uhst.hst, start_idx);
 
             // Check that theres at least 3 samples
             ensure!(nodes.len() > 2, Error::HstTooSmall);
@@ -97,12 +115,7 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
             let mut hst_output = args.output.clone();
             push_to_output(&args, &mut hst_output, &format!("{direction}"), "hst.gz");
 
-            let hst_type = match direction {
-                LocDirection::Left => HstType::HstLeft,
-                LocDirection::Right => HstType::HstRight,
-            };
-
-            bhst::write_hst_file(uhst, &vcf, hst_output, publish, args.clone(), hst_type)?;
+            uhst.write_to_file(hst_output, publish)?;
 
             Ok((first_maj_node, last_node, pair_wise))
         })
@@ -211,158 +224,23 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
     Ok(())
 }
 
-pub type PairWiseMatrix = Vec<(usize, IndexMap<usize, (u64, u64, bool)>)>;
-
-// Length is 1 SNP too much to both directions
-pub fn calculate_pair_wise(vcf: &PhasedMatrix, hst: &Graph<Node, ()>) -> PairWiseMatrix {
-    //
-    let (tx, rx) = unbounded();
-
-    // Iterate all leaf nodes
-    hst.node_indices()
-        // .par_bridge()
-        .filter(|n| hst.edges_directed(*n, Direction::Outgoing).count() == 0)
-        .for_each(|leaf| {
-            let data = hst.node_weight(leaf).unwrap();
-
-            // Get parent node
-            let parent_node = hst
-                .neighbors_directed(leaf, Direction::Incoming)
-                .next()
-                .unwrap();
-
-            let parent_data = hst.node_weight(parent_node).unwrap();
-
-            // Collect all leaf node idxs
-            for leaf_sample_idx in &data.indexes {
-                let mut row = IndexMap::new();
-
-                // Iterate leaf node indexes
-                for other_sample_idx in &parent_data.indexes {
-                    // Insert the length if the pair does not already have a length
-
-                    if data.stop == data.start {
-                        let ht_other = vcf.find_u8_haplotype_for_sample(
-                            &data.start..=&data.stop,
-                            *other_sample_idx,
-                        );
-                        let ht_this = vcf.find_u8_haplotype_for_sample(
-                            &data.start..=&data.stop,
-                            *leaf_sample_idx,
-                        );
-                        row.entry(*other_sample_idx).or_insert((
-                            data.start.pos,
-                            data.stop.pos,
-                            ht_this == ht_other,
-                        ));
-                    }
-
-                    let stop = vcf.coords().range(..&data.stop).next_back().unwrap();
-                    let start = vcf
-                        .coords()
-                        .range(&data.start..)
-                        .nth(1)
-                        .unwrap_or(vcf.coords().range(&data.start..).nth(0).unwrap());
-
-                    row.entry(*other_sample_idx)
-                        .or_insert((start.pos, stop.pos, false));
-                }
-
-                // Start recursion up the branch
-                recurse_branch(vcf, hst, parent_node, *leaf_sample_idx, &mut row);
-
-                row.sort_by_key(|id, _length| *id);
-
-                let _ = tx.send((*leaf_sample_idx, row));
-            }
-        });
-
-    drop(tx);
-
-    let mut rows: PairWiseMatrix = vec![];
-
-    while let Ok(row) = rx.recv() {
-        rows.push(row);
-    }
-
-    rows.sort_by_key(|(id, _row)| *id);
-
-    rows
-}
-
-fn recurse_branch(
-    vcf: &PhasedMatrix,
-    hst: &Graph<Node, ()>,
-    node: NodeIndex,
-    leaf_idx: usize,
-    row: &mut IndexMap<usize, (u64, u64, bool)>,
-) {
-    let data = hst.node_weight(node).unwrap();
-
-    let stop = vcf.coords().range(..&data.stop).next_back().unwrap();
-    let start = vcf
-        .coords()
-        .range(&data.start..)
-        .nth(1)
-        .unwrap_or(vcf.coords().range(&data.start..).nth(0).unwrap());
-
-    if let Some(parent_node) = hst.neighbors_directed(node, Direction::Incoming).next() {
-        let parent_data = hst.node_weight(parent_node).unwrap();
-
-        for other_sample_idx in &parent_data.indexes {
-            if data.stop == data.start {
-                let ht_other =
-                    vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, *other_sample_idx);
-                let ht_this = vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, leaf_idx);
-
-                row.entry(*other_sample_idx).or_insert((
-                    data.start.pos,
-                    data.stop.pos,
-                    ht_other == ht_this,
-                ));
-            } else {
-                row.entry(*other_sample_idx)
-                    .or_insert((start.pos, stop.pos, false));
-            }
-        }
-
-        recurse_branch(vcf, hst, parent_node, leaf_idx, row);
-    } else {
-        for other_sample_idx in &data.indexes {
-            let ht_other =
-                vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, *other_sample_idx);
-            let ht_this = vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, leaf_idx);
-
-            if data.stop == data.start {
-                row.entry(*other_sample_idx).or_insert((
-                    data.start.pos,
-                    data.stop.pos,
-                    ht_other == ht_this,
-                ));
-            } else {
-                row.entry(*other_sample_idx)
-                    .or_insert((start.pos, stop.pos, false));
-            }
-        }
-    }
-}
-
 #[doc(hidden)]
-pub fn construct_uhst(
+pub fn populate_uhst(
     vcf: &mut PhasedMatrix,
+    hst: &mut Graph<Node, ()>,
     direction: &LocDirection,
     start_coord: &Coord,
     min_size: usize,
     only_majority: bool,
-) -> Result<Graph<Node, ()>> {
-    let mut hst = bhst::initiate_hst(vcf, start_coord, None);
+) -> Result<()> {
+    // let mut hst = initiate_hst(vcf, start_coord, None);
 
     let mut blacklist_nodes = vec![];
 
     loop {
         let blacklist = insert_nodes_to_uhst(
             vcf,
-            &mut hst,
+            hst,
             &blacklist_nodes,
             min_size,
             direction,
@@ -386,7 +264,7 @@ pub fn construct_uhst(
             }
         }
     }
-    Ok(hst)
+    Ok(())
 }
 
 pub fn insert_nodes_to_uhst(
@@ -410,11 +288,11 @@ pub fn insert_nodes_to_uhst(
         .filter_map(|node_idx| {
             let node = hst.node_weight(node_idx).unwrap();
 
-            let count = hst
+            let n_children = hst
                 .neighbors_directed(node_idx, Direction::Outgoing)
                 .count();
 
-            match count == 0 && node.indexes.len() >= min_size.max(2) {
+            match n_children == 0 && node.indexes.len() >= min_size.max(2) {
                 true => Some((node_idx, node.clone())),
                 false => None,
             }

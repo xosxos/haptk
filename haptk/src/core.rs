@@ -33,10 +33,20 @@ pub mod stats;
 /// Structs
 pub mod structs;
 
-// pub mod read_vcf_hst;
-// pub mod structs_hst;
-
 /// Utils
 pub mod utils;
 
 pub mod clap;
+
+#[cfg(feature = "haplotag")]
+pub mod bam;
+
+pub mod phased_matrix;
+
+pub mod cigar_iterator;
+
+pub use phased_matrix::PhasedMatrix;
+pub use structs::CigarVariant;
+pub use structs::Coord;
+pub use structs::HapVariant;
+pub use structs::Ploidy;

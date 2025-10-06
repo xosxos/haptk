@@ -1,20 +1,22 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::eyre::eyre;
+use color_eyre::Result;
 use ndarray::parallel::prelude::*;
-use petgraph::Graph;
-use petgraph::{prelude::NodeIndex, Direction};
+use petgraph::prelude::NodeIndex;
+use petgraph::Direction;
 
-use crate::io::get_htslib_contig_len;
+use crate::args::Selection;
+use crate::args::StandardArgs;
+use crate::core::PhasedMatrix;
+use crate::io::contig_len_from_vcf;
+use crate::io::push_to_output;
+use crate::read_vcf::read_vcf_to_matrix;
 use crate::read_vcf::read_vcf_to_matrix_by_indexes;
-use crate::{
-    args::{Selection, StandardArgs},
-    io::push_to_output,
-    read_vcf::read_vcf_to_matrix,
-    structs::PhasedMatrix,
-    subcommands::bhst::{read_hst_file, write_hst_file, Hst, Node},
-    utils::parse_snp_coord,
-};
+use crate::subcommands::hst::Hst;
+use crate::subcommands::hst::Node;
+use crate::utils::parse_snp_coord;
 
 #[doc(hidden)]
 pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> Result<()> {
@@ -29,7 +31,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
     }
 
     // File reads
-    let hst_import = read_hst_file(hst_path)?;
+    let hst_import = Hst::from_file(&hst_path)?;
 
     // VCF read
     let (contig, variant_pos) = parse_snp_coord(&args.coords)?;
@@ -52,7 +54,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
             )?
         }
         Selection::OnlyLongest => {
-            let (only_longest_lookups, vcf) = if get_htslib_contig_len(&args.file, contig).is_ok() {
+            let (only_longest_lookups, vcf) = if contig_len_from_vcf(&args.file, contig).is_ok() {
                 let mut vcf = read_vcf_to_matrix(
                     &args,
                     contig,
@@ -104,7 +106,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
         );
     }
 
-    let count = hst_import
+    let ncoords = hst_import
         .metadata
         .coords
         .iter()
@@ -113,28 +115,22 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
 
     tracing::info!(
         "The HST and the given VCF have {} variants in common. The HST has {} variants in total.",
-        count,
+        ncoords,
         hst_import.metadata.coords.len(),
     );
 
-    let hst_type = hst_import.metadata.hst_type.clone();
-
-    let match_hst = populate_imported_hst(&vcf, hst_import, only_longest_leafs);
+    let mut match_hst = populate_imported_hst(&vcf, hst_import, only_longest_leafs);
 
     // Write .hst to file
     let mut hst_output = args.output.clone();
     push_to_output(&args, &mut hst_output, "match_hst", "hst.gz");
 
-    write_hst_file(match_hst, &vcf, hst_output, false, args, hst_type)?;
+    match_hst.write_to_file(hst_output, false)?;
 
     Ok(())
 }
 
-pub fn populate_imported_hst(
-    vcf: &PhasedMatrix,
-    mut original_hst: Hst,
-    only_longest: bool,
-) -> Graph<Node, ()> {
+pub fn populate_imported_hst(vcf: &PhasedMatrix, mut original_hst: Hst, only_longest: bool) -> Hst {
     let node_idx = NodeIndex::new(0);
 
     let nodes_without_contradictory_ht = (0..vcf.nhaplotypes())
@@ -177,7 +173,7 @@ pub fn populate_imported_hst(
         node.indexes = value;
     }
 
-    original_hst.hst
+    original_hst
 }
 
 pub fn remove_non_max_leaf_nodes(hst: &Hst, nodes: Vec<NodeIndex>) -> Vec<NodeIndex> {

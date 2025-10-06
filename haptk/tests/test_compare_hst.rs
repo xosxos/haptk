@@ -4,7 +4,7 @@ mod common;
 #[cfg(feature = "clap")]
 mod compare_hst {
     use haptk::args::Selection;
-    use haptk::subcommands::bhst::Hst;
+    use haptk::subcommands::hst::Hst;
     use std::path::PathBuf;
     // use std::thread::sleep;
     // use std::time::Duration;

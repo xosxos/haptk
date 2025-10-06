@@ -49,7 +49,9 @@ pub fn parse_snp_coord(coord: &str) -> Result<(&str, u64)> {
 }
 
 // Coords are in the format [contig] or [contig]:[start]-[stop]
-pub fn parse_coords(coord: &str) -> Result<(&str, Option<u64>, Option<u64>)> {
+pub fn parse_coords<S: AsRef<str>>(coord: S) -> Result<(String, Option<u64>, Option<u64>)> {
+    let coord = coord.as_ref();
+
     let mut coord_split = coord.split(':');
 
     let contig = coord_split.next().ok_or_eyre(Error::CoordParse {
@@ -59,7 +61,7 @@ pub fn parse_coords(coord: &str) -> Result<(&str, Option<u64>, Option<u64>)> {
     let positions = coord_split.next();
 
     if positions.is_none() {
-        return Ok((contig, None, None));
+        return Ok((contig.to_string(), None, None));
     }
 
     let mut pos_split = positions.unwrap().split('-');
@@ -76,7 +78,7 @@ pub fn parse_coords(coord: &str) -> Result<(&str, Option<u64>, Option<u64>)> {
             value: stop.into(),
         })?;
 
-        Ok((contig, Some(start), Some(stop)))
+        Ok((contig.to_string(), Some(start), Some(stop)))
     } else {
         Err(eyre!(Error::CoordParse {
             coord: coord.into()

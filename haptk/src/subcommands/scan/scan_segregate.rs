@@ -16,7 +16,7 @@ use crate::io::{
 };
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::Coord;
-use crate::subcommands::bhst::Node;
+use crate::subcommands::hst::Node;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
 use crate::subcommands::scan::{Hst, Limits};
 

@@ -1,18 +1,25 @@
-use std::sync::mpsc::{sync_channel, SyncSender};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::SyncSender;
 use std::thread;
-use std::{collections::BTreeMap, path::PathBuf};
 
 use color_eyre::eyre::ensure;
 use color_eyre::Result;
 use rayon::prelude::*;
 
-use crate::args::{ConciseArgs, Selection, StandardArgs};
-use crate::io::{open_csv_writer, push_to_output, read_recombination_file};
+use crate::args::ConciseArgs;
+use crate::args::Selection;
+use crate::args::StandardArgs;
+use crate::io::open_csv_writer;
+use crate::io::push_to_output;
+use crate::io::read_recombination_file;
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::Coord;
-use crate::subcommands::bhst::find_majority_nodes;
+use crate::subcommands::hst::find_majority_nodes;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
-use crate::subcommands::scan::{read_tree_file, Limits};
+use crate::subcommands::scan::read_tree_file;
+use crate::subcommands::scan::Limits;
 use crate::utils::parse_coords;
 
 use super::Hst;
@@ -37,7 +44,6 @@ const HEADER: [&str; 14] = [
 ];
 
 #[doc(hidden)]
-
 pub fn run(
     args: ConciseArgs,
     limits: Limits,
@@ -81,7 +87,7 @@ pub fn run(
             ensure!( coords.is_some(), "If run ad hoc, please give the contig (with --coords) and the wanted selection (--alleles all/longest-haplotype)");
 
             let (contig, start, stop) = parse_coords(&args.coords)?;
-            let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
+            let vcf = read_vcf_to_matrix(&args, &contig, 0, Some((start, stop)), None, None, true)?;
 
             tracing::info!("Starting the branch MRCA scan..");
 

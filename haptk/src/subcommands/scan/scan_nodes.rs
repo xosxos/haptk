@@ -1,23 +1,23 @@
-use std::{
-    sync::mpsc::{sync_channel, SyncSender},
-    thread,
-};
+use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::SyncSender;
+use std::thread;
 
-use color_eyre::{eyre::ensure, Result};
+use color_eyre::eyre::ensure;
+use color_eyre::Result;
 use petgraph::graph::NodeIndex;
 use rayon::prelude::*;
 
-use crate::{
-    args::{ConciseArgs, Selection, StandardArgs},
-    io::{open_csv_writer, push_to_output},
-    read_vcf::read_vcf_to_matrix,
-    structs::Coord,
-    subcommands::{
-        immutable_hst::construct_bhst_no_mut,
-        scan::{read_tree_file, Limits},
-    },
-    utils::parse_coords,
-};
+use crate::args::ConciseArgs;
+use crate::args::Selection;
+use crate::args::StandardArgs;
+use crate::io::open_csv_writer;
+use crate::io::push_to_output;
+use crate::read_vcf::read_vcf_to_matrix;
+use crate::structs::Coord;
+use crate::subcommands::immutable_hst::construct_bhst_no_mut;
+use crate::subcommands::scan::read_tree_file;
+use crate::subcommands::scan::Limits;
+use crate::utils::parse_coords;
 
 use super::Hst;
 
@@ -81,7 +81,7 @@ pub fn run(
             ensure!( coords.is_some(), "If run ad hoc, please give the contig (with --coords) and the wanted selection (--alleles all/longest-haplotype)");
 
             let (contig, start, stop) = parse_coords(&args.coords)?;
-            let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
+            let vcf = read_vcf_to_matrix(&args, &contig, 0, Some((start, stop)), None, None, true)?;
 
             let samples = vcf.samples().clone();
             let ploidy = *vcf.ploidy;

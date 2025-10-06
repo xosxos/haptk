@@ -3,12 +3,11 @@ use std::path::PathBuf;
 
 use color_eyre::Result;
 
-use haptk::{
-    args::{Selection, StandardArgs},
-    clap::LogAndVerbosity,
-    read_vcf::read_vcf_to_matrix,
-    structs::PhasedMatrix,
-};
+use haptk::args::Selection;
+use haptk::args::StandardArgs;
+use haptk::clap::LogAndVerbosity;
+use haptk::core::PhasedMatrix;
+use haptk::read_vcf::read_vcf_to_matrix;
 
 pub const TEST_VCF: &str = "tests/data/test.vcf.gz";
 pub const TEST_HAPLOTYPE: &str = "tests/data/test_haplotype.csv";

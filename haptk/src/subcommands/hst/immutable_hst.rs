@@ -1,14 +1,14 @@
 use color_eyre::Result;
 use petgraph::Graph;
 
-use crate::{
-    libs::structs::PhasedMatrix,
-    structs::Coord,
-    subcommands::{
-        bhst::{initiate_hst, insert_nodes_to_bhst, Node},
-        uhst::{insert_nodes_to_uhst, LocDirection},
-    },
-};
+use crate::core::PhasedMatrix;
+use crate::structs::Coord;
+use crate::subcommands::hst::initiate_hst;
+use crate::subcommands::hst::Node;
+use crate::subcommands::uhst::LocDirection;
+
+use crate::subcommands::bhst::insert_nodes_to_bhst;
+use crate::subcommands::uhst::insert_nodes_to_uhst;
 
 #[doc(hidden)]
 pub fn construct_bhst_no_mut(
@@ -48,6 +48,7 @@ pub fn construct_uhst_no_mut(
     only_majority: bool,
 ) -> Result<Graph<Node, ()>> {
     let mut hst = initiate_hst(vcf, start_coord, None);
+
     let mut blacklist_nodes = vec![];
 
     loop {

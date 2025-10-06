@@ -110,7 +110,7 @@ pub fn read_sample_ht_list_file(path: &PathBuf) -> Result<HashMap<String, [bool;
             ));
         }
 
-        if haplotypes.len() == 0 {
+        if haplotypes.is_empty() {
             return Err(eyre!("No haplotypes for sample {}.", variant.sample));
         }
 
@@ -362,45 +362,17 @@ pub fn push_to_output(args: &StandardArgs, output: &mut PathBuf, name: &str, suf
     }
 }
 
-pub fn get_htslib_contig_len(path: &PathBuf, contig: &str) -> Result<u64> {
-    for r in IndexedReader::from_path(path)?
-        .header()
-        .header_records()
+pub fn contig_len_from_vcf(path: &PathBuf, contig: &str) -> Result<u64> {
+    get_vcf_contigs(path)?
         .iter()
-        .filter(|r| matches!(r, HeaderRecord::Contig { .. }))
-    {
-        match r {
-            HeaderRecord::Contig { values, .. } => {
-                if let Some(id) = values.get("ID") {
-                    if id == contig {
-                        // Return contig length, if found
-                        return Ok(values
-                            .get("length")
-                            .ok_or_eyre(Error::NoContigLength {
-                                contig: id.to_string(),
-                            })?
-                            .parse::<u64>()?);
-                    }
-                }
-            }
-            _ => {
-                unreachable!(
-                    "
-                    VCF header contig filtering failed for some reason.
-                    Create an issue at Github: https://github.com/xosxos/haptk
-                    "
-                )
-            }
-        }
-    }
-
-    // Requested contig was not present in the header
-    Err(eyre!(Error::NoContig {
-        contig: contig.to_string()
-    }))
+        .find(|(ctg, _len)| ctg == contig)
+        .map(|(_, len)| *len as u64)
+        .ok_or_eyre(Error::NoContigLength {
+            contig: contig.to_string(),
+        })
 }
 
-pub fn get_htslib_bcf_contigs(path: &PathBuf) -> Result<Vec<(String, i64)>> {
+pub fn get_vcf_contigs(path: &PathBuf) -> Result<Vec<(String, i64)>> {
     IndexedReader::from_path(path)?
         .header()
         .header_records()

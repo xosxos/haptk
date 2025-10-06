@@ -8,7 +8,7 @@ use svg::Document;
 use svg::Node;
 
 use crate::args::GraphArgs;
-use crate::structs::PhasedMatrix;
+use crate::core::PhasedMatrix;
 
 pub fn determine_line_color(
     vcf: &PhasedMatrix,

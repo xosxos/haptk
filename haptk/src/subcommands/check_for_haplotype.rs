@@ -1,17 +1,19 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
+use std::path::PathBuf;
 
-use color_eyre::{
-    eyre::eyre,
-    Result,
-};
+use color_eyre::Result;
+use color_eyre::eyre::eyre;
 
-use crate::{
-    args::{Selection, StandardArgs},
-    io::{open_csv_writer, push_to_output},
-    read_vcf::read_vcf_to_matrix,
-    structs::{Coord, HapVariant, PhasedMatrix},
-    utils::{parse_snp_coord, precision_f64},
-};
+use crate::args::StandardArgs;
+use crate::args::Selection;
+use crate::core::PhasedMatrix;
+use crate::io::push_to_output;
+use crate::io::open_csv_writer;
+use crate::read_vcf::read_vcf_to_matrix;
+use crate::structs::Coord;
+use crate::structs::HapVariant;
+use crate::utils::parse_snp_coord;
+use crate::utils::precision_f64;
 
 #[doc(hidden)]
 pub fn run(args: StandardArgs, haplotype_path: PathBuf) -> Result<()> {

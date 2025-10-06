@@ -1,24 +1,26 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
+use color_eyre::eyre::ensure;
+use color_eyre::eyre::eyre;
+use color_eyre::eyre::WrapErr;
+use color_eyre::Result;
 use petgraph::Graph;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::args::{Selection, StandardArgs};
+use crate::args::Selection;
+use crate::args::StandardArgs;
+use crate::io::get_output;
 use crate::io::push_to_output;
+use crate::read_vcf::read_vcf_to_matrix;
 use crate::structs::Coord;
+use crate::subcommands::hst::HstType;
+use crate::subcommands::hst::Metadata;
+use crate::subcommands::hst::Node;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
 use crate::utils::parse_coords;
-
-use color_eyre::{
-    eyre::{ensure, eyre, WrapErr},
-    Result,
-};
-use serde::{Deserialize, Serialize};
-
-use crate::io::get_output;
-use crate::read_vcf::read_vcf_to_matrix;
-use crate::subcommands::bhst::{HstType, Metadata, Node};
 
 #[doc(hidden)]
 pub fn run(mut args: StandardArgs, step_size: usize, min_sample_size: usize) -> Result<()> {
@@ -36,7 +38,7 @@ pub fn run(mut args: StandardArgs, step_size: usize, min_sample_size: usize) -> 
 
     let (contig, start, stop) = parse_coords(&args.coords)?;
 
-    let vcf = read_vcf_to_matrix(&args, contig, 0, Some((start, stop)), None, None, true)?;
+    let vcf = read_vcf_to_matrix(&args, &contig, 0, Some((start, stop)), None, None, true)?;
 
     tracing::info!("Starting the HST scan..");
 
@@ -63,7 +65,13 @@ pub fn run(mut args: StandardArgs, step_size: usize, min_sample_size: usize) -> 
         })
         .collect();
 
-    let metadata = Metadata::new(&vcf, &args, vcf.samples().clone(), HstType::Bhst);
+    let metadata = Metadata::new(
+        &vcf,
+        vcf.samples().clone(),
+        HstType::Bhst,
+        args.selection,
+        args.file,
+    );
 
     let trees = HstScan { hsts, metadata };
 
