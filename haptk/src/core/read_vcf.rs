@@ -27,8 +27,11 @@ fn prune_by_gt(
     samples: Vec<String>,
     wanted_gt: u8,
 ) -> Result<(Vec<[bool; 2]>, Vec<String>)> {
-    let varpos = variant_pos.saturating_sub(1);
-    let mut reader = get_vcf_reader(vcf_path, contig, Some((Some(varpos), Some(varpos))))?;
+    let mut reader = get_vcf_reader(
+        vcf_path,
+        contig,
+        Some((Some(variant_pos), Some(variant_pos))),
+    )?;
 
     let mut gt_buffer = rust_htslib::bcf::record::Buffer::new();
 
