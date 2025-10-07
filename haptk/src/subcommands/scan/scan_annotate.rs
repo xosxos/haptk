@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use bio::data_structures::interval_tree::IntervalTree;
+// use bio::data_structures::interval_tree::IntervalTree;
 use color_eyre::{eyre::eyre, Result};
 use csv::Reader;
 use polars::frame::DataFrame;
@@ -58,7 +58,8 @@ pub fn read_delimited_file(file: &PathBuf) -> Result<Reader<Box<dyn Read>>> {
 }
 #[doc(hidden)]
 pub fn run(file: PathBuf, annotate_file: PathBuf) -> Result<()> {
-    let mut annotation: IntervalTree<i64, String> = IntervalTree::new();
+    unreachable!();
+    // let mut annotation: IntervalTree<i64, String> = IntervalTree::new();
 
     let start = 1;
     let stop = 2;
@@ -71,7 +72,7 @@ pub fn run(file: PathBuf, annotate_file: PathBuf) -> Result<()> {
         let start = row[start].parse::<i64>().unwrap();
         let stop = row[stop].parse::<i64>().unwrap();
 
-        annotation.insert(start..stop, row.swap_remove(data));
+        // annotation.insert(start..stop, row.swap_remove(data));
     }
 
     let file_start = 7;
@@ -86,22 +87,22 @@ pub fn run(file: PathBuf, annotate_file: PathBuf) -> Result<()> {
         let start = row[file_start].parse::<i64>().unwrap();
         let stop = row[file_stop].parse::<i64>().unwrap();
 
-        let anns = annotation
-            .find(start..stop)
-            .map(|data| data.data())
-            .cloned()
-            .collect::<Vec<String>>();
+        // let anns = annotation
+        //     .find(start..stop)
+        //     .map(|data| data.data())
+        //     .cloned()
+        //     .collect::<Vec<String>>();
 
-        match anns.is_empty() {
-            true => {
-                row.push("".to_string());
-                wrtr.write_record(row)?;
-            }
-            false => {
-                row.push(anns.join(",").to_string());
-                wrtr.write_record(row)?;
-            }
-        }
+        // match anns.is_empty() {
+        //     true => {
+        //         row.push("".to_string());
+        //         wrtr.write_record(row)?;
+        //     }
+        //     false => {
+        //         row.push(anns.join(",").to_string());
+        //         wrtr.write_record(row)?;
+        //     }
+        // }
     }
 
     Ok(())

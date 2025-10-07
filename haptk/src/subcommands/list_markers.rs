@@ -6,7 +6,7 @@ use color_eyre::eyre::WrapErr;
 use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::structs::Coord;
+use crate::core::Coord;
 use crate::subcommands::hst::Metadata;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

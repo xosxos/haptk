@@ -9,15 +9,18 @@ use rayon::prelude::*;
 use super::hst::Node;
 use super::mrca::mrca_independent;
 use crate::args::{Selection, StandardArgs};
+use crate::core::Coord;
 use crate::core::PhasedMatrix;
 use crate::io::check_recombination_file_matches_contig;
 use crate::io::open_csv_writer;
 use crate::io::push_to_output;
 use crate::io::read_recombination_file;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::Coord;
 use crate::utils::centromeres_hg38;
 use crate::utils::parse_coords;
+
+use crate::traits::MrcaHelper;
+use crate::traits::OnlyLongest;
 
 const HEADER: [&str; 6] = ["contig", "pos", "ref", "alt", "mrca", "centromere"];
 

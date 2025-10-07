@@ -1,28 +1,28 @@
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::mpsc::{sync_channel, SyncSender},
-    thread,
-};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::SyncSender;
+use std::thread;
 
-use color_eyre::{
-    eyre::{ensure, eyre},
-    Result,
-};
+use color_eyre::eyre::ensure;
+use color_eyre::eyre::eyre;
+use color_eyre::Result;
 use petgraph::graph::NodeIndex;
 use polars::prelude::*;
 use rayon::prelude::*;
 
-use crate::subcommands::scan::{read_tree_file, Hst};
-use crate::{
-    args::{ConciseArgs, Selection, StandardArgs},
-    subcommands::immutable_hst::construct_bhst_no_mut,
-};
-use crate::{io::read_coords_file, structs::Coord};
-use crate::{
-    io::{open_csv_writer, push_to_output},
-    read_vcf::read_vcf_to_matrix,
-};
+use crate::args::ConciseArgs;
+use crate::args::Selection;
+use crate::args::StandardArgs;
+use crate::core::Coord;
+use crate::io::open_csv_writer;
+use crate::io::push_to_output;
+use crate::io::read_coords_file;
+use crate::read_vcf::read_vcf_to_matrix;
+use crate::subcommands::immutable_hst::construct_bhst_no_mut;
+use crate::subcommands::scan::read_tree_file;
+use crate::subcommands::scan::Hst;
+use crate::traits::OnlyLongest;
 
 use super::hst_scan::Limits;
 

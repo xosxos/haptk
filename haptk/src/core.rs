@@ -30,26 +30,17 @@ pub mod io;
 /// Statistics, currently not used
 pub mod stats;
 
-/// Structs
-pub mod structs;
-
-/// Utils
-// pub mod utils;
+/// Clap API for HAPTK
 pub mod clap;
 
+// Re-export core modules
 pub use haptk_core::bam;
-
+pub use haptk_core::cigar_iterator;
+pub use haptk_core::phased_matrix::Matrix;
+pub use haptk_core::phased_matrix::PhasedMatrix;
+pub use haptk_core::phased_matrix::ReadMetadata;
+pub use haptk_core::ploidy::Ploidy;
 pub use haptk_core::utils;
-
-// #[cfg(feature = "bam")]
-// pub mod bam;
-
-pub mod phased_matrix;
-
-pub mod cigar_iterator;
-
-pub use phased_matrix::PhasedMatrix;
-pub use structs::CigarVariant;
-pub use structs::Coord;
-pub use structs::HapVariant;
-pub use structs::Ploidy;
+pub use haptk_core::variant::CigarVariant;
+pub use haptk_core::variant::Coord;
+pub use haptk_core::variant::HapVariant;

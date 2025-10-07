@@ -12,14 +12,15 @@ use serde_with::serde_as;
 
 use crate::args::Selection;
 use crate::args::StandardArgs;
+use crate::core::Coord;
 use crate::io::get_output;
 use crate::io::push_to_output;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::Coord;
 use crate::subcommands::hst::HstType;
 use crate::subcommands::hst::Metadata;
 use crate::subcommands::hst::Node;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
+use crate::traits::OnlyLongest;
 use crate::utils::parse_coords;
 
 #[doc(hidden)]

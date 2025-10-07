@@ -215,7 +215,7 @@ impl<'a> Iterator for CigarIterator<'a> {
                     );
                 }
             } else if self.passed > 0 {
-                assert_eq!(
+                debug_assert_eq!(
                     self.current_read_pos as usize,
                     self.seq.len(),
                     "Incorrect cigar string: cigar: {:?}, iterated nucletotides {:?}, total sequence: {:?}",

@@ -11,15 +11,18 @@ use petgraph::Direction;
 use rayon::prelude::*;
 
 use super::Hst;
-use crate::args::{ConciseArgs, Selection, StandardArgs};
+use crate::args::ConciseArgs;
+use crate::args::Selection;
+use crate::args::StandardArgs;
+use crate::core::Coord;
 use crate::io::open_csv_writer;
 use crate::io::push_to_output;
 use crate::io::read_multiple_sample_ids;
 use crate::io::read_recombination_file;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::Coord;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
 use crate::subcommands::scan::read_tree_file;
+use crate::traits::OnlyLongest;
 use crate::utils::{centromeres_hg38, parse_coords};
 
 type Row = [String; 6];

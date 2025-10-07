@@ -16,17 +16,19 @@ use crate::args::GraphArgs;
 use crate::args::Selection;
 use crate::args::SortOption;
 use crate::args::StandardArgs;
+use crate::core::Coord;
+use crate::core::HapVariant;
 use crate::core::PhasedMatrix;
+use crate::core::Ploidy;
 use crate::io::contig_len_from_vcf;
 use crate::io::open_csv_writer;
 use crate::io::push_to_output;
 use crate::io::read_haplotype_file;
-use crate::io::read_sample_ids;
+use crate::io::read_multiple_sample_ids;
 use crate::matrix_graph::MatrixGraph;
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::read_vcf::read_vcf_to_matrix_by_indexes;
-use crate::structs::Coord;
-use crate::structs::HapVariant;
+use crate::traits::OnlyLongest;
 use crate::utils::parse_snp_coord;
 
 #[doc(hidden)]
@@ -34,7 +36,7 @@ use crate::utils::parse_snp_coord;
 pub fn run(
     args: StandardArgs,
     haplotype_path: PathBuf,
-    decoy_samples: Option<PathBuf>,
+    decoy_samples: Option<Vec<PathBuf>>,
     mark_shorter_alleles: bool,
     want_png: bool,
     want_npy: bool,
@@ -53,7 +55,7 @@ pub fn run(
     }
 
     // File reads
-    let decoy_samples = read_sample_ids(&decoy_samples)?;
+    let decoy_samples = read_multiple_sample_ids(&decoy_samples)?;
     let ht = read_haplotype_file(haplotype_path)?;
 
     // IMG output
@@ -147,7 +149,7 @@ pub fn run(
                 only_longest_lookups,
                 None,
                 args.no_alt,
-                &Selection::Haploid,
+                Ploidy::Haploid,
                 false,
                 args.include_indels,
             )?;

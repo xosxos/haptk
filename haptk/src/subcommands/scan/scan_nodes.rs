@@ -10,13 +10,14 @@ use rayon::prelude::*;
 use crate::args::ConciseArgs;
 use crate::args::Selection;
 use crate::args::StandardArgs;
+use crate::core::Coord;
 use crate::io::open_csv_writer;
 use crate::io::push_to_output;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::Coord;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
 use crate::subcommands::scan::read_tree_file;
 use crate::subcommands::scan::Limits;
+use crate::traits::OnlyLongest;
 use crate::utils::parse_coords;
 
 use super::Hst;

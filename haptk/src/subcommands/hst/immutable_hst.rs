@@ -1,8 +1,8 @@
 use color_eyre::Result;
 use petgraph::Graph;
 
+use crate::core::Coord;
 use crate::core::PhasedMatrix;
-use crate::structs::Coord;
 use crate::subcommands::hst::initiate_hst;
 use crate::subcommands::hst::Node;
 use crate::subcommands::uhst::LocDirection;

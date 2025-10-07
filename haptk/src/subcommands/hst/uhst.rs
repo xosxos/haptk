@@ -14,14 +14,14 @@ use crate::subcommands::hst::find_majority_nodes;
 use crate::subcommands::hst::pair_wise::calculate_pair_wise;
 use crate::subcommands::hst::pair_wise::PairWiseMatrix;
 use crate::subcommands::hst::read_vcf_with_selections;
+use crate::subcommands::hst::CoordDataSlot;
 use crate::subcommands::hst::HstType;
 use crate::subcommands::hst::Node;
 
 use crate::args::Selection;
 use crate::args::StandardArgs;
-use crate::core::structs::Coord;
-use crate::core::structs::CoordDataSlot;
-use crate::core::structs::HapVariant;
+use crate::core::Coord;
+use crate::core::HapVariant;
 use crate::core::PhasedMatrix;
 use crate::error::Error;
 use crate::io::open_csv_writer;

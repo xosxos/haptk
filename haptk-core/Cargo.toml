@@ -3,9 +3,26 @@ name = "haptk-core"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+noodles = ["dep:noodles"]
+
 [dependencies]
-noodles = { path = "../../noodles/noodles", features = ["cram", "sam", "bam", "fasta", "core"]}
 rust-htslib = { version = "0.44", default-features = false, features = ['bzip2'] }
+ndarray = { version = "0.16", features = ["rayon", "blas", "serde"] }
 thiserror = "2.0.17"
 tracing = "0.1"
 num-traits = {version = "0.2"}
+serde = { version = "1.0", features = ["derive"] }
+rayon = "1.10"
+
+chrono = { version = "0.4.38" } 
+
+flate2 = "1.1.3"
+bzip2 = "0.5.2"
+liblzma = "0.3.6"
+zstd = "0.13.2"
+
+byteorder = "1.5.0"
+
+noodles = { path = "../../noodles/noodles", features = ["cram", "sam", "bam", "fasta", "core"], optional = true}

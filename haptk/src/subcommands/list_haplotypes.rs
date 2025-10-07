@@ -8,14 +8,16 @@ use indexmap::IndexSet;
 
 use crate::args::Selection;
 use crate::args::StandardArgs;
+use crate::core::HapVariant;
 use crate::core::PhasedMatrix;
+use crate::core::Ploidy;
 use crate::io::contig_len_from_vcf;
 use crate::io::open_csv_writer;
 use crate::io::push_to_output;
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::read_vcf::read_vcf_to_matrix_by_indexes;
-use crate::structs::HapVariant;
 use crate::subcommands::check_for_haplotype::identical_haplotype_count;
+use crate::traits::OnlyLongest;
 use crate::utils::parse_coords;
 use crate::utils::parse_snp_coord;
 use crate::utils::precision_f64;
@@ -65,7 +67,7 @@ pub fn run(args: StandardArgs, selection_variant: Option<String>, nucleotides: b
             only_longest_lookups,
             None,
             args.no_alt,
-            &Selection::Haploid,
+            Ploidy::Haploid,
             false,
             args.include_indels,
         )?

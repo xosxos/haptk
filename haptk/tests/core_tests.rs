@@ -10,8 +10,9 @@ mod core {
     use color_eyre::Result;
 
     use haptk::args::StandardArgs;
+    use haptk::core::Coord;
     use haptk::read_vcf::read_vcf_to_matrix;
-    use haptk::structs::Coord;
+    use haptk::traits::OnlyLongest;
 
     fn create_samples() -> Vec<String> {
         vec![

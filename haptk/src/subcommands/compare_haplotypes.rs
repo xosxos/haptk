@@ -13,10 +13,10 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use termion::color;
 
+use crate::core::Coord;
 use crate::io::get_csv_writer;
 use crate::io::get_input;
 use crate::io::open_csv_writer;
-use crate::structs::Coord;
 use crate::utils::strip_prefix;
 
 pub fn get_csv_reader<R: io::Read>(input: R) -> Reader<R> {

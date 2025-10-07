@@ -36,7 +36,9 @@ mod io {
     #[test]
     fn read_samples_file() {
         let rates = PathBuf::from("tests/data/samples.ids");
-        let wanted = haptk::io::read_sample_ids(&Some(rates)).unwrap().unwrap();
+        let wanted = haptk::io::read_multiple_sample_ids(&Some(vec![rates]))
+            .unwrap()
+            .unwrap();
         let vec = vec![
             "SAMPLE1",
             "SAMPLE2",
@@ -50,7 +52,7 @@ mod io {
         assert_eq!(vec, wanted);
 
         let path = PathBuf::from("tests/data/does_not_exist.ids");
-        let res = haptk::io::read_sample_ids(&Some(path));
+        let res = haptk::io::read_multiple_sample_ids(&Some(vec![path]));
         assert!(res.is_err());
     }
 }

@@ -1,6 +1,6 @@
 // Genome-wide HSTs
 pub mod hst_scan;
-pub mod scan_annotate;
+// pub mod scan_annotate;
 pub mod scan_branch_mrca;
 pub mod scan_nodes;
 pub mod scan_quantitative;

@@ -10,12 +10,14 @@ use petgraph::Direction;
 use crate::args::Selection;
 use crate::args::StandardArgs;
 use crate::core::PhasedMatrix;
+use crate::core::Ploidy;
 use crate::io::contig_len_from_vcf;
 use crate::io::push_to_output;
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::read_vcf::read_vcf_to_matrix_by_indexes;
 use crate::subcommands::hst::Hst;
 use crate::subcommands::hst::Node;
+use crate::traits::OnlyLongest;
 use crate::utils::parse_snp_coord;
 
 #[doc(hidden)]
@@ -82,7 +84,7 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
                 only_longest_lookups,
                 None,
                 args.no_alt,
-                &Selection::Haploid,
+                Ploidy::Haploid,
                 false,
                 args.include_indels,
             )?

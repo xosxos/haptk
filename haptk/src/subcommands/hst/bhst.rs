@@ -9,18 +9,18 @@ use rayon::prelude::*;
 
 use crate::args::Selection;
 use crate::args::StandardArgs;
-use crate::core::structs::CoordDataSlot;
+use crate::core::Coord;
 use crate::core::HapVariant;
 use crate::core::PhasedMatrix;
 use crate::error::Error;
 use crate::io::open_csv_writer;
 use crate::io::push_to_output;
 use crate::io::write_haplotype;
-use crate::structs::Coord;
 
 use crate::subcommands::hst::find_majority_nodes;
 use crate::subcommands::hst::find_shared_haplotype;
 use crate::subcommands::hst::read_vcf_with_selections;
+use crate::subcommands::hst::CoordDataSlot;
 use crate::subcommands::hst::HstType;
 use crate::subcommands::hst::Node;
 

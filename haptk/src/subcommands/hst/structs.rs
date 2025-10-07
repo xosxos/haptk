@@ -18,12 +18,12 @@ use serde::{Deserialize, Serialize};
 use crate::args::ConciseArgs;
 use crate::args::Selection;
 use crate::args::StandardArgs;
+use crate::core::Coord;
+use crate::core::HapVariant;
 use crate::core::PhasedMatrix;
+use crate::core::Ploidy;
 use crate::error::Error;
 use crate::io::get_output;
-use crate::structs::Coord;
-use crate::structs::HapVariant;
-use crate::structs::Ploidy;
 use crate::utils::centromeres_hg38;
 
 use super::initiate_hst;

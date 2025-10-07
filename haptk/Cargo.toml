@@ -35,17 +35,13 @@ default      = ["clap"]
 no-clap      = []
 clap         = ["dep:clap", "dep:anstyle"]
 enum_methods = ["dep:strum"]
-haplotag = ["bam", "dep:gxhash", "dep:regex", "dep:noodles", "dep:crossbeam-channel"]
+haplotag = ["dep:gxhash", "dep:regex", "dep:crossbeam-channel"]
 experimental = ["clap", "dep:fishers_exact", "dep:polars", "dep:serde_with", "haplotag"]
-bam = ["dep:noodles"]
 
 [dependencies]
 alphanumeric-sort = "1.5"
 bgzip = "0.3"
-bio = "2.0"
-niffler = "3.0"
 ndarray = { version = "0.16", features = ["rayon", "blas", "serde"] }
-ndarray-npy = { version = "0.9", default-features = false }
 termion = "4.0"
 color-eyre = "0.6"
 rayon = "1.10"
@@ -67,7 +63,7 @@ image = { version = "0.25", default-features = false, features = ['png'] }
 statrs = { version = "0.16", default-features = false }
 chrono = { version = "0.4.38" }
 
-num-traits = {version = "0.2"}
+byteorder = "1.5.0"
 
 haptk-core = { path = "../haptk-core" }
 
@@ -87,7 +83,7 @@ strum = { version = "0.26.3", features = ["derive"], optional = true }
 gxhash = { version = "3.4.1", optional = true }
 regex = { version = "1.11", optional = true }
 crossbeam-channel = { version = "0.5.13", optional = true }
-noodles = { path = "../../noodles/noodles", features = ["cram", "sam", "bam", "fasta", "core"], optional = true}
+# noodles = { path = "../../noodles/noodles", features = ["cram", "sam", "bam", "fasta", "core"], optional = true}
 
 [dev-dependencies]
 insta = { version = "1.26.0", default-features = false, features = ["yaml"] }

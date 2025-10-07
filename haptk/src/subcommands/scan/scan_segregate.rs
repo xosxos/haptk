@@ -1,6 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::mpsc::{sync_channel, SyncSender};
+use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::SyncSender;
 use std::thread;
 
 use color_eyre::eyre::ensure;
@@ -9,13 +11,15 @@ use fishers_exact::fishers_exact;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::args::{ConciseArgs, StandardArgs};
-use crate::io::{
-    filter_out_non_vcf_sample_names, open_csv_writer, push_to_output, read_coords_sample_file,
-    read_sample_ids,
-};
+use crate::args::ConciseArgs;
+use crate::args::StandardArgs;
+use crate::core::Coord;
+use crate::io::filter_out_samples_not_in_vcf;
+use crate::io::open_csv_writer;
+use crate::io::push_to_output;
+use crate::io::read_coords_sample_file;
+use crate::io::read_multiple_sample_ids;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::Coord;
 use crate::subcommands::hst::Node;
 use crate::subcommands::immutable_hst::construct_bhst_no_mut;
 use crate::subcommands::scan::{Hst, Limits};
@@ -73,8 +77,8 @@ pub fn run(
     coord_list_path: Option<PathBuf>,
     limit: f64,
 ) -> Result<()> {
-    let case_samples = read_sample_ids(&Some(case_samples))?.unwrap();
-    let ctrl_samples = read_sample_ids(&Some(ctrl_samples))?.unwrap();
+    let case_samples = read_multiple_sample_ids(&Some(vec![case_samples]))?.unwrap();
+    let ctrl_samples = read_multiple_sample_ids(&Some(vec![ctrl_samples]))?.unwrap();
 
     let args = StandardArgs {
         file: args.file.clone(),
@@ -113,10 +117,8 @@ pub fn run(
             tracing::info!("Reading {} coords to HSTs.", coord_list.len());
             let mut out_map = HashMap::new();
 
-            let contig = &coord_list[0].contig;
-
-            let ctrl_samples = filter_out_non_vcf_sample_names(&args.file, contig, ctrl_samples)?;
-            let case_samples = filter_out_non_vcf_sample_names(&args.file, contig, case_samples)?;
+            let ctrl_samples = filter_out_samples_not_in_vcf(&args.file, ctrl_samples)?;
+            let case_samples = filter_out_samples_not_in_vcf(&args.file, case_samples)?;
 
             for coord in coord_list {
                 out_map

@@ -35,7 +35,7 @@ use crate::{
         scan::scan_segregate,
         scan::scan_sum_hsts,
         scan::hst_scan,
-        scan::scan_annotate,
+        // scan::scan_annotate,
     }
 };
 
@@ -201,8 +201,8 @@ pub enum SubCommand {
         threads: usize,
 
         /// Mark sample names for tagging
-        #[cfg_attr(feature = "clap", arg(short = 'm', long))]
-        mark_samples: Option<PathBuf>,
+        #[cfg_attr(feature = "clap", arg(short = 'm', long, value_delimiter = ' ', num_args = 1.. ))]
+        mark_samples: Option<Vec<PathBuf>>,
 
         /// Mark shorter alleles to graph
         #[cfg_attr(feature = "clap", arg(long))]
@@ -585,16 +585,16 @@ pub enum SubCommand {
 
     },
     
-    #[cfg(feature = "experimental")]
-    /// (experimental) Annotate a scan using a bed file
-    AnnotateScan {
-        file: PathBuf,
+    // #[cfg(feature = "experimental")]
+    // /// (experimental) Annotate a scan using a bed file
+    // AnnotateScan {
+    //     file: PathBuf,
 
-        annotate_file: PathBuf,
+    //     annotate_file: PathBuf,
 
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
-    },
+    //     #[cfg_attr(feature = "clap", command(flatten))]
+    //     log_and_verbosity: LogAndVerbosity,
+    // },
 
     #[cfg(feature = "experimental")]
     /// (experimental) Haplotagging
@@ -673,7 +673,7 @@ impl SubCommand {
             | SubCommand::ScanQuantitative { log_and_verbosity,  .. }
             | SubCommand::ScanSumHst { log_and_verbosity, .. }
             | SubCommand::ScanNodes { log_and_verbosity,  .. }
-            | SubCommand::AnnotateScan { log_and_verbosity, .. } 
+            // | SubCommand::AnnotateScan { log_and_verbosity, .. } 
             | SubCommand::Haplotag { log_and_verbosity, .. } 
             => (log_and_verbosity.verbosity, &log_and_verbosity.log_file, log_and_verbosity.silent),
         }
@@ -719,8 +719,8 @@ impl SubCommand {
             | SubCommand::FastaToHaplotype { .. }
             | SubCommand::Markers { .. } => None,
 
-            #[cfg(feature = "experimental")]
-            SubCommand::AnnotateScan { .. } => None,
+            // #[cfg(feature = "experimental")]
+            // SubCommand::AnnotateScan { .. } => None,
 
             #[cfg(feature = "experimental")]
             SubCommand::MrcaScan { args: StandardArgs { output, .. }, ..}
@@ -831,8 +831,8 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
                 args, (min_sample_size, max_sample_size, min_ht_len, max_ht_len), case_samples, ctrl_samples, coords, limit,
             )?,
 
-        #[cfg(feature = "experimental")]
-        SubCommand::AnnotateScan { file, annotate_file, .. } => scan_annotate::run(file, annotate_file)?,
+        // #[cfg(feature = "experimental")]
+        // SubCommand::AnnotateScan { file, annotate_file, .. } => scan_annotate::run(file, annotate_file)?,
 
         #[cfg(feature = "experimental")]
         SubCommand::Haplotag { args, bam_file, ref_file, contigs, .. } => haplotag::run(args, bam_file, ref_file, contigs, nthreads)?,

@@ -2,9 +2,8 @@ use std::collections::BTreeMap;
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
-use std::fs::File;
-use std::io::{self, BufRead};
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::thread::{self, JoinHandle};
 
@@ -12,69 +11,27 @@ use bgzip::tabix::Tabix;
 use color_eyre::eyre::{eyre, OptionExt, WrapErr};
 use color_eyre::Result;
 use csv::{QuoteStyle, Reader, ReaderBuilder, Writer, WriterBuilder};
-use rust_htslib::bcf::{header::HeaderRecord, IndexedReader, Read};
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::args::{Selection, StandardArgs};
+use crate::core::Coord;
+use crate::core::HapVariant;
 use crate::error::Error;
-use crate::read_vcf::get_reader;
-use crate::structs::Coord;
-use crate::structs::HapVariant;
 use crate::utils::strip_prefix;
 
 #[cfg(feature = "experimental")]
 use crate::subcommands::scan::scan_segregate::CoordSamples;
 
-#[allow(clippy::upper_case_acronyms)]
-pub enum FileType {
-    BED,
-    VCF,
-    CSV,
-    TSV,
-    HST,
-}
-
-impl FileType {
-    pub fn from_path(path: &PathBuf) -> Result<Self> {
-        let extension: &str = Path::new(&path)
-            .extension()
-            .and_then(OsStr::to_str)
-            .ok_or_eyre(Error::NoFileType { path: path.clone() })?;
-
-        let ext = match extension {
-            "gz" | "bgz" => return_double_extension_filetype(path, extension)?,
-            _ => extension.to_string(),
-        };
-
-        Ok(match ext.as_str() {
-            "vcf.gz" | "vcf" | "bcf" => Self::VCF,
-            "hst.gz" | "hst" => Self::HST,
-            "bed.gz" | "bed" => Self::BED,
-            "csv" | "ids" => Self::CSV,
-            "tsv" => Self::TSV,
-            _ => return Err(eyre!(Error::FileNotSupported { ext })),
-        })
-    }
-}
-
-pub fn return_double_extension_filetype(path: &Path, e1: &str) -> Result<String> {
-    let stem = path
-        .file_stem()
-        .and_then(OsStr::to_str)
-        .ok_or_eyre(Error::NoFileType {
-            path: path.to_path_buf(),
-        })?;
-
-    let e2 = Path::new(&stem)
-        .extension()
-        .and_then(OsStr::to_str)
-        .ok_or_eyre(Error::FileNotSupported {
-            ext: format!("{path:?}"),
-        })?;
-
-    Ok(format!("{e2}.{e1}"))
-}
+pub use haptk_core::io::get_extension;
+pub use haptk_core::io::get_input;
+pub use haptk_core::io::get_output;
+pub use haptk_core::io::read_lines;
+pub use haptk_core::io::read_multiple_sample_ids;
+pub use haptk_core::io::FileType;
+pub use haptk_core::vcf::contig_len_from_vcf;
+pub use haptk_core::vcf::filter_out_samples_not_in_vcf;
+pub use haptk_core::vcf::get_indexes_and_sample_ids_from_vcf;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SampleHaplotypeList {
@@ -181,32 +138,6 @@ pub fn read_coords_sample_file(path: &PathBuf) -> Result<Vec<CoordSamples>> {
     Ok(variants)
 }
 
-pub fn filter_out_non_vcf_sample_names(
-    path: &PathBuf,
-    contig: &str,
-    wanted_samples: Vec<String>,
-) -> Result<Vec<String>> {
-    let reader = get_reader(path, contig, None)?;
-
-    let samples = reader
-        .header()
-        .samples()
-        .into_iter()
-        .map(|sample| Ok(String::from_utf8_lossy(sample).to_string()))
-        .collect::<Result<Vec<String>>>()?;
-
-    for i in &wanted_samples {
-        if !samples.contains(i) {
-            tracing::warn!("Wanted sample {i} is not in the VCF");
-        }
-    }
-
-    Ok(samples
-        .into_iter()
-        .filter(|s| wanted_samples.contains(s))
-        .collect())
-}
-
 #[derive(Debug, Clone, serde::Deserialize)]
 struct RecombinationRow<'a> {
     chr: &'a str,
@@ -296,48 +227,6 @@ pub fn read_haplotype_file(ht_path: PathBuf) -> Result<Vec<HapVariant>> {
     Ok(variants)
 }
 
-pub fn read_lines<P>(filename: P) -> Result<io::Lines<io::BufReader<File>>>
-where
-    P: AsRef<Path> + Into<PathBuf>,
-{
-    let file = File::open(&filename).wrap_err(Error::Io {
-        path: filename.into(),
-    })?;
-
-    Ok(io::BufReader::new(file).lines())
-}
-
-pub fn read_multiple_sample_ids(path: &Option<Vec<PathBuf>>) -> Result<Option<Vec<String>>> {
-    match path {
-        Some(paths) => {
-            let mut samples = vec![];
-            for path in paths {
-                for line in read_lines(path)?.map_while(Result::ok) {
-                    let line = line.trim();
-                    samples.push(line.to_string());
-                }
-            }
-            Ok(Some(samples))
-        }
-        None => Ok(None),
-    }
-}
-
-pub fn read_sample_ids(path: &Option<PathBuf>) -> Result<Option<Vec<String>>> {
-    match path {
-        Some(path) => {
-            let mut samples = vec![];
-
-            for line in read_lines(path)?.map_while(Result::ok) {
-                let line = line.trim();
-                samples.push(line.to_string());
-            }
-            Ok(Some(samples))
-        }
-        None => Ok(None),
-    }
-}
-
 pub fn push_to_output(args: &StandardArgs, output: &mut PathBuf, name: &str, suffix: &str) {
     if let Some(prefix) = &strip_prefix(args.prefix.clone()) {
         match args.selection {
@@ -360,50 +249,6 @@ pub fn push_to_output(args: &StandardArgs, output: &mut PathBuf, name: &str, suf
             Selection::Haploid => output.push(format!("{name}_haploid.{suffix}")),
         }
     }
-}
-
-pub fn contig_len_from_vcf(path: &PathBuf, contig: &str) -> Result<u64> {
-    get_vcf_contigs(path)?
-        .iter()
-        .find(|(ctg, _len)| ctg == contig)
-        .map(|(_, len)| *len as u64)
-        .ok_or_eyre(Error::NoContigLength {
-            contig: contig.to_string(),
-        })
-}
-
-pub fn get_vcf_contigs(path: &PathBuf) -> Result<Vec<(String, i64)>> {
-    IndexedReader::from_path(path)?
-        .header()
-        .header_records()
-        .iter()
-        .filter(|r| matches!(r, HeaderRecord::Contig { .. }))
-        .map(|r| match r {
-            HeaderRecord::Contig { values, .. } => {
-                let id = values
-                    .get("ID")
-                    .ok_or_eyre("The input VCF has no ID for some contig record in the header")?;
-
-                Ok((
-                    id.clone(),
-                    values
-                        .get("length")
-                        .ok_or_eyre(Error::NoContigLength {
-                            contig: id.to_string(),
-                        })?
-                        .parse::<i64>()?,
-                ))
-            }
-            _ => {
-                unreachable!(
-                    "
-                    VCF header contig filtering failed for some reason.
-                    Create an issue at Github: https://github.com/xosxos/haptk
-                    "
-                )
-            }
-        })
-        .collect()
 }
 
 pub fn get_tsv_reader<R: io::Read>(input: R, has_headers: bool) -> Reader<R> {
@@ -446,48 +291,6 @@ pub fn get_vcf_writer<W: io::Write>(output: W) -> Writer<W> {
         .double_quote(false)
         .quote_style(QuoteStyle::Never)
         .from_writer(output)
-}
-
-pub fn get_input(filename: Option<PathBuf>) -> Result<Box<dyn io::Read>> {
-    let input: Box<dyn io::Read> = match filename {
-        Some(name) => match name.to_str() {
-            Some("-") => Box::new(io::stdin()),
-            Some(name) => {
-                let r = match niffler::from_path(name) {
-                    Ok(x) => x.0,
-                    Err(err) => {
-                        let msg = format!("failed to open \"{name}\": {err}");
-                        return Err(eyre!(msg))?;
-                    }
-                };
-                Box::new(r)
-            }
-            None => return Err(eyre!("Unknown I/O error")),
-        },
-        None => Box::new(io::stdin()),
-    };
-    Ok(input)
-}
-
-pub fn get_output(filename: Option<PathBuf>) -> Result<Box<dyn io::Write>> {
-    let output: Box<dyn io::Write> = match filename {
-        Some(name) => match name.to_str() {
-            Some("-") => Box::new(io::stdout()),
-            Some(path) => Box::new(
-                std::fs::File::options()
-                    .create(true)
-                    .write(true)
-                    .truncate(true)
-                    .open(path)
-                    .wrap_err(Error::Io {
-                        path: PathBuf::from(path),
-                    })?,
-            ),
-            None => unreachable!(),
-        },
-        None => Box::new(io::stdout()),
-    };
-    Ok(output)
 }
 
 pub fn open_csv_writer(name: PathBuf) -> Result<Writer<Box<dyn io::Write>>> {
@@ -534,14 +337,14 @@ pub fn spawn_csv_collector(
     })
 }
 
-pub fn append_ext(ext: impl AsRef<OsStr>, path: &PathBuf) -> PathBuf {
-    let mut os_string: OsString = path.into();
-    os_string.push(".");
-    os_string.push(ext.as_ref());
-    os_string.into()
-}
-
 pub fn read_tabix(path: &PathBuf) -> Result<HashMap<String, (u64, usize)>> {
+    fn append_ext(ext: impl AsRef<OsStr>, path: &PathBuf) -> PathBuf {
+        let mut os_string: OsString = path.into();
+        os_string.push(".");
+        os_string.push(ext.as_ref());
+        os_string.into()
+    }
+
     let path = append_ext("tbi", path);
     let mut file = std::fs::File::open(&path).wrap_err(Error::Io { path: path.clone() })?;
 
@@ -615,5 +418,12 @@ mod tests {
         };
         push_to_output(&args, &mut output, "picture", "png");
         assert_eq!(output, std::path::PathBuf::from("./foo/nice_picture.png"));
+    }
+
+    #[test]
+    fn test_extension_filetype() {
+        let path = std::path::PathBuf::from("test.vcf.gz");
+        let ftype = get_extension(&path).unwrap();
+        assert_eq!(String::from("vcf.gz"), ftype);
     }
 }

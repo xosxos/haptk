@@ -15,7 +15,7 @@ mod test_check_for_haplotype {
     use color_eyre::Result;
 
     use haptk::args::Selection;
-    use haptk::structs::HapVariant;
+    use haptk::core::HapVariant;
     use haptk::subcommands::check_for_haplotype;
     use haptk::subcommands::uhst;
 

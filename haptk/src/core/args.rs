@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::core::Ploidy;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -141,6 +142,28 @@ pub enum Selection {
     Unphased,
     /// Use for haploid genotypes
     Haploid,
+}
+
+impl From<&Selection> for Ploidy {
+    fn from(selection: &Selection) -> Self {
+        match selection {
+            Selection::Haploid | Selection::OnlyRefs | Selection::OnlyAlts | Selection::List => {
+                Ploidy::Haploid
+            }
+            _ => Ploidy::Diploid,
+        }
+    }
+}
+
+impl From<Selection> for Ploidy {
+    fn from(selection: Selection) -> Self {
+        match selection {
+            Selection::Haploid | Selection::OnlyRefs | Selection::OnlyAlts | Selection::List => {
+                Ploidy::Haploid
+            }
+            _ => Ploidy::Diploid,
+        }
+    }
 }
 
 impl std::fmt::Display for Selection {

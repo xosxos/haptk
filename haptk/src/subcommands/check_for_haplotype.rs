@@ -10,10 +10,11 @@ use crate::core::PhasedMatrix;
 use crate::io::push_to_output;
 use crate::io::open_csv_writer;
 use crate::read_vcf::read_vcf_to_matrix;
-use crate::structs::Coord;
-use crate::structs::HapVariant;
+use crate::core::Coord;
+use crate::core::HapVariant;
 use crate::utils::parse_snp_coord;
 use crate::utils::precision_f64;
+use crate::traits::OnlyLongest;
 
 #[doc(hidden)]
 pub fn run(args: StandardArgs, haplotype_path: PathBuf) -> Result<()> {

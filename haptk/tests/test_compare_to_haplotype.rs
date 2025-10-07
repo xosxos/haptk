@@ -14,10 +14,9 @@ use haptk::{
 mod test_compare_to_haplotype {
     use std::collections::HashMap;
 
-    use haptk::{
-        args::SortOption,
-        structs::{Coord, HapVariant},
-    };
+    use haptk::args::SortOption;
+    use haptk::core::Coord;
+    use haptk::core::HapVariant;
 
     use super::*;
 

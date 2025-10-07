@@ -13,7 +13,10 @@ use crate::core::read_vcf::read_vcf_to_matrix;
 use crate::io::push_to_output;
 use crate::io::read_recombination_file;
 use crate::subcommands::hst::Node;
+use crate::traits::OnlyLongest;
 use crate::utils::parse_snp_coord;
+
+use crate::traits::MrcaHelper;
 
 pub type Age = (f64, f64, f64);
 

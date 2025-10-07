@@ -45,23 +45,26 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+/// Graphs implemented in Rust, HST graph will be replaced by the Python implementation
+pub mod matrix_graph;
+
+/// HAPTK commands
+pub mod subcommands;
+
+// Core functions and structs
 pub mod core;
+
+// Helper traits
+pub mod traits;
 
 pub use core::args;
 pub use core::error;
 pub use core::io;
 pub use core::read_vcf;
 pub use core::stats;
-pub use core::structs;
 
 pub use core::bam;
 pub use core::utils;
 
 // #[cfg(feature = "clap")]
 pub use core::clap;
-
-/// Graphs implemented in Rust, HST graph will be replaced by the Python implementation
-pub mod matrix_graph;
-
-/// HAPTK commands
-pub mod subcommands;
