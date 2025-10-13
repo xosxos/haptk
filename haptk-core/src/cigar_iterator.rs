@@ -66,7 +66,6 @@ impl<'a> CigarIterator<'a> {
         unmapped_as_insertion: bool,
         min_ins_len: u64,
     ) -> Self {
-        tracing::info!("read_start_pos: {read_start_pos}",);
         Self {
             current_ref_pos: read_start_pos,
             current_read_pos: 0,
@@ -86,14 +85,14 @@ impl<'a> Iterator for CigarIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(cigar) = self.cigar.next() {
             let start = self.current_read_pos as usize;
-            println!(
-                "ref_pos: {}, read_pos: {}, passed {} len {} variant {:?}",
-                self.current_ref_pos,
-                self.current_read_pos,
-                self.passed,
-                self.seq.len(),
-                cigar,
-            );
+            // println!(
+            //     "ref_pos: {}, read_pos: {}, passed {} len {} variant {:?}",
+            //     self.current_ref_pos,
+            //     self.current_read_pos,
+            //     self.passed,
+            //     self.seq.len(),
+            //     cigar,
+            // );
 
             let variant = match cigar {
                 Cigar::RefSkip(_) => panic!("Refskip N present in Cigar strings"),

@@ -318,6 +318,7 @@ fn read_parallel(
             acc.1.extend(cur.1);
             acc
         });
+
     Ok((markers, coords))
 }
 
