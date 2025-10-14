@@ -6,6 +6,7 @@ use std::result::Result;
 
 use crate::bam;
 use crate::error;
+use crate::io::FileType;
 
 pub struct Reader {
     rdr: IndexedReader,
@@ -14,17 +15,30 @@ pub struct Reader {
 }
 
 impl Reader {
-    pub fn from_path(
+    pub fn from_path<P>(
         bam_path: &Path,
-        ref_path: &Path,
+        ref_path: Option<P>,
         contig: &str,
         range: &Range<u64>,
         sample_id: &str,
-    ) -> Result<Self, error::Error> {
+    ) -> Result<Self, error::Error>
+    where
+        P: AsRef<Path>,
+    {
         // Fetch reads in a given contig from the bam
         let mut rdr = IndexedReader::from_path(bam_path)?;
 
-        rdr.set_reference(ref_path)?;
+        let file_type = FileType::from_path(bam_path)?;
+
+        if matches!(file_type, FileType::CRAM) {
+            rdr.set_reference(
+                ref_path
+                    .ok_or_else(|| {
+                        error::Error::New(format!("No reference file with CRAM file {bam_path:?}"))
+                    })?
+                    .as_ref(),
+            )?;
+        }
 
         rdr.fetch((&contig, range.start, range.end))?;
         tracing::info!("Fetched {}..{} for {}", range.start, range.end, sample_id);

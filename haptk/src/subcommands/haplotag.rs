@@ -232,7 +232,7 @@ pub fn iterate_region(
             tracing::info!("Searching insertions from {contig} for {sample_id}");
 
             let mut rdr =
-                bam::Reader::from_path(bam_path, &conf.ref_path, contig, &range, sample_id)?;
+                bam::Reader::from_path(bam_path, Some(&conf.ref_path), contig, &range, sample_id)?;
 
             rdr.records().try_for_each(|record| {
                 match_cigar_to_haplotype(

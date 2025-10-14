@@ -60,7 +60,7 @@ time = { version = "0.3", default-features = false, features = ["local-offset"] 
 petgraph = { version = "0.6", default-features = false, features = ["serde-1"] }
 rust-htslib = { version = "0.44", default-features = false, features = ['bzip2'] }
 image = { version = "0.25", default-features = false, features = ['png'] }
-statrs = { version = "0.16", default-features = false }
+statrs = { version = "0.18", default-features = false }
 chrono = { version = "0.4.38" }
 
 byteorder = "1.5.0"

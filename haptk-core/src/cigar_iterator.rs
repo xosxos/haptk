@@ -45,6 +45,23 @@ impl CigarIterType {
     }
 }
 
+impl std::fmt::Display for CigarIterType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let line = match self {
+            CigarIterType::Diff(_, _, seq) => format!("{}X", seq.len()),
+            CigarIterType::Del(_, _, pos) => format!("{}D", pos),
+            CigarIterType::Ins(_, _, seq) => format!("{}I", seq.len()),
+            CigarIterType::LeadingSoftClip(_, _, seq)
+            | CigarIterType::TrailingSoftClip(_, _, seq) => format!("{}S", seq.len()),
+            CigarIterType::HardClip(len) => format!("{}H", len),
+            CigarIterType::Equal(_, _seq) => "?=".to_string(),
+            CigarIterType::Match(_, _, seq) => format!("{}M", seq.len()),
+            CigarIterType::Unmapped(_, _) => String::new(),
+        };
+        write!(f, "{line}")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CigarIterator<'a> {
     current_ref_pos: u64,

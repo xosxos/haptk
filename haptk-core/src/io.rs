@@ -32,6 +32,8 @@ pub enum FileType {
     CSV,
     TSV,
     HST,
+    BAM,
+    CRAM,
 }
 
 impl FileType {
@@ -40,6 +42,8 @@ impl FileType {
 
         Ok(match ext.as_str() {
             "vcf.gz" | "vcf" | "bcf" => Self::VCF,
+            "cram" => Self::CRAM,
+            "bam" => Self::BAM,
             "hst.gz" | "hst" => Self::HST,
             "bed.gz" | "bed" => Self::BED,
             "csv" | "ids" => Self::CSV,
