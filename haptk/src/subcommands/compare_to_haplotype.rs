@@ -460,7 +460,7 @@ pub fn write_ranges_to_csv(
     writer.write_record(vec![
         "id",
         "idx",
-        "ht_num",
+        "ht",
         "start",
         "stop",
         "length",

@@ -181,7 +181,7 @@ impl Hst {
         self.hst.add_edge(parent, child, ())
     }
 
-    pub fn node_weights_mut(&mut self) -> NodeWeightsMut<Node> {
+    pub fn node_weights_mut(&mut self) -> NodeWeightsMut<'_, Node> {
         self.hst.node_weights_mut()
     }
 
