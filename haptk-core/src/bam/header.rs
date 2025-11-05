@@ -173,60 +173,60 @@ impl Header {
     }
 }
 
-#[cfg(feature = "noodles")]
-#[allow(dead_code)]
-mod noodles {
-    use std::{fs::File, path::PathBuf};
+// #[cfg(feature = "noodles")]
+// #[allow(dead_code)]
+// mod noodles {
+//     use std::{fs::File, path::PathBuf};
 
-    use crate::error;
+//     use crate::error;
 
-    use noodles::sam::header;
-    pub struct Header(header::Header);
+//     use noodles::sam::header;
+//     pub struct Header(header::Header);
 
-    impl Header {
-        pub fn try_get(path: &PathBuf) -> Result<Self, error::Error> {
-            let extension = path
-                .extension()
-                .unwrap_or_else(|| panic!("bam file {path:?} does not have a proper extension"))
-                .to_str()
-                .unwrap();
+//     impl Header {
+//         pub fn try_get(path: &PathBuf) -> Result<Self, error::Error> {
+//             let extension = path
+//                 .extension()
+//                 .unwrap_or_else(|| panic!("bam file {path:?} does not have a proper extension"))
+//                 .to_str()
+//                 .unwrap();
 
-            let header: header::Header = match extension {
-                "cram" => File::open(path)
-                    .map_err(|e| error::Error::Io(path.clone(), e))
-                    .map(noodles::cram::io::Reader::new)?
-                    .read_header()?,
-                "bam" => File::open(path)
-                    .map_err(|e| error::Error::Io(path.clone(), e))
-                    .map(noodles::bam::io::Reader::new)?
-                    .read_header()?,
-                _ => return Err(error::Error::UnknownExtension(path.clone())),
-            };
+//             let header: header::Header = match extension {
+//                 "cram" => File::open(path)
+//                     .map_err(|e| error::Error::Io(path.clone(), e))
+//                     .map(noodles::cram::io::Reader::new)?
+//                     .read_header()?,
+//                 "bam" => File::open(path)
+//                     .map_err(|e| error::Error::Io(path.clone(), e))
+//                     .map(noodles::bam::io::Reader::new)?
+//                     .read_header()?,
+//                 _ => return Err(error::Error::UnknownExtension(path.clone())),
+//             };
 
-            Ok(Self(header))
-        }
+//             Ok(Self(header))
+//         }
 
-        pub fn read_group_samples(&self) -> Result<Vec<String>, error::Error> {
-            self.0
-                .read_groups()
-                .iter()
-                .map(|(_, map)| {
-                    let sm = noodles::sam::header::record::value::map::tag::Other::try_from([
-                        b'S', b'M',
-                    ])?;
+//         pub fn read_group_samples(&self) -> Result<Vec<String>, error::Error> {
+//             self.0
+//                 .read_groups()
+//                 .iter()
+//                 .map(|(_, map)| {
+//                     let sm = noodles::sam::header::record::value::map::tag::Other::try_from([
+//                         b'S', b'M',
+//                     ])?;
 
-                    let sample_name = map.other_fields().get(&sm).unwrap().to_string();
-                    Ok(sample_name)
-                })
-                .collect()
-        }
+//                     let sample_name = map.other_fields().get(&sm).unwrap().to_string();
+//                     Ok(sample_name)
+//                 })
+//                 .collect()
+//         }
 
-        pub fn reference_sequences(&self) -> Vec<(String, u64)> {
-            self.0
-                .reference_sequences()
-                .iter()
-                .map(|(seqname, map)| (seqname.to_string(), map.length().get() as u64))
-                .collect()
-        }
-    }
-}
+//         pub fn reference_sequences(&self) -> Vec<(String, u64)> {
+//             self.0
+//                 .reference_sequences()
+//                 .iter()
+//                 .map(|(seqname, map)| (seqname.to_string(), map.length().get() as u64))
+//                 .collect()
+//         }
+//     }
+// }

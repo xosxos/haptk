@@ -59,8 +59,8 @@ pub enum Error {
     #[error("{0}")]
     New(String),
 
-    #[cfg(feature = "noodles")]
-    #[error("parse error: {0}")]
-    Parse(#[from] noodles::sam::header::record::value::map::tag::ParseError),
+    // #[cfg(feature = "noodles")]
+    // #[error("parse error: {0}")]
+    // Parse(#[from] noodles::sam::header::record::value::map::tag::ParseError),
 
 }

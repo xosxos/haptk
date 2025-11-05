@@ -5,7 +5,7 @@ edition = "2024"
 
 [features]
 default = []
-noodles = ["dep:noodles"]
+# noodles = ["dep:noodles"]
 
 [dependencies]
 rust-htslib = { version = "0.44", default-features = false, features = ['bzip2'] }
@@ -26,4 +26,4 @@ zstd = "0.13.2"
 
 byteorder = "1.5.0"
 
-noodles = { path = "../../noodles/noodles", features = ["cram", "sam", "bam", "fasta", "core"], optional = true}
+# noodles = { path = "../../noodles/noodles", features = ["cram", "sam", "bam", "fasta", "core"], optional = true}
