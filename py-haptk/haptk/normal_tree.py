@@ -14,7 +14,7 @@ def normal_tree_style():
     return ts
 
 
-def draw_normal_tree(hst, t, samples_to_tag, colors, proportions, show_haplotype, n_markers, show_pos):
+def draw_normal_tree(hst, t, samples_to_tag, colors, proportions, show_haplotype, n_markers, show_pos, tag_indexes):
     style = NodeStyle()
     style["size"] = 0
 
@@ -52,7 +52,13 @@ def draw_normal_tree(hst, t, samples_to_tag, colors, proportions, show_haplotype
                 n.set_style(utils.return_node_style("#000", 1))
 
             for (color_i, sample_list) in enumerate(samples_to_tag):
-                results = [i for i in node_data["indexes"] if hst.get_sample_name(i) in sample_list]
+                indexes = node_data["indexes"]
+
+                if tag_indexes:
+                    results = [i for i in indexes if str(i) in sample_list]
+                else:
+                    results = [i for i in indexes if hst.get_sample_name(i) in sample_list]
+
                 if results:
                     n.set_style(utils.return_node_style(colors[color_i], 7 - color_i))
 

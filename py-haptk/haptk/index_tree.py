@@ -12,7 +12,7 @@ def index_tree_style():
     return ts
     
 
-def draw_index_tree(t, output):
+def draw_index_tree(hst, t, output, leaf_as_name):
     style = NodeStyle()
     style["size"] = 0
 
@@ -26,7 +26,15 @@ def draw_index_tree(t, output):
     for n in t.traverse():
         n.set_style(style)
 
-        label = n.name
+        node_data = hst.get_node_data(int(n.name))
+
+        if leaf_as_name and len(node_data["indexes"]) == 1:
+            sample_index = node_data["indexes"][0]
+            label = hst.get_sample_name(sample_index)
+        else:
+            label = n.name
+
+        node_data = hst.get_node_data(int(n.name))
 
         F = TextFace(label, tight_text=True, penwidth=30)
         F.rotation = 270

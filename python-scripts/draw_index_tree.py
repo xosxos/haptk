@@ -7,6 +7,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('hst', type=str)
 parser.add_argument('--min-size', type=int, default=1)    
 parser.add_argument('--hard-cut', action="store_true")    
+parser.add_argument('--leaf-as-name', action="store_true")    
 parser.add_argument('-o', '--output', type=str)
 
 args = parser.parse_args()
@@ -15,7 +16,7 @@ args = parser.parse_args()
 hst = haptk.read_hst(args.hst)
 
 # Render the tree
-hst.index_tree(args.output, min_size=args.min_size, hard_cut=args.hard_cut)
+hst.index_tree(args.output, min_size=args.min_size, hard_cut=args.hard_cut, leaf_as_name=args.leaf_as_name)
 
 
 

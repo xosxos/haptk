@@ -9,6 +9,7 @@ parser.add_argument('hst', type=str)
 parser.add_argument('--min-size', type=int, default=1)    
 parser.add_argument('--hard-cut', action="store_true")    
 parser.add_argument('--ids', nargs="+", type=str)
+parser.add_argument('--tag-indexes', action="store_true")
 parser.add_argument('--colors', nargs="+", type=str)
 parser.add_argument('-o', '--output', type=str)
 
@@ -37,7 +38,7 @@ else:
 
 
 # Render the tree
-hst.circle_tree(args.output,  to_tag=samples_to_tag, colors=colors, min_size=args.min_size, hard_cut=args.hard_cut)
+hst.circle_tree(args.output,  to_tag=samples_to_tag, colors=colors, min_size=args.min_size, hard_cut=args.hard_cut, tag_indexes=args.tag_indexes)
 
 
 

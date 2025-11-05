@@ -226,40 +226,40 @@ class HST:
         t = iterate_tree_inner(self, t, to_tag, df, optimizer)
         t.render(output, units="px", w=w, h=h, tree_style=tree_style, dpi=dpi)
 
-    def match_tree(self, other_hst, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=match_tree_style(), circle=False): 
+    def match_tree(self, other_hst, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=match_tree_style(), circle=False, tag_indexes=False): 
         other_t = create_ete3_tree(other_hst, min_size, hard_cut, min_start, max_stop, right_up=False)
-        t = draw_match_tree(self, other_t, output, self.samples, to_tag, colors, proportions, circle)
+        t = draw_match_tree(self, other_t, output, self.samples, to_tag, colors, proportions, circle, tag_indexes)
 
         if circle:
             tree_style=circle_match_tree_style()
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
 
-    def index_tree(self, output, min_size=1, hard_cut=False, min_start=None, max_stop=None, dpi=600, tree_style=index_tree_style()): 
+    def index_tree(self, output, min_size=1, hard_cut=False, min_start=None, max_stop=None, dpi=600, tree_style=index_tree_style(), leaf_as_name=False): 
         t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up=False)
-        t = draw_index_tree(t, output)
+        t = draw_index_tree(self, t, output, leaf_as_name)
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
 
-    def circle_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, w=1624, h=1624, dpi=600, tree_style=circle_tree_style()): 
+    def circle_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, w=1624, h=1624, dpi=600, tree_style=circle_tree_style(), tag_indexes=False): 
         if len(to_tag) > len(colors):
             raise ValueError("more samples to tag than available colors")
 
         self.print_statistics()
 
         t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up=False)
-        t = draw_circle_tree(self, t, to_tag, colors)
+        t = draw_circle_tree(self, t, to_tag, colors, tag_indexes)
 
         t.render(output, w=w, h=h, units="px", tree_style=tree_style, dpi=dpi)
 
-    def normal_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=normal_tree_style(), show_haplotype=False, n_markers=3, show_pos=False): 
+    def normal_tree(self, output, to_tag=[], colors = ["#ff0000", "#FF69B4", "#4cfe92", "#4ccbfe", "#c9efff", "orange", "yellow"], min_size=1, hard_cut=False, min_start=None, max_stop=None, proportions=False, dpi=600, tree_style=normal_tree_style(), show_haplotype=False, n_markers=3, show_pos=False, tag_indexes=False): 
         if len(to_tag) > len(colors):
             raise ValueError("more samples to tag than available colors")
 
         self.print_statistics()
 
         t = create_ete3_tree(self, min_size, hard_cut, min_start, max_stop, right_up=False)
-        t = draw_normal_tree(self, t, to_tag, colors, proportions, show_haplotype, n_markers, show_pos)
+        t = draw_normal_tree(self, t, to_tag, colors, proportions, show_haplotype, n_markers, show_pos, tag_indexes)
 
         t.render(output, units="px", tree_style=tree_style, dpi=dpi)
 

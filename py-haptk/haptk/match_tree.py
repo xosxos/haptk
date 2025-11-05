@@ -30,7 +30,7 @@ def circle_match_tree_style():
 
     return ts
 
-def draw_match_tree(hst, t, output, samples, samples_to_tag, colors, proportions, circle):
+def draw_match_tree(hst, t, output, samples, samples_to_tag, colors, proportions, circle, tag_indexes):
     style = NodeStyle()
     style["size"] = 0
 
@@ -56,7 +56,11 @@ def draw_match_tree(hst, t, output, samples, samples_to_tag, colors, proportions
                     n.img_style["bgcolor"] = "#FFF"
 
                 for (color_i, sample_list) in enumerate(samples_to_tag):
-                    results = [i for i in indexes if hst.samples.get_sample_name(i) in sample_list]
+                    if tag_indexes:
+                        results = [i for i in indexes if str(i) in sample_list]
+                    else:
+                        results = [i for i in indexes if hst.get_sample_name(i) in sample_list]
+
                     if results:
                         n.set_style(utils.return_node_style(colors[color_i], 0))
                         n.img_style["bgcolor"] = colors[color_i]
@@ -86,7 +90,12 @@ def draw_match_tree(hst, t, output, samples, samples_to_tag, colors, proportions
                     n.img_style["bgcolor"] = "#FFF"
 
                 for (color_i, sample_list) in enumerate(samples_to_tag):
-                    results = [i for i in indexes if hst.get_sample_name(i) in sample_list]
+
+                    if tag_indexes:
+                        results = [i for i in indexes if i in sample_list]
+                    else:
+                        results = [i for i in indexes if hst.get_sample_name(i) in sample_list]
+
                     if results:
                         n.set_style(utils.return_node_style(colors[color_i], 0))
                         n.img_style["bgcolor"] = colors[color_i]
