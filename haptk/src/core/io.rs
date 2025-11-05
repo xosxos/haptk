@@ -10,7 +10,7 @@ use std::thread::{self, JoinHandle};
 use bgzip::tabix::Tabix;
 use color_eyre::eyre::{eyre, OptionExt, WrapErr};
 use color_eyre::Result;
-use csv::{QuoteStyle, Reader, ReaderBuilder, Writer, WriterBuilder};
+use csv::{Reader, ReaderBuilder, Writer, WriterBuilder};
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -23,9 +23,12 @@ use crate::utils::strip_prefix;
 #[cfg(feature = "experimental")]
 use crate::subcommands::scan::scan_segregate::CoordSamples;
 
+pub use haptk_core::io::get_csv_reader;
+pub use haptk_core::io::get_csv_writer;
 pub use haptk_core::io::get_extension;
 pub use haptk_core::io::get_input;
 pub use haptk_core::io::get_output;
+pub use haptk_core::io::get_vcf_writer;
 pub use haptk_core::io::read_lines;
 pub use haptk_core::io::read_multiple_sample_ids;
 pub use haptk_core::io::FileType;
@@ -259,37 +262,11 @@ pub fn get_tsv_reader<R: io::Read>(input: R, has_headers: bool) -> Reader<R> {
         .from_reader(input)
 }
 
-pub fn get_csv_reader<R: io::Read>(input: R, has_headers: bool) -> Reader<R> {
-    ReaderBuilder::new()
-        .delimiter(b',')
-        .has_headers(has_headers)
-        .flexible(false)
-        .from_reader(input)
-}
-
-pub fn get_csv_writer<W: io::Write>(output: W) -> Writer<W> {
-    WriterBuilder::new()
-        .delimiter(b',')
-        .has_headers(false)
-        .flexible(true)
-        .from_writer(output)
-}
-
 pub fn get_strict_tsv_writer<W: io::Write>(output: W) -> Writer<W> {
     WriterBuilder::new()
         .delimiter(b'\t')
         .has_headers(false)
         .flexible(true)
-        .from_writer(output)
-}
-
-pub fn get_vcf_writer<W: io::Write>(output: W) -> Writer<W> {
-    WriterBuilder::new()
-        .delimiter(b'\t')
-        .has_headers(false)
-        .flexible(true)
-        .double_quote(false)
-        .quote_style(QuoteStyle::Never)
         .from_writer(output)
 }
 

@@ -6,24 +6,13 @@ use std::io::BufRead;
 use std::path::Path;
 use std::path::PathBuf;
 
+use csv::QuoteStyle;
+use csv::Reader;
+use csv::ReaderBuilder;
+use csv::Writer;
+use csv::WriterBuilder;
+
 use crate::error::Error;
-
-pub fn read_multiple_sample_ids(path: &Option<Vec<PathBuf>>) -> Result<Option<Vec<String>>, Error> {
-    match path {
-        Some(paths) => {
-            let mut samples = vec![];
-
-            for path in paths {
-                for line in read_lines(path)?.map_while(Result::ok) {
-                    let line = line.trim();
-                    samples.push(line.to_string());
-                }
-            }
-            Ok(Some(samples))
-        }
-        None => Ok(None),
-    }
-}
 
 #[allow(clippy::upper_case_acronyms)]
 pub enum FileType {
@@ -87,6 +76,51 @@ pub fn get_extension(path: &Path) -> Result<String, Error> {
     Ok(ext)
 }
 
+pub fn get_csv_reader<R: io::Read>(input: R, has_headers: bool) -> Reader<R> {
+    ReaderBuilder::new()
+        .quote(b'"')
+        .delimiter(b',')
+        .has_headers(has_headers)
+        .flexible(false)
+        .from_reader(input)
+}
+
+pub fn get_csv_writer<W: io::Write>(output: W) -> Writer<W> {
+    WriterBuilder::new()
+        .quote(b'"')
+        .delimiter(b',')
+        .has_headers(false)
+        .flexible(true)
+        .from_writer(output)
+}
+
+pub fn get_vcf_writer<W: io::Write>(output: W) -> Writer<W> {
+    WriterBuilder::new()
+        .delimiter(b'\t')
+        .has_headers(false)
+        .flexible(true)
+        .double_quote(false)
+        .quote_style(QuoteStyle::Never)
+        .from_writer(output)
+}
+
+pub fn read_multiple_sample_ids(path: &Option<Vec<PathBuf>>) -> Result<Option<Vec<String>>, Error> {
+    match path {
+        Some(paths) => {
+            let mut samples = vec![];
+
+            for path in paths {
+                for line in read_lines(path)?.map_while(Result::ok) {
+                    let line = line.trim();
+                    samples.push(line.to_string());
+                }
+            }
+            Ok(Some(samples))
+        }
+        None => Ok(None),
+    }
+}
+
 pub fn read_lines<P>(filename: P) -> Result<io::Lines<io::BufReader<File>>, Error>
 where
     P: AsRef<Path> + Into<PathBuf>,
@@ -94,6 +128,47 @@ where
     let file = File::open(&filename).map_err(|e| Error::Io(filename.into(), e))?;
 
     Ok(io::BufReader::new(file).lines())
+}
+
+fn not_found(path: &Path, err: &str) -> Error {
+    Error::Path(path.to_path_buf(), err.to_string())
+}
+
+pub fn get_input(filename: Option<PathBuf>) -> Result<Box<dyn io::Read>, Error> {
+    let input: Box<dyn io::Read> = match filename {
+        Some(name) => match name.to_str() {
+            Some("-") => Box::new(std::io::stdin()),
+            Some(path) => {
+                let file_handle = compression::get_reader(path)?;
+
+                Box::new(file_handle)
+            }
+            None => return Err(not_found(&name, "unreachable")),
+        },
+        None => Box::new(io::stdin()),
+    };
+    Ok(input)
+}
+
+pub fn get_output(filename: Option<PathBuf>) -> Result<Box<dyn io::Write>, Error> {
+    let output: Box<dyn io::Write> = match filename {
+        Some(name) => match name.to_str() {
+            Some("-") => Box::new(io::stdout()),
+            Some(path) => {
+                let file_handle = fs::File::options()
+                    .create(true)
+                    .write(true)
+                    .truncate(true)
+                    .open(path)
+                    .map_err(|e| not_found(&name, &e.to_string()))?;
+
+                Box::new(file_handle)
+            }
+            None => unreachable!(),
+        },
+        None => Box::new(io::stdout()),
+    };
+    Ok(output)
 }
 
 mod compression {
@@ -138,45 +213,4 @@ mod compression {
             Format::No => Ok(in_stream),
         }
     }
-}
-
-fn not_found(path: &Path, err: &str) -> Error {
-    Error::Path(path.to_path_buf(), err.to_string())
-}
-
-pub fn get_input(filename: Option<PathBuf>) -> Result<Box<dyn io::Read>, Error> {
-    let input: Box<dyn io::Read> = match filename {
-        Some(name) => match name.to_str() {
-            Some("-") => Box::new(std::io::stdin()),
-            Some(path) => {
-                let file_handle = compression::get_reader(path)?;
-
-                Box::new(file_handle)
-            }
-            None => return Err(not_found(&name, "unreachable")),
-        },
-        None => Box::new(io::stdin()),
-    };
-    Ok(input)
-}
-
-pub fn get_output(filename: Option<PathBuf>) -> Result<Box<dyn io::Write>, Error> {
-    let output: Box<dyn io::Write> = match filename {
-        Some(name) => match name.to_str() {
-            Some("-") => Box::new(io::stdout()),
-            Some(path) => {
-                let file_handle = fs::File::options()
-                    .create(true)
-                    .write(true)
-                    .truncate(true)
-                    .open(path)
-                    .map_err(|e| not_found(&name, &e.to_string()))?;
-
-                Box::new(file_handle)
-            }
-            None => unreachable!(),
-        },
-        None => Box::new(io::stdout()),
-    };
-    Ok(output)
 }
