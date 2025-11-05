@@ -8,12 +8,12 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ndarray::iter::AxisIter;
-use ndarray::s;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Axis;
+use ndarray::iter::AxisIter;
+use ndarray::s;
 use serde::{Deserialize, Serialize};
 
 use crate::error;
@@ -413,8 +413,8 @@ impl PhasedMatrix {
 
 mod npy_v1 {
     use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian, WriteBytesExt};
-    use ndarray::prelude::*;
     use ndarray::Data;
+    use ndarray::prelude::*;
     use std::io;
 
     static MAGIC_VALUE: &[u8] = b"\x93NUMPY";
@@ -469,7 +469,7 @@ mod npy_v1 {
         }
 
         format!(
-            "{{'descr': '{endian}{dtype}','fortran_order': False,'shape': ({shape})}}\n",
+            "{{'descr': '{endian}{dtype}','fortran_order': False,'shape': ({shape})}}",
             endian = B::endian_symbol(),
             dtype = A::dtype(),
             shape = shape_str
