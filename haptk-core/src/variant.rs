@@ -24,6 +24,7 @@ pub struct HapVariant {
 pub struct CigarVariant {
     pub pos: u64,
     pub alt: char,
+    pub reference: char,
 }
 
 impl HapVariant {
@@ -151,7 +152,7 @@ impl std::fmt::Display for HapVariant {
 
 impl std::fmt::Display for CigarVariant {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let line = format!("{}_{}", self.pos, self.alt);
+        let line = format!("{}_{}_{}", self.pos, self.reference, self.alt);
         write!(f, "{line}")
     }
 }
