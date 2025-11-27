@@ -4,6 +4,7 @@ use color_eyre::eyre::ensure;
 use color_eyre::eyre::eyre;
 use color_eyre::{eyre::OptionExt, Result};
 
+use haptk_core::phased_matrix::SelectedHaplotypes;
 use rust_htslib::bcf::Read;
 
 use crate::args::Selection;
@@ -26,7 +27,7 @@ fn prune_by_gt(
     indexes: &[usize],
     samples: Vec<String>,
     wanted_gt: u8,
-) -> Result<(Vec<[bool; 2]>, Vec<String>)> {
+) -> Result<(SelectedHaplotypes, Vec<String>)> {
     let mut reader = get_vcf_reader(
         vcf_path,
         contig,
@@ -56,6 +57,8 @@ fn prune_by_gt(
         })
         .collect();
 
+    let lookups = SelectedHaplotypes::from_vec(lookups);
+
     let samples = samples
         .into_iter()
         .zip(lookups.iter())
@@ -70,6 +73,7 @@ fn prune_by_gt(
     Ok((lookups, samples))
 }
 
+// TODO: Change to builder pattern to refactor out StandardArgs
 pub fn read_vcf_to_matrix(
     args: &StandardArgs,
     contig: &str,
@@ -102,16 +106,18 @@ pub fn read_vcf_to_matrix(
                 .collect();
 
             (
-                samples
-                    .iter()
-                    .flat_map(|v| {
-                        if !lookups.contains_key(v) {
-                            tracing::warn!("wanted sample {} was not in the list file", v);
-                        }
-                        lookups.get(v)
-                    })
-                    .copied()
-                    .collect(),
+                SelectedHaplotypes::from_vec(
+                    samples
+                        .iter()
+                        .flat_map(|v| {
+                            // if !lookups.contains_key(v) {
+                            // tracing::warn!("wanted sample {} was not in the list file", v);
+                            // }
+                            lookups.get(v)
+                        })
+                        .copied()
+                        .collect(),
+                ),
                 samples
                     .iter()
                     .filter(|&v| lookups.contains_key(v))
@@ -124,8 +130,22 @@ pub fn read_vcf_to_matrix(
                     .collect(),
             )
         }
-        _ => (indexes.iter().map(|_| [true, true]).collect(), samples),
+        _ => (SelectedHaplotypes::select_all(&indexes), samples),
     };
+
+    // The sample name to idx to ht_num system, is a catastrophy right now
+    // This assert is a first step in the direction of fixing it
+    // Now the sample names vector should be a 1-to-1 match with the the index vector
+    // But atm it's not, because I thought being tricky with indexing using ploidy was smart. it was not.
+    if !matches!(args.selection, Selection::All)
+        && !matches!(args.selection, Selection::OnlyLongest)
+    {
+        assert_eq!(
+            lookups.iter().flatten().filter(|v| **v == true).count(),
+            samples.len(),
+            "Found a bug while selecting haplotypes from the VCF file, please report"
+        );
+    }
 
     let ploidy: Ploidy = args.selection.as_ref().into();
 

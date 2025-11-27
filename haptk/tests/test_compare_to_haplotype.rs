@@ -12,7 +12,7 @@ use haptk::{
 #[cfg(test)]
 #[cfg(feature = "clap")]
 mod test_compare_to_haplotype {
-    use std::collections::HashMap;
+    use indexmap::IndexMap;
 
     use haptk::args::SortOption;
     use haptk::core::Coord;
@@ -42,7 +42,7 @@ mod test_compare_to_haplotype {
         )
         .unwrap();
 
-        let ht: HashMap<Coord, HapVariant> =
+        let ht: IndexMap<Coord, HapVariant> =
             ht.into_iter().map(|v| (v.clone().into(), v)).collect();
 
         let vcf = transform_gt_matrix_to_match_matrix(vcf, &ht, 32).unwrap();

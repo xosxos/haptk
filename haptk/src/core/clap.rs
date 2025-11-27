@@ -29,6 +29,7 @@ use crate::{
     subcommands::{
         mrca_scan,
         haplotag,
+        find_subtrees,
         scan::scan_branch_mrca,
         scan::scan_nodes,
         scan::scan_quantitative,
@@ -74,13 +75,6 @@ pub enum SubCommand {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
-
-        /// Number of threads
-        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
-        threads: usize,
-
         /// Min amount of samples per node
         #[cfg_attr(feature = "clap", arg(short = 'm', long, default_value_t = 1))]
         min_size: usize,
@@ -91,19 +85,19 @@ pub enum SubCommand {
 
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 10_000_000))]
         window: u64,
+
+        /// Number of threads
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
+        threads: usize,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
 
     /// Build a bidirectional haplotype sharing tree at a coordinate
     Bhst {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
-
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
-
-        /// Number of threads
-        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
-        threads: usize,
 
         /// Min amount of samples per node
         #[cfg_attr(feature = "clap", arg(short = 'm', long, default_value_t = 1))]
@@ -116,26 +110,34 @@ pub enum SubCommand {
         /// If you most likely dont need to read the entire VCF for a HST use a window e.g. 5000000 or 2000000 (5Mb or 2Mb) around the locus
         #[cfg_attr(feature = "clap", arg(long))]
         window: Option<u64>,
+
+        /// Number of threads
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
+        threads: usize,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
     /// Analyze the MRCA based on the Gamma method at a coordinate
     Mrca {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
-
         /// Recombination rate file
         #[cfg_attr(feature = "clap", arg(short = 'r', long))]
         recombination_rates: PathBuf,
+
+        /// If you most likely dont need to read the entire VCF for a HST use a window e.g. 5000000 or 2000000 (5Mb or 2Mb) around the locus
+        #[cfg_attr(feature = "clap", arg(long))]
+        window: Option<u64>,
 
         /// Number of threads
         #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
-        /// If you most likely dont need to read the entire VCF for a HST use a window e.g. 5000000 or 2000000 (5Mb or 2Mb) around the locus
-        #[cfg_attr(feature = "clap", arg(long))]
-        window: Option<u64>,
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
+
     },
 
     ///  (experimental) Analyze the MRCA every x markers along a given contig
@@ -143,9 +145,6 @@ pub enum SubCommand {
     MrcaScan {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
-
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
 
         /// Recombination rate file/files
         #[cfg_attr(feature = "clap", arg(short = 'r', long, value_delimiter = ' ', num_args = 1.. ))]
@@ -163,13 +162,16 @@ pub enum SubCommand {
         #[cfg_attr(feature = "clap", arg(long, value_delimiter = ',', num_args = 1.. ))]
         contigs: Option<Vec<String>>,
 
+        /// The percentage of haplotypes that can overlap centromeres before tagging the position "centromeric"
+        #[cfg_attr(feature = "clap", arg(long, default_value_t = 0.1))]
+        centromere_cut_off: f32,
+
         /// Number of threads
         #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
 
-        /// The percentage of haplotypes that can overlap centromeres before tagging the position "centromeric"
-        #[cfg_attr(feature = "clap", arg(long, default_value_t = 0.1))]
-        centromere_cut_off: f32,
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
 
     /// Check if samples share a given haplotype
@@ -177,28 +179,21 @@ pub enum SubCommand {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
-
         /// Haplotype for checking
         #[cfg_attr(feature = "clap", arg(short = 'h', long))]
         haplotype: PathBuf,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
     /// Check differences between samples and a haplotype
     CompareToHaplotype {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
-
         /// Haplotype for comparing to
         #[cfg_attr(feature = "clap", arg(short = 'H', long))]
         haplotype: PathBuf,
-
-        /// Number of threads
-        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
-        threads: usize,
 
         /// Mark sample names for tagging
         #[cfg_attr(feature = "clap", arg(short = 'm', long, value_delimiter = ' ', num_args = 1.. ))]
@@ -221,15 +216,20 @@ pub enum SubCommand {
 
         #[cfg_attr(feature = "clap", arg(long = "sort", value_enum, default_value_t=SortOption::Left))]
         sort_option: SortOption,
+
+        /// Number of threads
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
+        threads: usize,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
+
     },
 
     /// Check which haplotypes of the HST are present in samples
     CompareToHst {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
-
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
 
         /// A HST to compare to
         #[cfg_attr(feature = "clap", arg(long))]
@@ -242,14 +242,14 @@ pub enum SubCommand {
         /// Number of threads
         #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
 
     /// Compare haplotypes to each other by alignment
     CompareHaplotypes {
         haplotypes: Vec<PathBuf>,
-
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
 
         /// Output directory
         #[cfg_attr(feature = "clap", arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("./")))]
@@ -273,20 +273,23 @@ pub enum SubCommand {
 
         #[cfg_attr(feature = "clap", arg(short = 'n', long))]
         nucleotides: bool,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
     /// Read the haplotypes of a given sample
     Haplotypes {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
-
         #[cfg_attr(feature = "clap", arg(long))]
         selection_variant: Option<String>,
 
         #[cfg_attr(feature = "clap", arg(short = 'n', long))]
         nucleotides: bool,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
     /// Output the sample names from FAM / VCF / HST files
     Samples {
@@ -338,9 +341,6 @@ pub enum SubCommand {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
-
         /// Run the scan every n markers
         #[cfg_attr(feature = "clap", arg(long))]
         step_size: usize,
@@ -352,6 +352,9 @@ pub enum SubCommand {
         /// Number of threads
         #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
 
     #[cfg(feature = "experimental")]
@@ -359,9 +362,6 @@ pub enum SubCommand {
     ScanNodes {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: ConciseArgs,
-
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
 
         /// Branch sample size to end recursion
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 4))]
@@ -378,10 +378,6 @@ pub enum SubCommand {
         /// Maximum number of variants in the haplotype
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 10_000_000))]
         max_ht_len: usize,
-
-        /// Number of threads
-        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
-        threads: usize,
 
         /// Construct the HSTs and sum the leaf nodes simultaneously
         #[cfg_attr(feature = "clap", arg(long))]
@@ -394,6 +390,13 @@ pub enum SubCommand {
         /// If constructing HSTs at the same time, scan every n markers
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
         step_size: usize,
+
+        /// Number of threads
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
+        threads: usize,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
 
     #[cfg(feature = "experimental")]
@@ -401,9 +404,6 @@ pub enum SubCommand {
     ScanQuantitative {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: ConciseArgs,
-
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
 
         /// Branch sample size to end recursion
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 4))]
@@ -421,10 +421,6 @@ pub enum SubCommand {
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 10000000))]
         max_ht_len: usize,
 
-        /// Number of threads
-        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
-        threads: usize,
-
         /// List of control ids
         #[cfg_attr(feature = "clap", arg(long))]
         var_data: PathBuf,
@@ -436,6 +432,13 @@ pub enum SubCommand {
         /// Coords to generate HSTs for
         #[cfg_attr(feature = "clap", arg(long))]
         coords: Option<PathBuf>,      
+
+        /// Number of threads
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
+        threads: usize,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
 
     #[cfg(feature = "experimental")]
@@ -443,9 +446,6 @@ pub enum SubCommand {
     ScanBranchMrca {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: ConciseArgs,
-
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
 
         /// Branch sample size to end recursion
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 10))]
@@ -462,10 +462,6 @@ pub enum SubCommand {
         /// Maximum number of variants in the haplotype
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 10_000_000))]
         max_ht_len: usize,
-
-        /// Number of threads
-        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
-        threads: usize,
 
         /// Recombination rate file
         #[cfg_attr(feature = "clap", arg(short = 'r', long))]
@@ -486,6 +482,13 @@ pub enum SubCommand {
         /// Generations limit
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 40.0))]
         limit: f64,
+
+        /// Number of threads
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
+        threads: usize,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
 
     #[cfg(feature = "experimental")]
@@ -493,9 +496,6 @@ pub enum SubCommand {
     ScanSegregate {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: ConciseArgs,
-
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
 
         /// Branch sample size to end recursion
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 1))]
@@ -513,10 +513,6 @@ pub enum SubCommand {
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 1_000_0000))]
         max_ht_len: usize,
 
-        /// Number of threads
-        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
-        threads: usize,
-
         /// Case samples
         #[cfg_attr(feature = "clap", arg(long))]
         case_samples: PathBuf,
@@ -532,6 +528,13 @@ pub enum SubCommand {
         /// Generations limit
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 0.005))]
         limit: f64,
+
+        /// Number of threads
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
+        threads: usize,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
 
     #[cfg(feature = "experimental")]
@@ -539,13 +542,6 @@ pub enum SubCommand {
     ScanSumHst {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: ConciseArgs,
-
-        #[cfg_attr(feature = "clap", command(flatten))]
-        log_and_verbosity: LogAndVerbosity,
-
-        /// Number of threads
-        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
-        threads: usize,
 
         /// The percentage of haplotypes that can overlap centromeres before tagging the position "centromeric"
         #[cfg_attr(feature = "clap", arg(long, default_value_t = 0.1))]
@@ -583,6 +579,12 @@ pub enum SubCommand {
         #[cfg_attr(feature = "clap", arg(long, value_delimiter = ' ', num_args = 1.. ))]
         seg_samples: Option<Vec<PathBuf>>,
 
+        /// Number of threads
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
+        threads: usize,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
     
     // #[cfg(feature = "experimental")]
@@ -602,25 +604,26 @@ pub enum SubCommand {
         #[cfg_attr(feature = "clap", command(flatten))]
         args: StandardArgs,
 
-        /// Bam file
-        #[cfg_attr(feature = "clap", arg(short = 'b', long))]
-        bam_file: PathBuf,
-
-        /// Ref file
-        #[cfg_attr(feature = "clap", arg(short = 'r', long))]
-        ref_file: PathBuf,
-
-        /// Contigs to be searched, if not set, use all available contigs
-        #[arg(long, value_delimiter = ' ', num_args = 1.. )]
-        contigs: Vec<String>,
+        #[cfg_attr(feature = "clap", command(flatten))]
+        conf: haplotag::Args,
 
         #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
+    },
+    #[cfg(feature = "experimental")]
+    /// (experimental) Subtree finder
+    FindSubtrees {
+        #[cfg_attr(feature = "clap", command(flatten))]
+        args: find_subtrees::Args,
 
         /// Number of threads
         #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
         threads: usize,
+
+        #[cfg_attr(feature = "clap", command(flatten))]
+        log_and_verbosity: LogAndVerbosity,
     },
+
 
 }
 
@@ -632,7 +635,8 @@ impl SubCommand {
             | SubCommand::CompareToHst { threads, .. }
             | SubCommand::Mrca { threads, .. }
             | SubCommand::Hst { threads, .. }
-            | SubCommand::Bhst { threads, .. } => *threads,
+            | SubCommand::Bhst { threads, .. }
+            => *threads,
 
             #[cfg(feature = "experimental")]
             SubCommand::MrcaScan { threads, .. }
@@ -641,8 +645,12 @@ impl SubCommand {
             | SubCommand::ScanBranchMrca { threads, .. }
             | SubCommand::ScanQuantitative { threads, .. }
             | SubCommand::ScanSumHst { threads, .. }
-            | SubCommand::Haplotag { threads, .. } 
-            | SubCommand::ScanNodes { threads, .. } => *threads,
+            | SubCommand::ScanNodes { threads, .. }
+            | SubCommand::FindSubtrees { threads, .. }
+            => *threads,
+
+            #[cfg(feature = "experimental")]
+            SubCommand::Haplotag { conf, .. } => conf.threads,
 
             _ => 1,
         }
@@ -675,6 +683,7 @@ impl SubCommand {
             | SubCommand::ScanNodes { log_and_verbosity,  .. }
             // | SubCommand::AnnotateScan { log_and_verbosity, .. } 
             | SubCommand::Haplotag { log_and_verbosity, .. } 
+            | SubCommand::FindSubtrees { log_and_verbosity, .. } 
             => (log_and_verbosity.verbosity, &log_and_verbosity.log_file, log_and_verbosity.silent),
         }
     }
@@ -732,6 +741,9 @@ impl SubCommand {
             | SubCommand::ScanNodes { args: ConciseArgs { output, .. }, ..}
             | SubCommand::Haplotag { args: StandardArgs { output, .. }, ..}
             => Some(output.clone()),
+            #[cfg(feature = "experimental")]
+            SubCommand::FindSubtrees {..}
+            => None
 
         }
     }
@@ -835,7 +847,10 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         // SubCommand::AnnotateScan { file, annotate_file, .. } => scan_annotate::run(file, annotate_file)?,
 
         #[cfg(feature = "experimental")]
-        SubCommand::Haplotag { args, bam_file, ref_file, contigs, .. } => haplotag::run(args, bam_file, ref_file, contigs, nthreads)?,
+        SubCommand::Haplotag { args, conf, .. } => haplotag::run(args, conf)?,
+
+        #[cfg(feature = "experimental")]
+        SubCommand::FindSubtrees{  args, .. } => find_subtrees::run(args)?,
 
     };
     Ok(())

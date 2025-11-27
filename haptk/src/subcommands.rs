@@ -47,3 +47,6 @@ pub mod scan;
 
 #[cfg(feature = "experimental")]
 pub mod haplotag;
+
+#[cfg(feature = "experimental")]
+pub mod find_subtrees;

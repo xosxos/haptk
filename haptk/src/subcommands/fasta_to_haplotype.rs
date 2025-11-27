@@ -43,7 +43,7 @@ pub fn run(path: PathBuf, seq_names: Vec<String>, output: PathBuf) -> Result<()>
         "Please enter one or more sequence names from the fasta using the --seq-name parameter"
     );
 
-    let fasta_reader = Reader::from_path(&path).wrap_err(Error::Io { path })?;
+    let fasta_reader = Reader::from_path(&path)?;
 
     let mut fasta: Vec<Vec<String>> = vec![];
 

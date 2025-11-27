@@ -9,8 +9,9 @@ use rust_htslib::bcf::IndexedReader;
 use rust_htslib::bcf::Read;
 
 use crate::error::Error;
+use crate::phased_matrix::Metadata;
 use crate::phased_matrix::PhasedMatrix;
-use crate::phased_matrix::ReadMetadata;
+use crate::phased_matrix::SelectedHaplotypes;
 use crate::ploidy::Ploidy;
 use crate::variant::Coord;
 use crate::vcf::contig_len_from_vcf;
@@ -45,7 +46,7 @@ pub fn read_phased_matrix(
 ) -> Result<PhasedMatrix, Error> {
     let (indexes, samples) = get_indexes_and_sample_ids_from_vcf(path, &None, samples)?;
 
-    let lookups = indexes.iter().map(|_| [true, true]).collect();
+    let lookups = SelectedHaplotypes::select_all(&indexes);
 
     let ploidy: Ploidy = Ploidy::Diploid;
     let variant_pos = 0;
@@ -78,7 +79,7 @@ pub fn read_vcf_to_matrix_by_indexes(
     mut range: Option<(Option<u64>, Option<u64>)>,
     samples: Vec<String>,
     indexes: Vec<usize>,
-    lookups: Vec<[bool; 2]>,
+    lookups: SelectedHaplotypes,
     window: Option<u64>,
     remove_no_alt: bool,
     ploidy: Ploidy,
@@ -130,17 +131,17 @@ pub fn read_vcf_to_matrix_by_indexes(
     let end = coords.last().unwrap();
     let fetch_range = (start.pos, end.pos);
 
-    let metadata = ReadMetadata {
-        indexes,
-        lookups,
-        file_path: file.to_path_buf(),
+    let metadata = Metadata::new(
+        file,
+        contig,
         fetch_range,
-        contig_len: contig_len_from_vcf(file, contig).ok(),
-        sharded: window.is_some(),
+        lookups,
+        indexes,
+        window.is_some(),
         remove_no_alt,
         include_indels,
         is_genome_wide,
-    };
+    );
 
     construct_phased_matrix(samples, markers, coords, ploidy, variant_pos, metadata)
 }
@@ -150,7 +151,7 @@ fn read_vcf_batch_to_matrix(
     contig: &str,
     range: Option<(Option<u64>, Option<u64>)>,
     sample_indexes: &[usize],
-    lookups: &[[bool; 2]],
+    lookups: &SelectedHaplotypes,
     remove_no_alt: bool,
     include_indels: bool,
 ) -> Result<(Vec<u8>, BTreeSet<Coord>), Error> {
@@ -225,18 +226,18 @@ fn read_vcf_batch_to_matrix(
         for (i, sample_idx) in sample_indexes.iter().enumerate() {
             let sample_gts = gts.get(*sample_idx);
 
-            match (lookups[i][0], lookups[i][1]) {
-                (true, true) => markers.extend([
+            match lookups.selected_haplotypes(i) {
+                [true, true] => markers.extend([
                     genotype_to_u8(&sample_gts[0]),
                     genotype_to_u8(&sample_gts[1]),
                 ]),
-                (true, false) => {
+                [true, false] => {
                     markers.push(genotype_to_u8(&sample_gts[0]));
                 }
-                (false, true) => {
+                [false, true] => {
                     markers.push(genotype_to_u8(&sample_gts[1]));
                 }
-                (false, false) => (),
+                [false, false] => (),
             }
         }
 
@@ -266,7 +267,7 @@ fn read_parallel(
     contig: &str,
     range: Option<(Option<u64>, Option<u64>)>,
     sample_indexes: &[usize],
-    lookups: &[[bool; 2]],
+    lookups: &SelectedHaplotypes,
     remove_no_alt: bool,
     include_indels: bool,
 ) -> Result<(Vec<u8>, BTreeSet<Coord>), Error> {
@@ -329,7 +330,7 @@ fn construct_phased_matrix(
     coords: BTreeSet<Coord>,
     ploidy: Ploidy,
     variant_pos: u64,
-    metadata: ReadMetadata,
+    metadata: Metadata,
 ) -> Result<PhasedMatrix, Error> {
     tracing::debug!(
         "Contructing matrix: {} x {} = {}",
@@ -350,7 +351,6 @@ fn construct_phased_matrix(
         metadata,
     );
 
-    // vcf.variant_idx = vcf.get_first_idx_on_right_by_pos(variant_pos);
     vcf.start_coord = vcf.get_nearest_coord_by_pos(variant_pos).clone();
     vcf.variant_idx = vcf.get_coord_idx(&vcf.start_coord);
 
@@ -363,7 +363,10 @@ fn construct_phased_matrix(
 }
 
 pub fn read_shard_of_vcf(vcf: &mut PhasedMatrix, start: u64, stop: u64) -> Result<(), Error> {
-    let (indexes, lookups) = (&vcf.metadata.indexes, &vcf.metadata.lookups);
+    let (indexes, lookups) = (
+        &vcf.metadata.indexes,
+        vcf.metadata.get_selected_haplotypes(),
+    );
 
     let range = Some((Some(start), Some(stop)));
 

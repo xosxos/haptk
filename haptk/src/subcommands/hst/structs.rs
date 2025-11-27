@@ -5,8 +5,6 @@ use std::hash::Hasher;
 use std::path::Path;
 use std::path::PathBuf;
 
-use color_eyre::eyre::Context;
-use color_eyre::Result;
 use petgraph::graph::EdgeIndex;
 use petgraph::graph::NodeIndices;
 use petgraph::graph::NodeWeightsMut;
@@ -22,6 +20,7 @@ use crate::core::Coord;
 use crate::core::HapVariant;
 use crate::core::PhasedMatrix;
 use crate::core::Ploidy;
+use crate::core::SelectedHaplotypes;
 use crate::error::Error;
 use crate::io::get_output;
 use crate::utils::centromeres_hg38;
@@ -199,7 +198,7 @@ impl Hst {
             .count()
     }
 
-    pub fn children(&self, node_idx: NodeIndex) -> petgraph::graph::Neighbors<'_, ()> {
+    pub fn get_children(&self, node_idx: NodeIndex) -> petgraph::graph::Neighbors<'_, ()> {
         self.hst.neighbors_directed(node_idx, Direction::Outgoing)
     }
 
@@ -208,10 +207,35 @@ impl Hst {
             .neighbors_directed(node_idx, Direction::Incoming)
             .next()
     }
+
+    pub fn get_siblings(&self, node_idx: NodeIndex) -> Vec<NodeIndex> {
+        self.hst
+            // Get parent
+            .neighbors_directed(node_idx, Direction::Incoming)
+            // Get the children of the parent, i.e. siblings
+            .flat_map(|parent| self.get_children(parent))
+            // Filter self out
+            .filter(|idx| *idx != node_idx)
+            .collect()
+    }
 }
 
 // Hst helpers
 impl Hst {
+    pub fn get_sample_name(&self, index: usize) -> String {
+        self.metadata
+            .samples
+            .get(index / *self.metadata.ploidy)
+            .unwrap()
+            .clone()
+    }
+
+    pub fn nhaplotypes(&self) -> usize {
+        let idx = NodeIndex::new(0);
+        let root = self.node_weight(idx).unwrap();
+        root.indexes.len()
+    }
+
     pub fn get_haplotype(&self, node: &Node) -> Vec<HapVariant> {
         if node.haplotype.is_empty() {
             return vec![];
@@ -234,7 +258,7 @@ impl Hst {
 
 // Io
 impl Hst {
-    pub fn write_to_file(&mut self, path: PathBuf, publish: bool) -> Result<()> {
+    pub fn write_to_file(&mut self, path: PathBuf, publish: bool) -> Result<(), Error> {
         if publish {
             self.metadata.samples = vec!["r".to_string()];
 
@@ -257,14 +281,37 @@ impl Hst {
         Ok(())
     }
 
-    pub fn from_file(path: &Path) -> Result<Hst> {
-        let file = std::fs::File::open(path).wrap_err(Error::Io {
+    pub fn from_file(path: &Path) -> Result<Hst, Error> {
+        let file = std::fs::File::open(path).map_err(|e| Error::Io {
+            e,
             path: path.to_path_buf(),
         })?;
+
         let reader = bgzip::BGZFReader::new(file)?;
         let hst: Hst = serde_json::from_reader(reader)?;
 
         Ok(hst)
+    }
+}
+
+impl Hst {
+    pub fn majority_branch(&self) -> Vec<NodeIndex> {
+        let mut idx = NodeIndex::new(0);
+        let mut majority_nodes = vec![idx];
+
+        while let Some((_data, node_idx)) = self
+            .hst
+            .neighbors_directed(idx, Direction::Outgoing)
+            .map(|idx| (self.node_weight(idx).unwrap(), idx))
+            //
+            // Max by returns None if the iterator is empty, thus when a leaf node is reached
+            .max_by(|x, y| x.0.indexes.len().cmp(&y.0.indexes.len()))
+        {
+            majority_nodes.push(node_idx);
+            idx = node_idx;
+        }
+
+        majority_nodes
     }
 }
 
@@ -286,6 +333,7 @@ pub struct Metadata {
     pub selection: Selection,
     pub ploidy: Ploidy,
     pub vcf_name: PathBuf,
+    selected_haplotypes: SelectedHaplotypes,
 }
 
 impl Metadata {
@@ -305,6 +353,7 @@ impl Metadata {
             selection,
             ploidy: vcf.ploidy.clone(),
             vcf_name: input_vcf_name,
+            selected_haplotypes: vcf.metadata.get_selected_haplotypes().clone(),
         }
     }
 }

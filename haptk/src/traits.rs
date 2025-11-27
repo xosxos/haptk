@@ -114,6 +114,7 @@ pub mod helper {
 pub use only_longest::OnlyLongest;
 mod only_longest {
     use color_eyre::Result;
+    use haptk_core::phased_matrix::SelectedHaplotypes;
 
     use crate::core::Coord;
     use crate::core::PhasedMatrix;
@@ -127,8 +128,8 @@ mod only_longest {
         fn select_only_longest_no_shard(&mut self) -> Result<()>;
         fn only_longest_indexes(&mut self) -> Result<Vec<usize>>;
         fn only_longest_indexes_no_shard(&self, start: &Coord) -> Result<Vec<usize>>;
-        fn get_only_longest_lookups(&mut self) -> Result<Vec<[bool; 2]>>;
-        fn get_only_longest_lookups_no_shard(&self) -> Result<Vec<[bool; 2]>>;
+        fn get_only_longest_lookups(&mut self) -> Result<SelectedHaplotypes>;
+        fn get_only_longest_lookups_no_shard(&self) -> Result<SelectedHaplotypes>;
         fn only_longest_lengths(&mut self, start_coord: &Coord) -> Result<Vec<(Node, Node)>>;
         fn only_longest_lengths_no_shard(&self, start_coord: &Coord) -> Result<Vec<(Node, Node)>>;
         fn lengths_to_indexes(&self, lengths: Vec<(Node, Node)>) -> Vec<usize>;
@@ -139,21 +140,8 @@ mod only_longest {
         fn select_only_longest(&mut self) -> Result<()> {
             let longest_indexes = self.only_longest_indexes()?;
 
-            // Update lookups
-            let mut lookups = vec![];
-
-            for idx in &longest_indexes {
-                let idxs = self.get_idxs_for_samples(&[self.get_sample_name(*idx)])?;
-                let pos = idxs.iter().position(|i| idx == i).unwrap();
-                let lookup = match pos {
-                    0 => [true, false],
-                    1 => [false, true],
-                    _ => unreachable!("Only diploid genotypes are supported"),
-                };
-                lookups.push(lookup);
-            }
-
-            self.metadata.lookups = lookups;
+            let selected_haplotypes = self.select_haplotypes(&longest_indexes)?;
+            self.metadata.set_selected_haplotypes(selected_haplotypes);
 
             self.select_rows(longest_indexes);
             self.ploidy = Ploidy::Haploid;
@@ -179,42 +167,16 @@ mod only_longest {
             Ok(self.lengths_to_indexes(lengths))
         }
 
-        fn get_only_longest_lookups(&mut self) -> Result<Vec<[bool; 2]>> {
+        fn get_only_longest_lookups(&mut self) -> Result<SelectedHaplotypes> {
             let indexes = self.only_longest_indexes()?;
 
-            let mut lookups = vec![];
-
-            for idx in indexes {
-                let idxs = self.get_idxs_for_samples(&[self.get_sample_name(idx)])?;
-                let pos = idxs.iter().position(|i| idx == *i).unwrap();
-                let lookup = match pos {
-                    0 => [true, false],
-                    1 => [false, true],
-                    _ => unreachable!("Only diploid genotypes are supported"),
-                };
-                lookups.push(lookup);
-            }
-
-            Ok(lookups)
+            Ok(self.select_haplotypes(&indexes)?)
         }
 
-        fn get_only_longest_lookups_no_shard(&self) -> Result<Vec<[bool; 2]>> {
+        fn get_only_longest_lookups_no_shard(&self) -> Result<SelectedHaplotypes> {
             let indexes = self.only_longest_indexes_no_shard(self.start_coord())?;
 
-            let mut lookups = vec![];
-
-            for idx in indexes {
-                let idxs = self.get_idxs_for_samples(&[self.get_sample_name(idx)])?;
-                let pos = idxs.iter().position(|i| idx == *i).unwrap();
-                let lookup = match pos {
-                    0 => [true, false],
-                    1 => [false, true],
-                    _ => unreachable!("Only diploid genotypes are supported"),
-                };
-                lookups.push(lookup);
-            }
-
-            Ok(lookups)
+            Ok(self.select_haplotypes(&indexes)?)
         }
 
         fn only_longest_indexes_no_shard(&self, start: &Coord) -> Result<Vec<usize>> {

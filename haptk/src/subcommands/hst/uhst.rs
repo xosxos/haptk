@@ -1,10 +1,10 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::sync::mpsc::sync_channel;
 
 use color_eyre::eyre::ensure;
 use color_eyre::eyre::eyre;
 use color_eyre::Result;
+use indexmap::IndexMap;
 use petgraph::graph::NodeIndex;
 use petgraph::Direction;
 use petgraph::Graph;
@@ -163,13 +163,14 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
     header.extend(
         pairwise_left
             .iter()
-            .map(|(id, _v)| vcf.get_sample_name(*id)),
+            .map(|(idx, _v)| format!("{}_{}", vcf.get_sample_name(*idx), vcf.get_ht_num(*idx))),
     );
 
     let mut rows = vec![header];
-    for ((id, left), (_, right)) in pairwise_left.iter().zip(pairwise_right.iter()) {
-        let name = vcf.get_sample_name(*id);
-        let mut sum = vec![name];
+    for ((idx, left), (_, right)) in pairwise_left.iter().zip(pairwise_right.iter()) {
+        let name = vcf.get_sample_name(*idx);
+        let ht_num = vcf.get_ht_num(*idx);
+        let mut sum = vec![format!("{name}_{ht_num}")];
 
         for ((_, (start, _, v1)), (_, (_, stop, v2))) in left.iter().zip(right.iter()) {
             let value = if start == stop && *v1 && *v2 {
@@ -196,7 +197,7 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
     // Shared haplotype ranges
     //
     // Vec into Map for speed up
-    let ht: HashMap<Coord, HapVariant> = ancestral_haplotype
+    let ht: IndexMap<Coord, HapVariant> = ancestral_haplotype
         .into_iter()
         .map(|v| (v.clone().into(), v))
         .collect();

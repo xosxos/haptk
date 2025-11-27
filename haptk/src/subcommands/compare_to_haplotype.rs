@@ -1,11 +1,11 @@
 #![allow(clippy::comparison_chain)]
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use color_eyre::eyre::eyre;
 use color_eyre::eyre::WrapErr;
 use color_eyre::Result;
+use indexmap::IndexMap;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array2;
@@ -85,7 +85,7 @@ pub fn run(
     let (start, end) = (ht.first().unwrap().pos, ht.last().unwrap().pos);
 
     // Vec into Map for speed up
-    let ht: HashMap<Coord, HapVariant> = ht.into_iter().map(|v| (v.clone().into(), v)).collect();
+    let ht: IndexMap<Coord, HapVariant> = ht.into_iter().map(|v| (v.clone().into(), v)).collect();
 
     let mut only_longest = None;
     let vcf = match args.selection {
@@ -233,12 +233,15 @@ pub fn run(
 
 pub fn transform_gt_matrix_to_match_matrix(
     mut vcf: PhasedMatrix,
-    ht: &HashMap<Coord, HapVariant>,
+    ht: &IndexMap<Coord, HapVariant>,
     variant_pos: u64,
 ) -> Result<PhasedMatrix> {
     let mut match_matrix: Vec<u8> = vec![];
     let mut coords_na = 0;
     let mut coords = BTreeSet::new();
+
+    let ht_first_coord = ht.iter().next();
+    let ht_last_coord = ht.iter().last();
 
     vcf.coords().iter().for_each(|coord| {
         if let Some(hv) = ht.get(coord) {
@@ -249,8 +252,14 @@ pub fn transform_gt_matrix_to_match_matrix(
                 false => 0,
             }));
         } else {
-            coords_na += 1;
-            tracing::trace!("Coord not found in the haplotype: {}", coord);
+            if let Some((start_coord, _)) = ht_first_coord {
+                if let Some((stop_coord, _)) = ht_last_coord {
+                    if coord.pos > start_coord.pos && coord.pos < stop_coord.pos {
+                        coords_na += 1;
+                        tracing::trace!("Coord not found in the haplotype: {}", coord);
+                    }
+                }
+            }
         }
     });
 
@@ -483,23 +492,7 @@ pub fn write_ranges_to_csv(
         };
 
         let sample = vcf.get_sample_name(*idx).to_string();
-        // let idxs = vcf.get_idxs_for_samples(&[sample.clone()])?;
-
-        let lookups: Vec<(usize, bool)> = vcf
-            .metadata
-            .lookups
-            .iter()
-            .flat_map(|v| {
-                v.iter()
-                    .copied()
-                    .enumerate()
-                    .collect::<Vec<(usize, bool)>>()
-            })
-            .filter(|(_i, is_included)| *is_included)
-            // .copied()
-            .collect();
-
-        let (ht_num, _) = lookups[*idx];
+        let ht_num = vcf.get_ht_num(*idx).to_string();
 
         let mut row = vec![
             sample,

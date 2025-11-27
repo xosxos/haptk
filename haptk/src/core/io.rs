@@ -323,7 +323,10 @@ pub fn read_tabix(path: &PathBuf) -> Result<HashMap<String, (u64, usize)>> {
     }
 
     let path = append_ext("tbi", path);
-    let mut file = std::fs::File::open(&path).wrap_err(Error::Io { path: path.clone() })?;
+    let mut file = std::fs::File::open(&path).map_err(|e| Error::Io {
+        e,
+        path: path.clone(),
+    })?;
 
     let tabix = Tabix::from_reader(&mut file)?;
 

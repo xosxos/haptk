@@ -1,4 +1,4 @@
-id,idx,ht_num,start,stop,length,markers,is_marked,is_longest
+id,idx,ht,start,stop,length,markers,is_marked,is_longest
 SAMPLE1,0,0,32,32,0,0,na,false
 SAMPLE1,1,1,17,47,31,31,na,true
 SAMPLE2,2,0,32,32,0,0,na,false

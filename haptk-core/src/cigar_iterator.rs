@@ -1,8 +1,9 @@
 use std::vec::IntoIter;
 
 use rust_htslib::bam::record::Cigar;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum CigarIterType {
     Diff(u64, u64, String),
     Del(u64, u64, u64),
@@ -10,9 +11,10 @@ pub enum CigarIterType {
     LeadingSoftClip(u64, u64, String),
     TrailingSoftClip(u64, u64, String),
     HardClip(u64),
-    Equal(u64, u64),
+    Equal(u64, u64, String),
     Match(u64, u64, String),
     Unmapped(u64, String),
+    RefSkip(u64, u64, u64),
 }
 
 impl CigarIterType {
@@ -21,12 +23,13 @@ impl CigarIterType {
             CigarIterType::Diff(pos, _, _) => *pos,
             CigarIterType::Del(pos, _, _) => *pos,
             CigarIterType::Ins(pos, _, _) => *pos,
-            CigarIterType::Equal(pos, _) => *pos,
+            CigarIterType::Equal(pos, _, _) => *pos,
             CigarIterType::Match(pos, _, _) => *pos,
             CigarIterType::HardClip(pos) => *pos,
             CigarIterType::LeadingSoftClip(pos, _, _) => *pos,
             CigarIterType::TrailingSoftClip(pos, _, _) => *pos,
             CigarIterType::Unmapped(pos, _) => *pos,
+            CigarIterType::RefSkip(pos, _, _) => *pos,
         }
     }
 
@@ -35,12 +38,13 @@ impl CigarIterType {
             CigarIterType::Diff(_, pos, _) => *pos,
             CigarIterType::Del(_, pos, _) => *pos,
             CigarIterType::Ins(_, pos, _) => *pos,
-            CigarIterType::Equal(_, pos) => *pos,
+            CigarIterType::Equal(_, pos, _) => *pos,
             CigarIterType::Match(_, pos, _) => *pos,
             CigarIterType::HardClip(pos) => *pos,
             CigarIterType::LeadingSoftClip(_, pos, _) => *pos,
             CigarIterType::TrailingSoftClip(_, pos, _) => *pos,
             CigarIterType::Unmapped(pos, _) => *pos,
+            CigarIterType::RefSkip(_, pos, _) => *pos,
         }
     }
 }
@@ -54,8 +58,9 @@ impl std::fmt::Display for CigarIterType {
             CigarIterType::LeadingSoftClip(_, _, seq)
             | CigarIterType::TrailingSoftClip(_, _, seq) => format!("{}S", seq.len()),
             CigarIterType::HardClip(len) => format!("{}H", len),
-            CigarIterType::Equal(_, _seq) => "?=".to_string(),
+            CigarIterType::Equal(_, _, _) => "?=".to_string(),
             CigarIterType::Match(_, _, seq) => format!("{}M", seq.len()),
+            CigarIterType::RefSkip(_, _, len) => format!("{}N", len),
             CigarIterType::Unmapped(_, _) => String::new(),
         };
         write!(f, "{line}")
@@ -112,7 +117,12 @@ impl<'a> Iterator for CigarIterator<'a> {
             // );
 
             let variant = match cigar {
-                Cigar::RefSkip(_) => panic!("Refskip N present in Cigar strings"),
+                Cigar::RefSkip(bp_len) => {
+                    let bp_len = bp_len as u64;
+
+                    self.current_ref_pos += bp_len;
+                    CigarIterType::RefSkip(self.current_ref_pos, self.current_read_pos, bp_len)
+                }
                 Cigar::Pad(_) => panic!("Padding P present in Cigar strings"),
                 Cigar::Match(bp_len) => {
                     let bp_len = bp_len as u64;
@@ -135,6 +145,7 @@ impl<'a> Iterator for CigarIterator<'a> {
                     CigarIterType::Equal(
                         self.current_ref_pos - bp_len,
                         self.current_read_pos - bp_len,
+                        to_string_seq(&self.seq[start..self.current_read_pos as usize]),
                     )
                 }
                 Cigar::Diff(bp_len) => {

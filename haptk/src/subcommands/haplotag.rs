@@ -21,56 +21,56 @@ use crate::read_vcf::read_vcf_to_matrix;
 
 use crate::core::bam::zip_bam_paths_to_sample_name;
 
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+#[derive(Debug, Clone)]
+pub struct Args {
+    #[cfg_attr(feature = "clap", arg(long, default_value_t = 8))]
+    pub threads: usize,
+
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub output: Option<PathBuf>,
+
+    /// Bam file
+    #[cfg_attr(feature = "clap", arg(short = 'b', long))]
+    pub bam_path: PathBuf,
+
+    /// Path to the reference, used for `.cram` unpacking
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub ref_path: PathBuf,
+
+    /// Contigs to be searched, if not set, use all available contigs
+    #[cfg_attr(feature = "clap", arg(long, value_delimiter = ' ', num_args = 1..))]
+    pub contigs: Vec<String>,
+}
+
 #[doc(hidden)]
-pub fn run(
-    mut args: StandardArgs,
-    bam_file: PathBuf,
-    ref_file: PathBuf,
-    contigs: Vec<String>,
-    threads: usize,
-) -> Result<()> {
+pub fn run(mut args: StandardArgs, mut conf: Args) -> Result<()> {
     ensure!(
         args.selection == Selection::All,
         "Only running with phased data and all chromosomes is supported."
     );
 
-    let conf = Configuration {
-        threads,
-        ref_path: ref_file,
-        output: Some(args.output.clone()),
-    };
+    conf.output = Some(args.output.clone());
 
     if args.include_indels {
         args.include_indels = false;
         tracing::info!("Setting `include_indels` to false for haplotagging");
     }
 
-    run_haplotag(&args, vec![bam_file], contigs, conf)?;
+    run_haplotag(&args, vec![conf.bam_path.clone()], conf)?;
 
     Ok(())
 }
 
-#[derive(Debug, Clone)]
-pub struct Configuration {
-    pub threads: usize,
-    pub output: Option<PathBuf>,
-    pub ref_path: PathBuf,
-}
-
 pub type ChannelObj = Vec<String>;
 
-pub fn run_haplotag(
-    args: &StandardArgs,
-    paths: Vec<PathBuf>,
-    contigs: Vec<String>,
-    conf: Configuration,
-) -> Result<()> {
+pub fn run_haplotag(args: &StandardArgs, paths: Vec<PathBuf>, conf: Args) -> Result<()> {
     let file_path = paths.first().unwrap().clone();
 
     let header = bam::Header::try_get(&file_path)?;
 
     // Read the first bam file and base the contigs and vcf header on this bam
-    let (contigs, contigs_and_len) = header.filter_contigs(contigs)?;
+    let (contigs, contigs_and_len) = header.filter_contigs(&conf.contigs)?;
 
     // Attach sample IDs to all bam file paths
     let sample_id_and_bam_paths = zip_bam_paths_to_sample_name(paths)?;
@@ -123,6 +123,7 @@ pub fn run_haplotag(
                                 pos: coord.pos,
                                 // Take first character
                                 alt: coord.alt.chars().next().unwrap(),
+                                reference: coord.reference.chars().next().unwrap(),
                             };
 
                             let gts: Vec<u8> = idxs
@@ -216,7 +217,7 @@ pub fn run_haplotag(
 
 pub fn iterate_region(
     sample_id_and_bam_paths: &[(String, PathBuf)],
-    conf: &Configuration,
+    conf: &Args,
     contig: &str,
     range: Range<u64>,
     collector_tx: &Sender<ChannelObj>,
@@ -290,11 +291,13 @@ fn match_cigar_to_haplotype<'a>(
             let start = CigarVariant {
                 pos: ref_pos,
                 alt: 'A',
+                reference: 'A',
             };
 
             let stop = CigarVariant {
                 pos: (ref_pos + (seq.len() - 1) as u64),
                 alt: 'X',
+                reference: 'X',
             };
 
             for (variant, gts) in haplotype_map.range(start..=stop) {
@@ -370,7 +373,7 @@ fn match_cigar_to_haplotype<'a>(
 pub fn spawn_collector(
     rx: Receiver<ChannelObj>,
     input_path: PathBuf,
-    conf: Configuration,
+    conf: Args,
 ) -> JoinHandle<Result<()>> {
     thread::spawn(move || -> Result<()> {
         let mut cram_writer =

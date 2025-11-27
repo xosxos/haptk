@@ -6,7 +6,7 @@ use thiserror::Error as ThisError;
 #[derive(ThisError, Debug)]
 pub enum Error {
     #[error("Failed to open file: {path:?}")]
-    Io { path: PathBuf },
+    Io { e: std::io::Error, path: PathBuf },
 
     #[error("Failed to parse coords: {coord}")]
     CoordParse { coord: String },
@@ -29,7 +29,7 @@ pub enum Error {
     #[error("None of the wanted samples was found in the vcf.")]
     SamplesNotFound,
 
-    #[error("File type: {ext} is not supported")]
+    #[error("File type: '.{ext}' is not supported")]
     FileNotSupported { ext: String },
 
     #[error("VCF header has no contig length for {contig}")]
@@ -76,4 +76,16 @@ pub enum Error {
 
     #[error("The given coordinate {variant_pos} is larger than the largest found position. Total records read: {records_n}. Check your coordinates and vcf file. Comparing to a haplotype file also automatically limits min and max coordinates to the haplotype coordinates.")]
     VariantPosNotFound { variant_pos: u64, records_n: usize },
+
+    #[error("{0}")]
+    Core(#[from] haptk_core::Error),
+
+    #[error("{0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("{0}")]
+    StdIo(#[from] std::io::Error),
+
+    #[error("{0}")]
+    Bgzf(#[from] bgzip::BGZFError),
 }

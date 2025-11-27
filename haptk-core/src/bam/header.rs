@@ -132,7 +132,7 @@ impl Header {
     #[allow(clippy::type_complexity)]
     pub fn filter_contigs(
         &self,
-        contigs: Vec<String>,
+        contigs: &[String],
     ) -> Result<
         (
             Vec<(String, Option<u64>, Option<u64>)>,

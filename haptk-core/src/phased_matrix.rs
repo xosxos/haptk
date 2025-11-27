@@ -8,30 +8,129 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use ndarray::iter::AxisIter;
+use ndarray::s;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Axis;
-use ndarray::iter::AxisIter;
-use ndarray::s;
 use serde::{Deserialize, Serialize};
 
 use crate::error;
 use crate::ploidy::Ploidy;
 use crate::variant::Coord;
 use crate::variant::HapVariant;
+use crate::vcf::contig_len_from_vcf;
+use crate::Error;
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ReadMetadata {
+#[serde(transparent)]
+pub struct SelectedHaplotypes(Vec<[bool; 2]>);
+
+impl SelectedHaplotypes {
+    pub fn from_vec(vec: Vec<[bool; 2]>) -> SelectedHaplotypes {
+        SelectedHaplotypes(vec)
+    }
+    pub fn select_all(indexes: &[usize]) -> Self {
+        SelectedHaplotypes(indexes.iter().map(|_| [true, true]).collect())
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, [bool; 2]> {
+        self.0.iter()
+    }
+
+    pub fn selected_haplotypes(&self, idx: usize) -> [bool; 2] {
+        self.0[idx]
+    }
+
+    pub fn find_ht_num(&self, idx: usize) -> usize {
+        // Haplotype selection is in the format (for now only self.ploidy == 2 is supported)
+        // [
+        //     [bool; self.ploidy]
+        //     [bool; self.ploidy]
+        //     [bool; self.ploidy]
+        //     ...
+        //     ...
+        //     [bool; self.ploidy]
+        // ]
+        // Where each row is a sample, and the boolean tells which of the samples haplotypes were selected
+        self.0
+            .iter()
+            // Flatten the bool arrays
+            .flat_map(|v| {
+                v.iter()
+                    .copied()
+                    // Enumeration here gives the haplotype number from the phased vcf
+                    //
+                    // Vcf lists phases in 0|0 format
+                    //
+                    // Here we essentially enumerate the VCF genotype field for the sample:
+                    // enumeration: 0,1,2,...,n
+                    // genotype:    0|0|0|...|0
+                    //
+                    // The boolean value determines if that haplotype was selected when the VCF was read
+                    .enumerate()
+                    .collect::<Vec<(usize, bool)>>()
+            })
+            // If the haplotype was selected, i.e. the value at the [bool; self.ploidy] matrix is `true`
+            // we return the haplotype number
+            .filter_map(|(i, is_included)| match is_included {
+                true => Some(i),
+                false => None,
+            })
+            // The sample indexes are determined by the `HaplotypeSelection` when reading the VCF
+            // So we can just index this flattened and filtered `HaplotypeSelection` iterator
+            .nth(idx)
+            .unwrap()
+    }
+}
+// pub type SelectedHaplotypes = Vec<[bool; 2]>;
+
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Metadata {
     pub file_path: PathBuf,
     pub fetch_range: (u64, u64),
-    pub lookups: Vec<[bool; 2]>,
+    selected_haplotypes: SelectedHaplotypes,
     pub indexes: Vec<usize>,
     pub contig_len: Option<u64>,
     pub sharded: bool,
     pub remove_no_alt: bool,
     pub include_indels: bool,
     pub is_genome_wide: bool,
+}
+
+impl Metadata {
+    pub fn new(
+        file: &Path,
+        contig: &str,
+        fetch_range: (u64, u64),
+        selected_haplotypes: SelectedHaplotypes,
+        indexes: Vec<usize>,
+        sharded: bool,
+        remove_no_alt: bool,
+        include_indels: bool,
+        is_genome_wide: bool,
+    ) -> Self {
+        Self {
+            indexes,
+            selected_haplotypes,
+            file_path: file.to_path_buf(),
+            fetch_range,
+            contig_len: contig_len_from_vcf(file, contig).ok(),
+            sharded,
+            remove_no_alt,
+            include_indels,
+            is_genome_wide,
+        }
+    }
+
+    pub fn set_selected_haplotypes(&mut self, sh: SelectedHaplotypes) {
+        self.selected_haplotypes = sh;
+    }
+
+    pub fn get_selected_haplotypes(&self) -> &SelectedHaplotypes {
+        &self.selected_haplotypes
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -85,7 +184,7 @@ pub struct PhasedMatrix {
     coords: BTreeSet<Coord>,
     pub indexer: HashMap<Coord, (Arc<Coord>, usize)>,
     pub ploidy: Ploidy,
-    pub metadata: ReadMetadata,
+    pub metadata: Metadata,
 }
 
 impl PhasedMatrix {
@@ -96,7 +195,7 @@ impl PhasedMatrix {
         samples: Vec<String>,
         coords: BTreeSet<Coord>,
         ploidy: Ploidy,
-        metadata: ReadMetadata,
+        metadata: Metadata,
     ) -> Self {
         let start = Arc::new(coords.first().unwrap().clone());
 
@@ -226,16 +325,25 @@ impl PhasedMatrix {
         indexes.iter().map(|i| self.get_sample_name(*i)).collect()
     }
 
-    pub fn get_idxs_for_samples(
-        &self,
-        samples: &[String],
-    ) -> std::result::Result<Vec<usize>, error::Error> {
+    pub fn get_idxs_for_samples(&self, q_samples: &[String]) -> Result<Vec<usize>, error::Error> {
         let idxs: Vec<_> = self
             .samples
             .iter()
             .enumerate()
-            .filter(|(_, s)| samples.contains(s))
+            // Filter in sample id's which are in query samples
+            .filter(|(_, s)| q_samples.contains(s))
             .flat_map(|(i, _)| {
+                // For each sample the haplotypes are on consecutive rows
+                // Meaning for diploid data:
+                //
+                // idx  id        ht
+                // 0    HG0001    0
+                // 1    HG0001    1
+                // 3    HG0002    0
+                // 4    HG0002    0
+                //
+                // So accessing the sample idx `i` and the following `self.ploidy` amount of rows
+                // We will get all sample indexes
                 ((i * *self.ploidy)..(i * *self.ploidy) + *self.ploidy).collect::<Vec<usize>>()
             })
             .collect();
@@ -245,6 +353,10 @@ impl PhasedMatrix {
         }
 
         Ok(idxs)
+    }
+
+    pub fn get_ht_num(&self, idx: usize) -> usize {
+        self.metadata.selected_haplotypes.find_ht_num(idx)
     }
 
     // Inclusive ranges not supported so remember to add + 1 to stop_idx
@@ -305,6 +417,26 @@ impl PhasedMatrix {
                 next_matrix.haplotype(sample, index_start..=index_stop)
             })
             .collect()
+    }
+
+    // Create a new haplotype selection
+    pub fn select_haplotypes(&self, indexes: &[usize]) -> Result<SelectedHaplotypes, Error> {
+        let mut selected_haplotypes = vec![];
+
+        for idx in indexes {
+            let idxs = self.get_idxs_for_samples(&[self.get_sample_name(*idx)])?;
+            let pos = idxs.iter().position(|i| idx == i).unwrap();
+
+            let select_haplotype = match pos {
+                0 => [true, false],
+                1 => [false, true],
+                _ => unreachable!("Only diploid genotypes are supported"),
+            };
+
+            selected_haplotypes.push(select_haplotype);
+        }
+
+        Ok(SelectedHaplotypes::from_vec(selected_haplotypes))
     }
 }
 
@@ -402,7 +534,7 @@ impl PhasedMatrix {
         matrix.data.slice(s![.., col_first_idx..=col_last_idx])
     }
 
-    pub fn write_npy(&self, path: &Path) -> std::result::Result<(), error::Error> {
+    pub fn write_npy(&self, path: &Path) -> Result<(), error::Error> {
         let (_, matrix) = self.matrix.iter().nth(0).unwrap();
 
         let mut writer = std::io::BufWriter::new(std::fs::File::create(path)?);
@@ -413,8 +545,8 @@ impl PhasedMatrix {
 
 mod npy_v1 {
     use byteorder::{BigEndian, ByteOrder, LittleEndian, NativeEndian, WriteBytesExt};
-    use ndarray::Data;
     use ndarray::prelude::*;
+    use ndarray::Data;
     use std::io;
 
     static MAGIC_VALUE: &[u8] = b"\x93NUMPY";
