@@ -11,7 +11,6 @@ use petgraph::Graph;
 use rayon::prelude::*;
 
 use crate::subcommands::hst::find_majority_nodes;
-use crate::subcommands::hst::pair_wise::calculate_pair_wise;
 use crate::subcommands::hst::pair_wise::PairWiseMatrix;
 use crate::subcommands::hst::read_vcf_with_selections;
 use crate::subcommands::hst::CoordDataSlot;
@@ -85,7 +84,7 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
             populate_uhst(&mut vcf, &mut uhst.hst, direction, &start, min_size, false)?;
 
             // Calulate pair-wise sharing matrix
-            let pair_wise: PairWiseMatrix = calculate_pair_wise(&vcf, &uhst);
+            let pair_wise: PairWiseMatrix = uhst.calculate_pair_wise();
 
             // Find first, second last and last nodes on the majority branch
             // for downstream analyses
@@ -121,9 +120,7 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
         })
         .collect::<Result<Vec<(Node, Node, PairWiseMatrix)>>>()?;
 
-    tracing::debug!("Finished constructing unilateral HSTs");
-
-    tracing::debug!("Finished majority branches");
+    tracing::debug!("Finished constructing unidirectional HSTs");
 
     // Shared core haplotype
     let mut sh_output = args.output.clone();

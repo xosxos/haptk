@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::DefaultHasher;
 use std::hash::Hasher;
@@ -7,8 +8,10 @@ use std::path::PathBuf;
 
 use petgraph::graph::EdgeIndex;
 use petgraph::graph::NodeIndices;
+use petgraph::graph::NodeReferences;
 use petgraph::graph::NodeWeightsMut;
 use petgraph::prelude::NodeIndex;
+use petgraph::visit::IntoNodeReferences;
 use petgraph::Direction;
 use petgraph::Graph;
 use serde::{Deserialize, Serialize};
@@ -91,6 +94,19 @@ impl Node {
             .iter()
             .map(|i| &*samples[i / ploidy])
             .collect::<Vec<&str>>()
+            .join(";")
+    }
+
+    pub fn sample_names(
+        &self,
+        samples: &[String],
+        ploidy: usize,
+        selection: &SelectedHaplotypes,
+    ) -> String {
+        self.indexes
+            .iter()
+            .map(|i| format!("{}_{}", &*samples[i / ploidy], selection.find_ht_num(*i)))
+            .collect::<Vec<String>>()
             .join(";")
     }
 
@@ -180,12 +196,16 @@ impl Hst {
         self.hst.add_edge(parent, child, ())
     }
 
+    pub fn node_indices(&self) -> NodeIndices<u32> {
+        self.hst.node_indices()
+    }
+
     pub fn node_weights_mut(&mut self) -> NodeWeightsMut<'_, Node> {
         self.hst.node_weights_mut()
     }
 
-    pub fn node_indices(&self) -> NodeIndices<u32> {
-        self.hst.node_indices()
+    pub fn nodes(&self) -> NodeReferences<'_, Node> {
+        self.hst.node_references()
     }
 
     pub fn node_weight(&self, node_idx: NodeIndex) -> Option<&Node> {
@@ -222,12 +242,20 @@ impl Hst {
 
 // Hst helpers
 impl Hst {
+    pub fn coords(&self) -> &BTreeSet<Coord> {
+        &self.metadata.coords
+    }
+
     pub fn get_sample_name(&self, index: usize) -> String {
         self.metadata
             .samples
             .get(index / *self.metadata.ploidy)
             .unwrap()
             .clone()
+    }
+
+    pub fn get_ht_num(&self, index: usize) -> usize {
+        self.metadata.selected_haplotypes.find_ht_num(index)
     }
 
     pub fn nhaplotypes(&self) -> usize {
@@ -300,8 +328,7 @@ impl Hst {
         let mut majority_nodes = vec![idx];
 
         while let Some((_data, node_idx)) = self
-            .hst
-            .neighbors_directed(idx, Direction::Outgoing)
+            .get_children(idx)
             .map(|idx| (self.node_weight(idx).unwrap(), idx))
             //
             // Max by returns None if the iterator is empty, thus when a leaf node is reached
@@ -312,6 +339,58 @@ impl Hst {
         }
 
         majority_nodes
+    }
+
+    pub fn subtree(&mut self, root: NodeIndex) {
+        let mut nodes = vec![NodeIndex::from(0)];
+        let mut edges = vec![];
+        let mut count = 0;
+        let mut mapping = HashMap::new();
+        mapping.insert(NodeIndex::from(0), root);
+
+        self.recurse_down(
+            root,
+            NodeIndex::from(0),
+            &mut nodes,
+            &mut edges,
+            &mut mapping,
+            &mut count,
+        );
+
+        // println!("{} {}", nodes.len(), edges.len());
+        let mut graph = Graph::<Node, ()>::from_edges(edges);
+        // println!("{:#?}", graph);
+
+        for node in nodes {
+            // println!("{node:?}");
+            let weight = graph.node_weight_mut(node).unwrap();
+            *weight = self
+                .node_weight(mapping.get(&node).unwrap().clone())
+                .unwrap()
+                .clone();
+        }
+
+        self.hst = graph;
+        // self.hst.retain_nodes(|_g, idx| subtree.contains(&idx));
+    }
+
+    fn recurse_down<'a>(
+        &'a self,
+        parent: NodeIndex,
+        parent_new: NodeIndex,
+        nodes: &mut Vec<NodeIndex>,
+        edges: &'a mut Vec<(NodeIndex, NodeIndex)>,
+        mapping: &mut HashMap<NodeIndex, NodeIndex>,
+        count: &mut u32,
+    ) {
+        for orig_child_idx in self.get_children(parent) {
+            *count += 1;
+            let child = NodeIndex::from(*count);
+            nodes.push(child);
+            edges.push((parent_new, child));
+            mapping.insert(child, orig_child_idx);
+            self.recurse_down(orig_child_idx, child, nodes, edges, mapping, count)
+        }
     }
 }
 
@@ -333,7 +412,7 @@ pub struct Metadata {
     pub selection: Selection,
     pub ploidy: Ploidy,
     pub vcf_name: PathBuf,
-    selected_haplotypes: SelectedHaplotypes,
+    pub selected_haplotypes: SelectedHaplotypes,
 }
 
 impl Metadata {

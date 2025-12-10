@@ -1,142 +1,168 @@
-use std::sync::mpsc::channel;
+use std::slice::Iter;
 
 use indexmap::IndexMap;
 use petgraph::graph::NodeIndex;
-
-use crate::core::PhasedMatrix;
 use rayon::prelude::*;
 
 use super::Hst;
 
-pub type PairWiseMatrix = Vec<(usize, IndexMap<usize, (u64, u64, bool)>)>;
+#[derive(Clone)]
+pub struct PairWiseMatrix(Vec<(usize, IndexMap<usize, (u64, u64, bool)>)>);
 
-// Length is 1 SNP too much to both directions
-pub fn calculate_pair_wise(vcf: &PhasedMatrix, hst: &Hst) -> PairWiseMatrix {
-    //
-    let (tx, rx) = channel();
+impl PairWiseMatrix {
+    pub fn iter(&self) -> Iter<'_, (usize, IndexMap<usize, (u64, u64, bool)>)> {
+        self.0.iter()
+    }
 
-    // Iterate all leaf nodes
-    hst.node_indices()
-        .par_bridge()
+    pub fn mean(&self, idxs: &[usize]) -> f32 {
+        let total = idxs.len();
+
+        let mut count = 0;
+
+        let sum: f32 = self
+            .iter()
+            .filter(|(idx, _map)| idxs.contains(idx))
+            .inspect(|_| count += 1)
+            .map(|(_idx, map)| {
+                let sum: u64 = idxs
+                    .iter()
+                    .flat_map(|idx| map.get(idx))
+                    .map(|(start, stop, is_snp)| match (start == stop, is_snp) {
+                        (true, true) => 1,
+                        (true, false) => 0,
+                        (false, false) => stop.saturating_sub(*start),
+                        // (true, true) |
+                        // (true, false) |
+                        (false, true) => unreachable!(),
+                    })
+                    .sum();
+                sum as f32 / total as f32
+            })
+            .sum();
+
+        assert_eq!(count, total);
+
+        sum / total as f32
+    }
+}
+
+impl Hst {
+    pub fn calculate_pair_wise(&self) -> PairWiseMatrix {
+        calculate_pair_wise_inner(&self)
+    }
+}
+
+// Recurse up branches from all leaf nodes to find how many bp is shared between the leaf node
+// sample and the rest
+//
+pub fn calculate_pair_wise_inner(hst: &Hst) -> PairWiseMatrix {
+    // Iterate all nodes
+    let mut rows: Vec<(usize, _)> = hst
+        .node_indices()
+        // Filter in only leaf nodes
         .filter(|n| hst.n_children(*n) == 0)
-        .for_each(|leaf| {
-            let data = hst.node_weight(leaf).unwrap();
+        // Flatten the sample indexes of each node
+        .flat_map(|n| {
+            hst.node_weight(n)
+                .unwrap()
+                .indexes
+                .iter()
+                .map(move |v| (n, v))
+        })
+        .par_bridge()
+        .map(|(node_idx, sample_idx)| {
+            // Store in all shared lengths for this sample
+            let mut shared_lengths = IndexMap::new();
+
+            let data = hst.node_weight(node_idx).unwrap();
 
             // Get parent node
-            let parent_node = hst.get_parent(leaf).unwrap();
-
+            let parent_node = hst.get_parent(node_idx).unwrap();
             let parent_data = hst.node_weight(parent_node).unwrap();
 
-            // Collect all leaf node idxs
-            for leaf_sample_idx in &data.indexes {
-                let mut row = IndexMap::new();
+            // Iterate over parent indexes
+            for parent_sample_idx in &parent_data.indexes {
+                //
+                // Separate logic if the parent is a root node
+                // and the haplotype is just 1 nucleotide long
+                if data.stop == data.start {
+                    // Samples share the same nucleotide
+                    let is_same = data.indexes.contains(parent_sample_idx);
 
-                // Iterate leaf node indexes
-                for other_sample_idx in &parent_data.indexes {
-                    // Insert the length if the pair does not already have a length
-
-                    if data.stop == data.start {
-                        let ht_other = vcf.find_u8_haplotype_for_sample(
-                            &data.start..=&data.stop,
-                            *other_sample_idx,
-                        );
-                        let ht_this = vcf.find_u8_haplotype_for_sample(
-                            &data.start..=&data.stop,
-                            *leaf_sample_idx,
-                        );
-                        row.entry(*other_sample_idx).or_insert((
-                            data.start.pos,
-                            data.stop.pos,
-                            ht_this == ht_other,
-                        ));
-                    }
-
-                    let stop = vcf.coords().range(..&data.stop).next_back().unwrap();
-                    let start = vcf
+                    shared_lengths.entry(*parent_sample_idx).or_insert((
+                        data.start.pos,
+                        data.stop.pos,
+                        is_same,
+                    ));
+                } else {
+                    let stop = hst.coords().range(..&data.stop).next_back().unwrap();
+                    let start = hst
                         .coords()
                         .range(&data.start..)
                         .nth(1)
-                        .unwrap_or(vcf.coords().range(&data.start..).nth(0).unwrap());
+                        .unwrap_or(hst.coords().range(&data.start..).nth(0).unwrap());
 
-                    row.entry(*other_sample_idx)
+                    shared_lengths
+                        .entry(*parent_sample_idx)
                         .or_insert((start.pos, stop.pos, false));
                 }
-
-                // Start recursion up the branch
-                recurse_branch(vcf, hst, parent_node, *leaf_sample_idx, &mut row);
-
-                row.sort_by_key(|id, _length| *id);
-
-                let _ = tx.send((*leaf_sample_idx, row));
             }
-        });
 
-    drop(tx);
+            // Start recursion up the branch to get shared lengths between
+            // all samples and this sample
+            recurse_branch(hst, parent_node, &mut shared_lengths);
 
-    let mut rows: PairWiseMatrix = vec![];
+            // Sort by id
+            shared_lengths.sort_by_key(|id, _length| *id);
 
-    while let Ok(row) = rx.recv() {
-        rows.push(row);
-    }
+            (*sample_idx, shared_lengths)
+        })
+        .collect();
 
+    // Sort by id
     rows.sort_by_key(|(id, _row)| *id);
 
-    rows
+    PairWiseMatrix(rows)
 }
 
 fn recurse_branch(
-    vcf: &PhasedMatrix,
     hst: &Hst,
     node: NodeIndex,
-    leaf_idx: usize,
-    row: &mut IndexMap<usize, (u64, u64, bool)>,
+    shared_lengths: &mut IndexMap<usize, (u64, u64, bool)>,
 ) {
     let data = hst.node_weight(node).unwrap();
 
-    let stop = vcf.coords().range(..&data.stop).next_back().unwrap();
-    let start = vcf
+    let stop = hst.coords().range(..&data.stop).next_back().unwrap();
+    let start = hst
         .coords()
         .range(&data.start..)
         .nth(1)
-        .unwrap_or(vcf.coords().range(&data.start..).nth(0).unwrap());
+        .unwrap_or(hst.coords().range(&data.start..).nth(0).unwrap());
+
+    // If there is no parent node i.e. we are a root node
+    // check lengths from the node itself and not the parent
+    let indexes = match hst.get_parent(node) {
+        Some(parent_node) => &hst.node_weight(parent_node).unwrap().indexes,
+        None => &data.indexes,
+    };
+
+    for parent_sample_idx in indexes {
+        if data.stop == data.start {
+            let is_same = data.indexes.contains(parent_sample_idx);
+
+            shared_lengths.entry(*parent_sample_idx).or_insert((
+                data.start.pos,
+                data.stop.pos,
+                is_same,
+            ));
+        } else {
+            shared_lengths
+                .entry(*parent_sample_idx)
+                .or_insert((start.pos, stop.pos, false));
+        }
+    }
 
     if let Some(parent_node) = hst.get_parent(node) {
-        let parent_data = hst.node_weight(parent_node).unwrap();
-
-        for other_sample_idx in &parent_data.indexes {
-            if data.stop == data.start {
-                let ht_other =
-                    vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, *other_sample_idx);
-                let ht_this = vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, leaf_idx);
-
-                row.entry(*other_sample_idx).or_insert((
-                    data.start.pos,
-                    data.stop.pos,
-                    ht_other == ht_this,
-                ));
-            } else {
-                row.entry(*other_sample_idx)
-                    .or_insert((start.pos, stop.pos, false));
-            }
-        }
-
-        recurse_branch(vcf, hst, parent_node, leaf_idx, row);
-    } else {
-        for other_sample_idx in &data.indexes {
-            let ht_other =
-                vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, *other_sample_idx);
-            let ht_this = vcf.find_u8_haplotype_for_sample(&data.start..=&data.stop, leaf_idx);
-
-            if data.stop == data.start {
-                row.entry(*other_sample_idx).or_insert((
-                    data.start.pos,
-                    data.stop.pos,
-                    ht_other == ht_this,
-                ));
-            } else {
-                row.entry(*other_sample_idx)
-                    .or_insert((start.pos, stop.pos, false));
-            }
-        }
+        recurse_branch(hst, parent_node, shared_lengths);
     }
 }
