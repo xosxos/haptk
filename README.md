@@ -67,7 +67,7 @@ bcftools view -m2 -M2 -v snps 1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDE
 bcftools index -t 1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDEL_SV_phased_panel.biallelic.vcf.gz
  
 # Create unidirectional HSTs of the 1kg samples
-haptk uhst 1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDEL_SV_phased_panel.biallelic.vcf.gz \
+haptk hst 1kGP_high_coverage_Illumina.chr9.filtered.SNV_INDEL_SV_phased_panel.biallelic.vcf.gz \
   --alleles all \
   --samples 1kGP_high_coverage_Illumina.finnish.ids 1kGP_high_coverage_Illumina.gambian.ids 1kGP_high_coverage_Illumina.han_chinese.ids \
   --coords chr9:27573534 \
@@ -90,7 +90,7 @@ gambian = read_samples("1kGP_high_coverage_Illumina.gambian.ids")
 finnish = read_samples("1kGP_high_coverage_Illumina.finnish.ids")
 han_chinese = read_samples("1kGP_high_coverage_Illumina.han_chinese.ids")
 
-hst = haptk.read_hst("results/uhst_left.hst.gz")
+hst = haptk.read_hst("results/hst_left.hst.gz")
 
 hst.circle_tree("my_left_hst.png", to_tag=[gambian, finnish, han_chinese], colors=["red", "blue", "green"])
 ```
@@ -103,7 +103,7 @@ The HST starting from chr9:27573534 tagged for Gambian (red), Finnish (blue) and
 
 ```
 Commands:
-  uhst                  Build unidirectional haplotype sharing trees at a coordinate
+  hst                  Build unidirectional haplotype sharing trees at a coordinate
   bhst                  Build a bidirectional haplotype sharing tree at a coordinate
   mrca                  Analyze the MRCA based on the Gamma method at a coordinate
   check-for-haplotype   Check if samples share a given haplotype
@@ -120,12 +120,12 @@ Commands:
 
 ## Example graphs from the original [article](https://www.biorxiv.org/content/10.1101/2023.07.28.550820v3)
 
-### Unidirectional haplotype sharing trees (uHST)
-The left side uHST starting from the C9orf72 expansion.
+### Unidirectional haplotype sharing trees (HST)
+The left side HST starting from the C9orf72 expansion.
 
 ![ALS_203_left_only_longest](https://github.com/xosxos/haptk/assets/44613540/6be3bcfc-e7f7-432b-926b-006d07aa2498)
 
-The right side uHST starting from the C9orf72 expansion.
+The right side HST starting from the C9orf72 expansion.
 
 ![ALS_203_right_only_longest](https://github.com/xosxos/haptk/assets/44613540/b963bac7-1407-40ae-bb60-3afa7ec6f7f1)
 
