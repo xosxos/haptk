@@ -122,7 +122,7 @@ pub enum SortOption {
     Total,
 }
 
-#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq, Eq, Copy)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 #[cfg_attr(feature = "enum_methods", derive(strum::EnumIter))]
 pub enum Selection {

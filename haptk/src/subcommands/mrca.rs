@@ -29,7 +29,13 @@ pub fn run(args: StandardArgs, rec_rates: PathBuf, window: Option<u64>) -> Resul
     let (contig, variant_pos) = parse_snp_coord(&args.coords)?;
 
     let mut output = args.output.clone();
-    push_to_output(&args, &mut output, "mrca_gamma_method", "txt");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut output,
+        "mrca_gamma_method",
+        "txt",
+    );
 
     let rates = read_recombination_file(rec_rates)?;
 

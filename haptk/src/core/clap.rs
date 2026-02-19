@@ -176,12 +176,13 @@ pub enum SubCommand {
 
     /// Check if samples share a given haplotype
     CheckForHaplotype {
-        #[cfg_attr(feature = "clap", command(flatten))]
-        args: StandardArgs,
 
-        /// Haplotype for checking
-        #[cfg_attr(feature = "clap", arg(short = 'h', long))]
-        haplotype: PathBuf,
+        #[cfg_attr(feature = "clap", command(flatten))]
+        args: check_for_haplotype::Args,
+
+        /// Number of threads
+        #[cfg_attr(feature = "clap", arg(short = 't', long, default_value_t = 8))]
+        threads: usize,
 
         #[cfg_attr(feature = "clap", command(flatten))]
         log_and_verbosity: LogAndVerbosity,
@@ -714,7 +715,7 @@ impl SubCommand {
     pub fn output(&self) -> Option<PathBuf> {
         match self {
             SubCommand::Haplotypes { args: StandardArgs { output, .. }, ..}
-            | SubCommand::CheckForHaplotype { args: StandardArgs { output, .. }, ..}
+            | SubCommand::CheckForHaplotype { args: check_for_haplotype::Args { output, .. }, ..}
             | SubCommand::CompareToHaplotype { args: StandardArgs { output, .. }, ..}
             | SubCommand::CompareToHst { args: StandardArgs { output, .. }, ..}
             | SubCommand::CompareHaplotypes { output, .. }
@@ -795,7 +796,7 @@ pub fn run_cmd(cmd: SubCommand) -> Result<()> {
         SubCommand::CompareToHst { args, hst, only_longest_leafs, .. }
             => compare_to_hst::run(args, hst, only_longest_leafs)?,
 
-        SubCommand::CheckForHaplotype { args, haplotype, .. } => check_for_haplotype::run(args, haplotype)?,
+        SubCommand::CheckForHaplotype { args, .. } => check_for_haplotype::run(args)?,
         SubCommand::Mrca { args, recombination_rates, window, .. } => mrca::run(args, recombination_rates, window)?,
         SubCommand::Haplotypes { args, selection_variant, nucleotides, .. } => list_haplotypes::run(args, selection_variant, nucleotides)?,
         SubCommand::Samples { file, .. } => list_samples::run(file)?, 

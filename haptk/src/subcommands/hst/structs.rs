@@ -37,7 +37,7 @@ pub trait HstMetadata {
 
 impl HstMetadata for &ConciseArgs {
     fn selection(&self) -> Selection {
-        self.selection.clone()
+        self.selection
     }
 
     fn input_file(&self) -> PathBuf {
@@ -47,7 +47,7 @@ impl HstMetadata for &ConciseArgs {
 
 impl HstMetadata for &StandardArgs {
     fn selection(&self) -> Selection {
-        self.selection.clone()
+        self.selection
     }
 
     fn input_file(&self) -> PathBuf {
@@ -365,7 +365,7 @@ impl Hst {
             // println!("{node:?}");
             let weight = graph.node_weight_mut(node).unwrap();
             *weight = self
-                .node_weight(mapping.get(&node).unwrap().clone())
+                .node_weight(*mapping.get(&node).unwrap())
                 .unwrap()
                 .clone();
         }

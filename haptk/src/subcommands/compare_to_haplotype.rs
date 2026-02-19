@@ -61,7 +61,8 @@ pub fn run(
     // IMG output
     let mut img_output = args.output.clone();
     push_to_output(
-        &args,
+        &args.prefix,
+        args.selection,
         &mut img_output,
         match mark_shorter_alleles {
             true => "ht_comparison_shorter_alleles_marked",
@@ -77,7 +78,13 @@ pub fn run(
 
     // CSV output
     let mut output = args.output.clone();
-    push_to_output(&args, &mut output, "ht_shared_segments", "csv");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut output,
+        "ht_shared_segments",
+        "csv",
+    );
     let mut writer = open_csv_writer(output)?;
 
     // VCF read
@@ -187,7 +194,13 @@ pub fn run(
 
     if want_npy {
         let mut npy_output = args.output.clone();
-        push_to_output(&args, &mut npy_output, "ht_comparison", "npy");
+        push_to_output(
+            &args.prefix,
+            args.selection,
+            &mut npy_output,
+            "ht_comparison",
+            "npy",
+        );
         vcf.write_npy(&npy_output)?;
     }
 

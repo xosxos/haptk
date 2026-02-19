@@ -151,7 +151,7 @@ impl Header {
         }
 
         let mut contigs = contigs
-            .into_iter()
+            .iter()
             .map(utils::parse_coords)
             .inspect(|c| {
                 if c.is_err() {

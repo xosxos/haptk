@@ -35,7 +35,13 @@ pub fn run(mut args: StandardArgs, step_size: usize, min_sample_size: usize) -> 
     args.no_alt = true;
 
     let mut output = args.output.clone();
-    push_to_output(&args, &mut output, "trees", "json.gz");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut output,
+        "trees",
+        "json.gz",
+    );
 
     let (contig, start, stop) = parse_coords(&args.coords)?;
 

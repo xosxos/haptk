@@ -125,7 +125,13 @@ pub fn run(args: StandardArgs, hst_path: PathBuf, only_longest_leafs: bool) -> R
 
     // Write .hst to file
     let mut hst_output = args.output.clone();
-    push_to_output(&args, &mut hst_output, "match_hst", "hst.gz");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut hst_output,
+        "match_hst",
+        "hst.gz",
+    );
 
     match_hst.write_to_file(hst_output, false)?;
 

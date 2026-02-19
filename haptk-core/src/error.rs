@@ -11,7 +11,7 @@ pub enum Error {
     #[error("Position: {value:?} is not an integer in coords {coord}")]
     PosParse { coord: String, value: String },
 
-    #[error("Htslib error: {0}")]
+    #[error("Htslib error, if seeking, check that the range contains variants: {0}")]
     HtsLib(#[from] rust_htslib::errors::Error),
 
     #[error("Io error: {0} {1}")]

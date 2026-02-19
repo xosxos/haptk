@@ -73,7 +73,7 @@ mod compare_hst {
             file: PathBuf::from("tests/data/test.vcf.gz"),
             output: PathBuf::from("tests/results"),
             coords: String::from("chr9:32"),
-            selection: selection.clone(),
+            selection,
             samples: None,
             prefix: None,
             no_alt: false,

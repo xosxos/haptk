@@ -102,7 +102,13 @@ pub fn run(
     let cargs = args.clone();
     let writer_handle = thread::spawn(move || -> Result<()> {
         let mut output = cargs.output.clone();
-        push_to_output(&cargs, &mut output, "quantitative_scan", "csv");
+        push_to_output(
+            &cargs.prefix,
+            cargs.selection,
+            &mut output,
+            "quantitative_scan",
+            "csv",
+        );
         let mut writer = open_csv_writer(output)?;
         writer.write_record(HEADER)?;
 
@@ -132,7 +138,7 @@ pub fn run(
                     file: args.file.clone(),
                     output: args.output.clone(),
                     coords: format!("{}", coords[0]),
-                    selection: args.selection.clone(),
+                    selection: args.selection,
                     prefix: args.prefix.clone(),
                     samples: args.samples.clone(),
                     no_alt: true,

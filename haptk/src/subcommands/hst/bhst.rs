@@ -50,7 +50,13 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: Option<u6
 
     // Write it to file
     let mut sh_output = args.output.clone();
-    push_to_output(&args, &mut sh_output, "bhst_ancestral_haplotype", "csv");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut sh_output,
+        "bhst_ancestral_haplotype",
+        "csv",
+    );
     write_haplotype(mbah, open_csv_writer(sh_output)?)?;
 
     // Find the shared core haplotype
@@ -58,12 +64,24 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: Option<u6
 
     // Write it to file
     let mut sh_output = args.output.clone();
-    push_to_output(&args, &mut sh_output, "bhst_core_haplotype", "csv");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut sh_output,
+        "bhst_core_haplotype",
+        "csv",
+    );
     write_haplotype(ht, open_csv_writer(sh_output)?)?;
 
     // Write the HST to file
     let mut hst_output = args.output.clone();
-    push_to_output(&args, &mut hst_output, "bhst", "hst.gz");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut hst_output,
+        "bhst",
+        "hst.gz",
+    );
     bhst.write_to_file(hst_output, publish)?;
 
     Ok(())

@@ -112,7 +112,13 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
 
             // Write to .hst
             let mut hst_output = args.output.clone();
-            push_to_output(&args, &mut hst_output, &format!("{direction}"), "hst.gz");
+            push_to_output(
+                &args.prefix,
+                args.selection,
+                &mut hst_output,
+                &format!("{direction}"),
+                "hst.gz",
+            );
 
             uhst.write_to_file(hst_output, publish)?;
 
@@ -124,7 +130,13 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
 
     // Shared core haplotype
     let mut sh_output = args.output.clone();
-    push_to_output(&args, &mut sh_output, "core_haplotype", "csv");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut sh_output,
+        "core_haplotype",
+        "csv",
+    );
     let writer = open_csv_writer(sh_output)?;
     let core_haplotype = combine_node_haplotypes(
         &[
@@ -138,7 +150,13 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
 
     // Majority based haplotype
     let mut sh_output = args.output.clone();
-    push_to_output(&args, &mut sh_output, "ancestral_haplotype", "csv");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut sh_output,
+        "ancestral_haplotype",
+        "csv",
+    );
     let writer = open_csv_writer(sh_output)?;
     let ancestral_haplotype = combine_node_haplotypes(
         &[
@@ -184,7 +202,13 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
         rows.push(sum);
     }
     let mut sh_output = args.output.clone();
-    push_to_output(&args, &mut sh_output, "pair-wise", "csv");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut sh_output,
+        "pair-wise",
+        "csv",
+    );
     let mut writer = open_csv_writer(sh_output)?;
 
     for row in rows {
@@ -205,7 +229,13 @@ pub fn run(args: StandardArgs, min_size: usize, publish: bool, window: u64) -> R
     let shared_ranges = find_shared_haplotype_ranges(&vcf);
 
     let mut sh_output = args.output.clone();
-    push_to_output(&args, &mut sh_output, "ancestral_segments", "csv");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut sh_output,
+        "ancestral_segments",
+        "csv",
+    );
     let mut writer = open_csv_writer(sh_output)?;
 
     write_ranges_to_csv(&vcf, &shared_ranges, None, None, &mut writer)?;

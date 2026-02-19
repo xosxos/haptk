@@ -14,7 +14,7 @@ use csv::{Reader, ReaderBuilder, Writer, WriterBuilder};
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::args::{Selection, StandardArgs};
+use crate::args::Selection;
 use crate::core::Coord;
 use crate::core::HapVariant;
 use crate::error::Error;
@@ -230,9 +230,15 @@ pub fn read_haplotype_file(ht_path: PathBuf) -> Result<Vec<HapVariant>> {
     Ok(variants)
 }
 
-pub fn push_to_output(args: &StandardArgs, output: &mut PathBuf, name: &str, suffix: &str) {
-    if let Some(prefix) = &strip_prefix(args.prefix.clone()) {
-        match args.selection {
+pub fn push_to_output(
+    prefix: &Option<String>,
+    selection: Selection,
+    output: &mut PathBuf,
+    name: &str,
+    suffix: &str,
+) {
+    if let Some(prefix) = &strip_prefix(prefix.clone()) {
+        match selection {
             Selection::All => output.push(format!("{prefix}_{name}.{suffix}")),
             Selection::OnlyAlts => output.push(format!("{prefix}_{name}_only_alts.{suffix}")),
             Selection::OnlyRefs => output.push(format!("{prefix}_{name}_only_refs.{suffix}")),
@@ -242,7 +248,7 @@ pub fn push_to_output(args: &StandardArgs, output: &mut PathBuf, name: &str, suf
             Selection::Haploid => output.push(format!("{prefix}_{name}_haploid.{suffix}")),
         }
     } else {
-        match args.selection {
+        match selection {
             Selection::All => output.push(format!("{name}.{suffix}")),
             Selection::OnlyAlts => output.push(format!("{name}_only_alts.{suffix}")),
             Selection::OnlyRefs => output.push(format!("{name}_only_refs.{suffix}")),
@@ -383,12 +389,12 @@ mod tests {
     fn test_push_to_output() {
         let mut output = std::path::PathBuf::new();
         let args = crate::args::StandardArgs::default();
-        push_to_output(&args, &mut output, "picture", "png");
+        push_to_output(&args.prefix, args.selection, &mut output, "picture", "png");
         assert_eq!(output, std::path::PathBuf::from("picture.png"));
 
         let mut output = std::path::PathBuf::from("./foo");
         let args = crate::args::StandardArgs::default();
-        push_to_output(&args, &mut output, "picture", "png");
+        push_to_output(&args.prefix, args.selection, &mut output, "picture", "png");
         assert_eq!(output, std::path::PathBuf::from("./foo/picture.png"));
 
         let mut output = std::path::PathBuf::from("./foo");
@@ -396,7 +402,7 @@ mod tests {
             prefix: Some("nice".to_string()), 
             ..Default::default()
         };
-        push_to_output(&args, &mut output, "picture", "png");
+        push_to_output(&args.prefix, args.selection, &mut output, "picture", "png");
         assert_eq!(output, std::path::PathBuf::from("./foo/nice_picture.png"));
     }
 

@@ -4,6 +4,9 @@ use common::{create_test_matrix, standard_args};
 #[cfg(test)]
 #[cfg(feature = "clap")]
 mod test_check_for_haplotype {
+    use crate::common::COORDS;
+    use crate::common::TEST_VCF;
+
     use super::*;
     use common::clap_standard_args;
 
@@ -114,10 +117,21 @@ mod test_check_for_haplotype {
         let args = standard_args(Selection::OnlyLongest);
         uhst::run(args, 1, false, 20000).unwrap();
 
-        let args = clap_standard_args(selection);
+        let args = haptk::subcommands::check_for_haplotype::Args {
+            file: PathBuf::from(TEST_VCF),
+            output: PathBuf::from("tests/results"),
+            selection,
+            samples: None,
+            prefix: None,
+            no_alt: false,
+            list: None,
+            include_indels: false,
+            haplotype: PathBuf::from("tests/results/core_haplotype_only_longest.csv"),
+        };
+
         let cmd = haptk::clap::SubCommand::CheckForHaplotype {
             args,
-            haplotype: PathBuf::from("tests/results/core_haplotype_only_longest.csv"),
+            threads: 1,
             log_and_verbosity: haptk::clap::LogAndVerbosity {
                 verbosity: 1,
                 log_file: None,

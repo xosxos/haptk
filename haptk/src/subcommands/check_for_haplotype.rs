@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use color_eyre::Result;
 use color_eyre::eyre::eyre;
 
-use crate::args::StandardArgs;
 use crate::args::Selection;
 use crate::core::PhasedMatrix;
 use crate::io::push_to_output;
@@ -12,34 +11,96 @@ use crate::io::open_csv_writer;
 use crate::read_vcf::read_vcf_to_matrix;
 use crate::core::Coord;
 use crate::core::HapVariant;
-use crate::utils::parse_snp_coord;
+use crate::read_vcf::ReadConfiguration;
 use crate::utils::precision_f64;
 use crate::traits::OnlyLongest;
 
-#[doc(hidden)]
-pub fn run(args: StandardArgs, haplotype_path: PathBuf) -> Result<()> {
-    let (contig, variant_pos) = parse_snp_coord(&args.coords)?;
+#[derive(Debug, Default, Clone, PartialEq)]
+#[cfg_attr(feature = "clap", derive(clap::Args))]
+pub struct Args {
+    pub file: PathBuf,
 
+    /// Haplotype for checking
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub haplotype: PathBuf,
+
+    /// Output directory
+    #[cfg_attr(feature = "clap", arg(short = 'o', long="outdir", default_value_os_t = PathBuf::from("./"), value_hint = clap::ValueHint::DirPath))]
+    pub output: PathBuf,
+
+    /// List of samples for HST construction (one ID per row)
+    #[cfg_attr(feature = "clap", arg(short = 'S', long, value_delimiter = ' ', num_args = 1.. ))]
+    pub samples: Option<Vec<PathBuf>>,
+
+    #[cfg_attr(feature = "clap", arg(short = 'a', long = "alleles", value_enum, default_value_t = Selection::All))]
+    pub selection: Selection,
+
+    /// Output filename prefix
+    #[cfg_attr(feature = "clap", arg(short = 'p', long))]
+    pub prefix: Option<String>,
+
+    /// Do not include no ALTs
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub no_alt: bool,
+
+    /// Include only SNVs
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub include_indels: bool,
+
+    /// List of phase sets / haplotypes to include per sample
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub list: Option<PathBuf>,
+}
+
+impl ReadConfiguration for &Args {
+    fn file(&self) -> &PathBuf {
+        &self.file
+    }
+
+    fn samples(&self) -> &Option<Vec<PathBuf>> {
+        &self.samples
+    }
+
+    fn selection(&self) -> &Selection {
+        &self.selection
+    }
+
+    fn no_alt(&self) -> bool {
+        self.no_alt
+    }
+
+    fn include_indels(&self) -> bool {
+        self.include_indels
+    }
+
+    fn list(&self) -> &Option<PathBuf> {
+        &self.list
+    }
+}
+
+#[doc(hidden)]
+pub fn run(args: Args) -> Result<()> {
     let mut csv_output = args.output.clone();
-    push_to_output(&args, &mut csv_output, "haplotype_check", "csv");
+    push_to_output(&args.prefix, args.selection, &mut csv_output, "haplotype_check", "csv");
     let mut writer = open_csv_writer(csv_output)?;
 
-    let ht = crate::io::read_haplotype_file(haplotype_path.clone())?;
-    let start = ht.first().ok_or_else(|| eyre!( 
-        "Failed to get the first variant of the haplotype at {haplotype_path:?}. Is the haplotype file empty?"),
+    let ht = crate::io::read_haplotype_file(args.haplotype.clone())?;
+    let start: &HapVariant = ht.first().ok_or_else(|| eyre!( 
+        "Failed to get the first variant of the haplotype at {:?}. Is the haplotype file empty?", args.haplotype),
     )?;
 
     let end = ht.last().unwrap();
 
     let mut vcf = read_vcf_to_matrix(
         &args,
-        contig,
-        variant_pos,
+        &start.contig,
+        start.pos,
         Some((Some(start.pos), Some(end.pos))),
         None,
         None,
         false,
     )?;
+
     match args.selection {
         Selection::OnlyLongest => vcf.select_only_longest_no_shard()?,
         Selection::Unphased => return Err(eyre!("Running with unphased data is not supported")),
@@ -65,12 +126,14 @@ fn write_matches_to_csv(
     vcf: &PhasedMatrix,
 ) -> Result<()> {
     writer.write_record(vec!["id", "match"])?;
+
     for idx in 0..vcf.nhaplotypes() {
         writer.write_record(vec![
             format!("{}", vcf.get_sample_name(idx)),
             format!("{}", matching_indexes.contains(&idx)),
         ])?;
     }
+
     Ok(())
 }
 

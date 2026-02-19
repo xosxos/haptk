@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::path::PathBuf;
 
 use color_eyre::eyre::ensure;
 use color_eyre::eyre::eyre;
@@ -73,9 +74,44 @@ fn prune_by_gt(
     Ok((lookups, samples))
 }
 
-// TODO: Change to builder pattern to refactor out StandardArgs
-pub fn read_vcf_to_matrix(
-    args: &StandardArgs,
+pub trait ReadConfiguration {
+    fn file(&self) -> &PathBuf;
+    fn samples(&self) -> &Option<Vec<PathBuf>>;
+    fn selection(&self) -> &Selection;
+    fn no_alt(&self) -> bool;
+    fn include_indels(&self) -> bool;
+    fn list(&self) -> &Option<PathBuf>;
+}
+
+impl ReadConfiguration for &StandardArgs {
+    fn file(&self) -> &PathBuf {
+        &self.file
+    }
+
+    fn samples(&self) -> &Option<Vec<PathBuf>> {
+        &self.samples
+    }
+
+    fn selection(&self) -> &Selection {
+        &self.selection
+    }
+
+    fn no_alt(&self) -> bool {
+        self.no_alt
+    }
+
+    fn include_indels(&self) -> bool {
+        self.include_indels
+    }
+
+    fn list(&self) -> &Option<PathBuf> {
+        &self.list
+    }
+}
+
+// TODO: Change to builder pattern to refactor out this ugly ReadConfiguration interface
+pub fn read_vcf_to_matrix<T: ReadConfiguration>(
+    args: T,
     contig: &str,
     variant_pos: u64,
     range: Option<(Option<u64>, Option<u64>)>,
@@ -84,18 +120,18 @@ pub fn read_vcf_to_matrix(
     is_genome_wide: bool,
 ) -> Result<PhasedMatrix> {
     let (mut indexes, samples) =
-        get_indexes_and_sample_ids_from_vcf(&args.file, &args.samples, wanted_samples)?;
+        get_indexes_and_sample_ids_from_vcf(args.file(), args.samples(), wanted_samples)?;
 
-    let (lookups, samples) = match args.selection {
-        Selection::OnlyRefs => prune_by_gt(&args.file, contig, variant_pos, &indexes, samples, 0)?,
-        Selection::OnlyAlts => prune_by_gt(&args.file, contig, variant_pos, &indexes, samples, 1)?,
+    let (lookups, samples) = match args.selection() {
+        Selection::OnlyRefs => prune_by_gt(args.file(), contig, variant_pos, &indexes, samples, 0)?,
+        Selection::OnlyAlts => prune_by_gt(args.file(), contig, variant_pos, &indexes, samples, 1)?,
         // TODO: New ugly code
         Selection::List => {
             ensure!(
-                args.list.is_some(),
+                args.list().is_some(),
                 eyre!("List selection enabled, but no list was given with the --list parameter")
             );
-            let lookups = read_sample_ht_list_file(&args.list.clone().unwrap())?;
+            let lookups = read_sample_ht_list_file(&args.list().clone().unwrap())?;
 
             indexes = samples
                 .iter()
@@ -137,8 +173,8 @@ pub fn read_vcf_to_matrix(
     // This assert is a first step in the direction of fixing it
     // Now the sample names vector should be a 1-to-1 match with the the index vector
     // But atm it's not, because I thought being tricky with indexing using ploidy was smart. it was not.
-    if !matches!(args.selection, Selection::All)
-        && !matches!(args.selection, Selection::OnlyLongest)
+    if !matches!(args.selection(), &Selection::All)
+        && !matches!(args.selection(), &Selection::OnlyLongest)
     {
         assert_eq!(
             lookups.iter().flatten().filter(|v| **v == true).count(),
@@ -147,10 +183,10 @@ pub fn read_vcf_to_matrix(
         );
     }
 
-    let ploidy: Ploidy = args.selection.as_ref().into();
+    let ploidy: Ploidy = args.selection().as_ref().into();
 
     Ok(read_vcf_to_matrix_by_indexes(
-        &args.file,
+        args.file(),
         variant_pos,
         contig,
         range,
@@ -158,9 +194,9 @@ pub fn read_vcf_to_matrix(
         indexes,
         lookups,
         window,
-        args.no_alt,
+        args.no_alt(),
         ploidy,
         is_genome_wide,
-        args.include_indels,
+        args.include_indels(),
     )?)
 }

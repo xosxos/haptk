@@ -127,7 +127,13 @@ pub fn write_haplotype_file(
         false => "haplotype_file",
     };
 
-    push_to_output(args, &mut sh_output, core_name, "csv");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut sh_output,
+        core_name,
+        "csv",
+    );
     let mut writer = open_csv_writer(sh_output)?;
 
     let mut header = match nucleotides {
@@ -164,7 +170,7 @@ pub fn write_haplotype_file(
         };
 
         for n in 0..map.len() {
-            let coord = &map.get_index(n).unwrap().0 .0[i];
+            let coord: &HapVariant = &map.get_index(n).unwrap().0 .0[i];
 
             let gt = match nucleotides {
                 true => match coord.gt {
@@ -210,7 +216,13 @@ pub fn write_haplotype_file(
 
 pub fn write_genotype_file(args: &StandardArgs, map: &HaplotypeMap) -> Result<()> {
     let mut sh_output = args.output.clone();
-    push_to_output(args, &mut sh_output, "genotype_file", "csv");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut sh_output,
+        "genotype_file",
+        "csv",
+    );
     let mut writer = open_csv_writer(sh_output)?;
 
     let mut gts: IndexMap<String, Vec<String>> = IndexMap::new();

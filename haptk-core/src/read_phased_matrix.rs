@@ -4,9 +4,9 @@ use std::path::Path;
 use ndarray::{Array2, ShapeBuilder};
 use rayon::prelude::*;
 
-use rust_htslib::bcf::record::GenotypeAllele;
 use rust_htslib::bcf::IndexedReader;
 use rust_htslib::bcf::Read;
+use rust_htslib::bcf::record::GenotypeAllele;
 
 use crate::error::Error;
 use crate::phased_matrix::Metadata;
@@ -22,6 +22,11 @@ pub fn get_vcf_reader(
     contig: &str,
     range: Option<(Option<u64>, Option<u64>)>,
 ) -> Result<IndexedReader, Error> {
+    if range.is_none() {
+        tracing::info!("Querying contig: {contig} with range: all");
+    } else {
+        tracing::info!("Querying contig: {contig} with range: {range:?}");
+    }
     let mut reader = IndexedReader::from_path(path)?;
     let rid = reader.header().name2rid(contig.as_bytes())?;
 
@@ -91,7 +96,11 @@ pub fn read_vcf_to_matrix_by_indexes(
     tracing::info!("Using {} samples from the VCF.", indexes.len());
 
     if let Some(window) = window {
-        assert!(variant_pos.checked_add(window).is_some(), "Error: Variant position: {variant_pos} added to the window: {window} is larger than the largest allowed 64-bit unsigned integer {}", u64::MAX);
+        assert!(
+            variant_pos.checked_add(window).is_some(),
+            "Error: Variant position: {variant_pos} added to the window: {window} is larger than the largest allowed 64-bit unsigned integer {}",
+            u64::MAX
+        );
         range = Some((
             Some(variant_pos.saturating_sub(window)),
             Some(variant_pos + window),

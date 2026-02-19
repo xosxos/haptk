@@ -97,7 +97,13 @@ pub fn run(
     let cargs = args.clone();
     let writer_handle = thread::spawn(move || -> Result<()> {
         let mut output = cargs.output.clone();
-        push_to_output(&cargs, &mut output, "segregate_scan", "csv");
+        push_to_output(
+            &cargs.prefix,
+            cargs.selection,
+            &mut output,
+            "segregate_scan",
+            "csv",
+        );
         let mut writer = open_csv_writer(output)?;
         writer.write_record(HEADER)?;
 

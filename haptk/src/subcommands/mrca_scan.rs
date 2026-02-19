@@ -84,7 +84,13 @@ pub fn run(
     }
 
     let mut output = args.output.clone();
-    push_to_output(&args, &mut output, "mrca_scan", "csv");
+    push_to_output(
+        &args.prefix,
+        args.selection,
+        &mut output,
+        "mrca_scan",
+        "csv",
+    );
     let mut writer = open_csv_writer(output)?;
     writer.write_record(HEADER)?;
 
