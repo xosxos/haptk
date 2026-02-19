@@ -4,7 +4,29 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import argparse
-import matplotlib
+import matplotlib.ticker as ticker
+import matplotlib as mpl
+
+from matplotlib.ticker import MultipleLocator
+# various formatting parameters
+label_fontsize = 10
+tick_fontsize = 10
+linewidth = 1
+major_xtick_length = 15
+minor_xtick_length = 7
+major_ytick_length = 7
+minor_ytick_length = 0
+
+mpl.rcParams['figure.dpi'] = 400
+mpl.rcParams['font.weight'] = 'normal'
+mpl.rcParams['axes.linewidth'] = linewidth
+mpl.rcParams['lines.linewidth'] = linewidth
+mpl.rcParams['xtick.labelsize'] = tick_fontsize
+mpl.rcParams['ytick.labelsize'] = tick_fontsize
+mpl.rcParams['xtick.major.width'] = linewidth
+mpl.rcParams['ytick.major.width'] = linewidth
+mpl.rcParams['xtick.minor.width'] = linewidth
+mpl.rcParams['ytick.minor.width'] = linewidth
 
 parser = argparse.ArgumentParser()
 parser.add_argument('file', type=str)
@@ -15,8 +37,8 @@ df = pd.read_csv(args.file)
 
 df.sort_values(by=['allele'])
 df = df[df["allele"] != 100]
-df = df[df["markers"] > 10]
-df = df[df["allele"] >= 10]
+# df = df[df["markers"] > 10]
+# df = df[df["allele"] >= 10]
 
 def rename_column(x):
     if x == 100:
@@ -24,10 +46,10 @@ def rename_column(x):
     else:
         return x
 
-def select_color(alleles, x):
+def select_color(alleles, idx):
     set_obj = set(alleles)
     num = len(set_obj)
-    allele = alleles[x]
+    allele = alleles[idx]
     idx = list(set_obj).index(allele)
     palette = sns.color_palette("Set2", num)
     # print(allele, palette[idx])
@@ -36,11 +58,11 @@ def select_color(alleles, x):
 df_markers = df.copy()
 # df_markers["allele"] = df_markers["allele"].apply(rename_column)
 
-# fig, axs = plt.subplots(nrows=1,ncols=2)
+# fig, axs = plt.subplots(nrows=1, ncols=2)
 
 # plt.bar(df_markers.allele, df_markers.markers, color ='maroon', width = 0.4)
 
-fig = plt.figure(figsize=(28.80, 19.20))
+fig = plt.figure(figsize=(12.0, 4.0))
 ax = fig.add_subplot(
     111,
     # ylabel="sample",
@@ -49,71 +71,96 @@ ax = fig.add_subplot(
 
 markers = list(df_markers.markers)
 alleles = list(df_markers.allele)
+sex = list(df_markers.parent_sex)
 for idx in range(0, len(df_markers.allele)):
-    color = select_color(alleles, idx)
-    ax.plot([idx, idx], [0, markers[idx]], c = select_color(alleles, idx), linewidth='4')
+    # color = select_color(alleles, idx)
+    if sex[idx] == "F":
+        # color = "#FFCF42"
+        color = "#B32656"
+    else:
+        color = "#0073B2"
 
-ax.set_ylim([0, max(markers) + 100])
-ax.set_xlim([-1, len(alleles) + 1])
+    # Make the alleles with length=0 also visible
+    if markers[idx] == 0:
+        y_range = [-0.15, 0.15]
+    else:
+        if markers[idx] < 0:
+            y_range = [0.15, markers[idx]]
+        else:
+            y_range = [-0.15, markers[idx]]
+            
+
+            
+        
+    ax.plot([idx, idx], y_range, c = color, linewidth='5', solid_capstyle='butt')
+
+# ax.set_ylim([min(markers), max(markers)])
 
 
 def return_positions(alleles):
     counts = dict()
+
+    # get allele counts
     for i in alleles:
       counts[i] = counts.get(i, 0) + 1
 
     count_list = list(map(lambda x: x[1], counts.items()))
     alleles = list(map(lambda x: x[0], counts.items()))
-    positions = []
+    major_positions = []
+    minor_positions = []
 
     for (i, count) in enumerate(count_list):
-        positions.append((sum(count_list[0:i]) + count / 2) - 0.5)
+        minor_positions.append((sum(count_list[0:i]) + count / 2) - 0.5)
+        major_positions.append((sum(count_list[0:i])) - 0.5)
 
-    return (alleles[::2], positions[::2])
-
-
-         
-
-(labels, positions) = return_positions(alleles)
-# positions = [(rect.get_x() + rect.get_width() / 2) for rect in ax.patches]
-# labels = [round((rect.get_x() + rect.get_width() / 2) - 0.5) for rect in ax.patches]
-ax.set_xticks(positions, labels)
-ax.xaxis.set_tick_params(labelsize=11)
-
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-ax.spines['bottom'].set_visible(False)
-ax.spines['left'].set_visible(False)
-ax.set_ylabel('Segment length (markers)', fontsize=15)
- 
-# sns.barplot(y=df_markers.markers, x=df_markers.index, ax=axs[0]).set(title="")
-# axs[0].set_xticklabels(df_markers['allele'])
+    # return (alleles[::2], positions[::2])
+    return (alleles, major_positions, minor_positions)
 
 
-# axs[0].tick_params(axis='both', which='major', labelsize=20)
 
-# axs[0].spines['top'].set_visible(False)
-# axs[0].spines['right'].set_visible(False)
-# axs[0].spines['bottom'].set_visible(False)
-# axs[0].spines['left'].set_visible(False)
-# # axs[0].set_ylabel('Average segment length', fontsize=25)
+# CONFIGURE X TICKS
+(labels, major_positions, minor_positions) = return_positions(alleles)
 
-# df = df[df["allele"] != 100]
-# df = df[df["allele"] > 10]
-# sns.histplot(data=df, x="allele", ax=axs[1], binwidth=1).set(title="")
+ax.set_xticks(major_positions, [], minor=False)
+ax.set_xticks(minor_positions, labels, minor=True)
 
-# ax = sns.histplot(data=df, x="allele", binwidth=1)
-# positions = [(rect.get_x() + rect.get_width() / 2) for rect in ax.patches]
-# labels = [round((rect.get_x() + rect.get_width() / 2) - 0.5) for rect in ax.patches]
-# axs[1].set_xticks(positions, labels)
+# Get current ticks
+# Adjust every other tick label
+for i, tick in enumerate(ax.xaxis.get_minor_ticks()):
+    # Hide every other tick on the top and bottom
+    if i % 2 == 0:  # For every other tick
+        tick.label2.set(alpha=0, text="", label="", color = "white")
 
-# axs[1].tick_params(axis='both', which='major', labelsize=20)
-# axs[1].spines['top'].set_visible(False)
-# axs[1].spines['right'].set_visible(False)
-# axs[1].spines['bottom'].set_visible(False)
-# axs[1].spines['left'].set_visible(False)
-# # axs[1].set_ylabel('MRCA estimate', fontsize=25)
+        # plt.gca().get_xticklabels()[i].set_verticalalignment('bottom')
+    else:
+        tick.label1.set(alpha=0, text="", label="", color = "white")
+        # plt.gca().get_xticklabels()[i].set_verticalalignment('top')
 
+
+# CONFIGURE Y TICKS
+# plt.gca().yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+ax.yaxis.set_major_locator(MultipleLocator(2))
+
+ax.set_ylim([-4, 8])
+ax.set_xlim([-1, len(alleles) + 1])
+
+ax.set_ylabel('C H A N G E   ( R E P E A T S )', fontsize=label_fontsize)
+ax.set_xlabel('P A R E N T   A L L E L E', fontsize=label_fontsize, labelpad = 10)
+
+ax.tick_params('x', which='both', bottom=True, top=True, labeltop=True, direction='in', labelsize=tick_fontsize)
+ax.tick_params(axis='x', which='minor', tick1On=False, tick2On=False)
+ax.tick_params('y', left=True, right=True, direction='in', labelright=True, labelsize=tick_fontsize)
+
+# plt.grid(True, color="#252525", linestyle=(0, (1, 10)), axis='x')
+# plt.grid(True, color="#252525", linestyle=(0, (10, 10)), axis='x')
+plt.grid(True, color="#555555", axis='y')
+# plt.grid(True, color="#555555", axis='x')
+# plt.grid(linestyle="--")
+
+xticks, _ = plt.xticks()
+for x0, x1 in zip(xticks[::2], xticks[1::2]):
+    plt.axvspan(x0, x1, color='black', alpha=0.05, zorder=0)
+plt.xticks(xticks)  # force the same yticks again
 
 plt.tight_layout()
 

@@ -124,7 +124,6 @@ def setup_plot(ax, g):
     ax.tick_params(axis='y', which='major', labelsize=g["y_tick_size"])
     
     # X axis params
-    print(g["xmin"] - g["x_axis_padding"])
     # plt.xlim(xmin=g["xmin"] - g["x_axis_padding"], xmax=g["xmax"] + g["x_axis_padding"])
     plt.xlim(g["xmin"] - g["x_axis_padding"], g["xmax"] + g["x_axis_padding"])
     ax.xaxis.label.set_size(15)
